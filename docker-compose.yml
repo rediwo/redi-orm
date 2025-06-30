@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass
+    ports:
+      - "3306:3306"
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 10
+      interval: 10s
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      timeout: 10s
+      retries: 10
+      interval: 10s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  mysql_data:
+  postgres_data:
