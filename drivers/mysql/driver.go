@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/rediwo/redi-orm/query"
@@ -17,6 +18,9 @@ func init() {
 	registry.Register("mysql", func(config types.Config) (types.Database, error) {
 		return NewMySQLDB(config)
 	})
+	
+	// Register MySQL URI parser
+	registry.RegisterURIParser("mysql", NewMySQLURIParser())
 }
 
 // MySQLDB implements the Database interface for MySQL
@@ -239,206 +243,108 @@ func (m *MySQLDB) QueryRow(query string, args ...interface{}) *sql.Row {
 
 // generateCreateTableSQL generates CREATE TABLE SQL for MySQL
 func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) {
-	// Simplified implementation - would need full MySQL-specific logic
-	return "", fmt.Errorf("MySQL CREATE TABLE generation not yet implemented")
+	var columns []string
+	var primaryKeys []string
+
+	for _, field := range schema.Fields {
+		column, err := m.generateColumnSQL(field)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate column SQL for field %s: %w", field.Name, err)
+		}
+		columns = append(columns, column)
+		
+		if field.PrimaryKey {
+			primaryKeys = append(primaryKeys, fmt.Sprintf("`%s`", field.GetColumnName()))
+		}
+	}
+
+	// Add primary key constraint if we have primary keys
+	if len(primaryKeys) > 0 {
+		columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
+	}
+
+	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS `%s` (\n  %s\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+		schema.GetTableName(),
+		strings.Join(columns, ",\n  "))
+
+	return sql, nil
 }
 
-// MySQLRawQuery implements RawQuery for MySQL (simplified implementation)
-type MySQLRawQuery struct {
-	db   *sql.DB
-	sql  string
-	args []interface{}
+// generateColumnSQL generates SQL for a single column
+func (m *MySQLDB) generateColumnSQL(field schema.Field) (string, error) {
+	columnName := field.GetColumnName()
+	sqlType := m.mapFieldTypeToSQL(field.Type)
+
+	var parts []string
+	parts = append(parts, fmt.Sprintf("`%s` %s", columnName, sqlType))
+
+	if !field.Nullable {
+		parts = append(parts, "NOT NULL")
+	}
+
+	if field.AutoIncrement {
+		parts = append(parts, "AUTO_INCREMENT")
+	}
+
+	if field.Unique && !field.PrimaryKey {
+		parts = append(parts, "UNIQUE")
+	}
+
+	if field.Default != nil {
+		defaultValue := m.formatDefaultValue(field.Default)
+		parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultValue))
+	}
+
+	return strings.Join(parts, " "), nil
 }
 
-func NewMySQLRawQuery(db *sql.DB, sql string, args ...interface{}) types.RawQuery {
-	return &MySQLRawQuery{
-		db:   db,
-		sql:  sql,
-		args: args,
+// mapFieldTypeToSQL maps schema field types to MySQL SQL types
+func (m *MySQLDB) mapFieldTypeToSQL(fieldType schema.FieldType) string {
+	switch fieldType {
+	case schema.FieldTypeString:
+		return "VARCHAR(255)"
+	case schema.FieldTypeInt:
+		return "INT"
+	case schema.FieldTypeInt64:
+		return "BIGINT"
+	case schema.FieldTypeFloat:
+		return "DOUBLE"
+	case schema.FieldTypeBool:
+		return "BOOLEAN"
+	case schema.FieldTypeDateTime:
+		return "DATETIME"
+	case schema.FieldTypeJSON:
+		return "JSON"
+	case schema.FieldTypeDecimal:
+		return "DECIMAL(10,2)"
+	default:
+		return "VARCHAR(255)"
 	}
 }
 
-func (q *MySQLRawQuery) Exec(ctx context.Context) (types.Result, error) {
-	result, err := q.db.ExecContext(ctx, q.sql, q.args...)
-	if err != nil {
-		return types.Result{}, err
+// formatDefaultValue formats a default value for MySQL
+func (m *MySQLDB) formatDefaultValue(value interface{}) string {
+	if value == nil {
+		return "NULL"
 	}
 
-	lastInsertID, _ := result.LastInsertId()
-	rowsAffected, _ := result.RowsAffected()
-
-	return types.Result{
-		LastInsertID: lastInsertID,
-		RowsAffected: rowsAffected,
-	}, nil
-}
-
-func (q *MySQLRawQuery) Find(ctx context.Context, dest interface{}) error {
-	return fmt.Errorf("MySQL raw query result scanning not yet implemented")
-}
-
-func (q *MySQLRawQuery) FindOne(ctx context.Context, dest interface{}) error {
-	return fmt.Errorf("MySQL raw query result scanning not yet implemented")
-}
-
-// MySQLTransaction implements Transaction for MySQL (simplified implementation)
-type MySQLTransaction struct {
-	tx *sql.Tx
-	db *MySQLDB
-}
-
-func NewMySQLTransaction(tx *sql.Tx, database *MySQLDB) types.Transaction {
-	return &MySQLTransaction{
-		tx: tx,
-		db: database,
+	switch v := value.(type) {
+	case string:
+		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
+	case bool:
+		if v {
+			return "TRUE"
+		}
+		return "FALSE"
+	default:
+		return fmt.Sprintf("%v", value)
 	}
 }
 
-func (t *MySQLTransaction) Model(modelName string) types.ModelQuery {
-	// For now, return a placeholder
-	return nil
-}
 
-func (t *MySQLTransaction) Raw(sql string, args ...interface{}) types.RawQuery {
-	return &MySQLTransactionRawQuery{tx: t.tx, sql: sql, args: args}
-}
 
-func (t *MySQLTransaction) Commit(ctx context.Context) error {
-	return t.tx.Commit()
-}
 
-func (t *MySQLTransaction) Rollback(ctx context.Context) error {
-	return t.tx.Rollback()
-}
-
-func (t *MySQLTransaction) Savepoint(ctx context.Context, name string) error {
-	return fmt.Errorf("savepoints not yet implemented for MySQL")
-}
-
-func (t *MySQLTransaction) RollbackTo(ctx context.Context, name string) error {
-	return fmt.Errorf("savepoints not yet implemented for MySQL")
-}
-
-func (t *MySQLTransaction) CreateMany(ctx context.Context, modelName string, data []interface{}) (types.Result, error) {
-	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
-}
-
-func (t *MySQLTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data interface{}) (types.Result, error) {
-	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
-}
-
-func (t *MySQLTransaction) DeleteMany(ctx context.Context, modelName string, condition types.Condition) (types.Result, error) {
-	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
-}
-
-// MySQLTransactionRawQuery implements RawQuery for MySQL transactions
-type MySQLTransactionRawQuery struct {
-	tx   *sql.Tx
-	sql  string
-	args []interface{}
-}
-
-func (q *MySQLTransactionRawQuery) Exec(ctx context.Context) (types.Result, error) {
-	result, err := q.tx.ExecContext(ctx, q.sql, q.args...)
-	if err != nil {
-		return types.Result{}, err
-	}
-
-	lastInsertID, _ := result.LastInsertId()
-	rowsAffected, _ := result.RowsAffected()
-
-	return types.Result{
-		LastInsertID: lastInsertID,
-		RowsAffected: rowsAffected,
-	}, nil
-}
-
-func (q *MySQLTransactionRawQuery) Find(ctx context.Context, dest interface{}) error {
-	return fmt.Errorf("MySQL transaction raw query result scanning not yet implemented")
-}
-
-func (q *MySQLTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
-	return fmt.Errorf("MySQL transaction raw query result scanning not yet implemented")
-}
-
-// GetMigrator returns a migrator for MySQL (placeholder implementation)
+// GetMigrator returns a migrator for MySQL
 func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {
-	// Return a placeholder migrator for now
-	return &MySQLMigrator{db: m.db}
-}
-
-// MySQLMigrator implements DatabaseMigrator for MySQL (placeholder implementation)
-type MySQLMigrator struct {
-	db *sql.DB
-}
-
-// NewMySQLMigrator creates a new MySQL migrator
-func NewMySQLMigrator(db *sql.DB) *MySQLMigrator {
-	return &MySQLMigrator{db: db}
-}
-
-// GetTables returns all table names
-func (m *MySQLMigrator) GetTables() ([]string, error) {
-	return nil, fmt.Errorf("GetTables not yet implemented")
-}
-
-// GetTableInfo returns table information
-func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error) {
-	return nil, fmt.Errorf("GetTableInfo not yet implemented")
-}
-
-// GenerateCreateTableSQL generates CREATE TABLE SQL
-func (m *MySQLMigrator) GenerateCreateTableSQL(schema interface{}) (string, error) {
-	return "", fmt.Errorf("GenerateCreateTableSQL not yet implemented")
-}
-
-// GenerateDropTableSQL generates DROP TABLE SQL
-func (m *MySQLMigrator) GenerateDropTableSQL(tableName string) string {
-	return fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName)
-}
-
-// GenerateAddColumnSQL generates ADD COLUMN SQL
-func (m *MySQLMigrator) GenerateAddColumnSQL(tableName string, field interface{}) (string, error) {
-	return "", fmt.Errorf("GenerateAddColumnSQL not yet implemented")
-}
-
-// GenerateModifyColumnSQL generates MODIFY COLUMN SQL
-func (m *MySQLMigrator) GenerateModifyColumnSQL(change types.ColumnChange) ([]string, error) {
-	return nil, fmt.Errorf("GenerateModifyColumnSQL not yet implemented")
-}
-
-// GenerateDropColumnSQL generates DROP COLUMN SQL
-func (m *MySQLMigrator) GenerateDropColumnSQL(tableName, columnName string) ([]string, error) {
-	return nil, fmt.Errorf("GenerateDropColumnSQL not yet implemented")
-}
-
-// GenerateCreateIndexSQL generates CREATE INDEX SQL
-func (m *MySQLMigrator) GenerateCreateIndexSQL(tableName, indexName string, columns []string, unique bool) string {
-	return fmt.Sprintf("CREATE INDEX %s ON `%s` (%s)", indexName, tableName, "column_placeholder")
-}
-
-// GenerateDropIndexSQL generates DROP INDEX SQL
-func (m *MySQLMigrator) GenerateDropIndexSQL(indexName string) string {
-	return fmt.Sprintf("DROP INDEX %s", indexName)
-}
-
-// ApplyMigration executes a migration SQL
-func (m *MySQLMigrator) ApplyMigration(sql string) error {
-	_, err := m.db.Exec(sql)
-	return err
-}
-
-// GetDatabaseType returns the database type
-func (m *MySQLMigrator) GetDatabaseType() string {
-	return "mysql"
-}
-
-// CompareSchema compares existing table with desired schema
-func (m *MySQLMigrator) CompareSchema(existingTable *types.TableInfo, desiredSchema interface{}) (*types.MigrationPlan, error) {
-	return nil, fmt.Errorf("CompareSchema not yet implemented")
-}
-
-// GenerateMigrationSQL generates migration SQL
-func (m *MySQLMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]string, error) {
-	return nil, fmt.Errorf("GenerateMigrationSQL not yet implemented")
+	return NewMySQLMigrator(m.db, m)
 }
