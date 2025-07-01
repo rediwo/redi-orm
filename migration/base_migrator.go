@@ -13,7 +13,7 @@ type DatabaseSpecificMigrator interface {
 	// Database introspection
 	GetTables() ([]string, error)
 	GetTableInfo(tableName string) (*types.TableInfo, error)
-	
+
 	// SQL generation
 	GenerateCreateTableSQL(s *schema.Schema) (string, error)
 	GenerateDropTableSQL(tableName string) string
@@ -22,11 +22,11 @@ type DatabaseSpecificMigrator interface {
 	GenerateDropColumnSQL(tableName, columnName string) ([]string, error)
 	GenerateCreateIndexSQL(tableName, indexName string, columns []string, unique bool) string
 	GenerateDropIndexSQL(indexName string) string
-	
+
 	// Migration execution
 	ApplyMigration(sql string) error
 	GetDatabaseType() string
-	
+
 	// Type mapping and column generation
 	MapFieldType(field schema.Field) string
 	FormatDefaultValue(value interface{}) string
@@ -187,7 +187,7 @@ func (b *BaseMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]string
 		if change.NewColumn == nil {
 			continue
 		}
-		
+
 		columnDef := b.specific.GenerateColumnDefinitionFromColumnInfo(*change.NewColumn)
 		sql := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", change.TableName, columnDef)
 		sqlStatements = append(sqlStatements, sql)
@@ -198,7 +198,7 @@ func (b *BaseMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]string
 		if change.NewColumn == nil {
 			continue
 		}
-		
+
 		// Delegate to database-specific implementation
 		sqls, err := b.specific.GenerateModifyColumnSQL(change)
 		if err != nil {
@@ -220,7 +220,7 @@ func (b *BaseMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]string
 	// Generate index changes
 	for _, change := range plan.AddIndexes {
 		if change.NewIndex != nil {
-			sql := b.GenerateCreateIndexSQL(change.TableName, change.IndexName, 
+			sql := b.GenerateCreateIndexSQL(change.TableName, change.IndexName,
 				change.NewIndex.Columns, change.NewIndex.Unique)
 			sqlStatements = append(sqlStatements, sql)
 		}
@@ -240,7 +240,7 @@ func (b *BaseMigrator) columnsNeedModification(existing types.ColumnInfo, desire
 	// Normalize types for comparison
 	existingType := strings.ToUpper(strings.TrimSpace(existing.Type))
 	desiredType := strings.ToUpper(strings.TrimSpace(desired.Type))
-	
+
 	// Check each property
 	if existingType != desiredType {
 		return true
@@ -257,12 +257,12 @@ func (b *BaseMigrator) columnsNeedModification(existing types.ColumnInfo, desire
 	if existing.Unique != desired.Unique {
 		return true
 	}
-	
+
 	// Compare defaults (simplified)
 	if !b.defaultValuesEqual(existing.Default, desired.Default) {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -276,11 +276,11 @@ func (b *BaseMigrator) defaultValuesEqual(existing, desired interface{}) bool {
 	if existing == nil || desired == nil {
 		return false
 	}
-	
+
 	// Convert to strings for comparison (simplified)
 	existingStr := fmt.Sprintf("%v", existing)
 	desiredStr := fmt.Sprintf("%v", desired)
-	
+
 	return existingStr == desiredStr
 }
 
@@ -306,7 +306,7 @@ func (b *BaseMigrator) EnsureSchemaForRegisteredSchemas(schemas map[string]inter
 		}
 
 		tableName := schemaObj.TableName
-		
+
 		if !existingTableMap[tableName] {
 			// Table doesn't exist, create it
 			if err := createTableFunc(schemaObj); err != nil {
@@ -318,27 +318,27 @@ func (b *BaseMigrator) EnsureSchemaForRegisteredSchemas(schemas map[string]inter
 			if err != nil {
 				return fmt.Errorf("failed to get table info for %s: %w", tableName, err)
 			}
-			
+
 			// Compare existing table with desired schema
 			migrationPlan, err := b.CompareSchema(existingTableInfo, schemaObj)
 			if err != nil {
 				return fmt.Errorf("failed to compare schema for %s: %w", tableName, err)
 			}
-			
+
 			// Apply migrations if needed
 			if b.hasMigrations(migrationPlan) {
 				sqlStatements, err := b.GenerateMigrationSQL(migrationPlan)
 				if err != nil {
 					return fmt.Errorf("failed to generate migration SQL for %s: %w", tableName, err)
 				}
-				
+
 				// Execute migration statements
 				for _, sql := range sqlStatements {
 					// Skip comment-only statements
 					if strings.HasPrefix(strings.TrimSpace(sql), "--") {
 						continue
 					}
-					
+
 					if err := b.ApplyMigration(sql); err != nil {
 						return fmt.Errorf("failed to apply migration for %s: %s, error: %w", tableName, sql, err)
 					}

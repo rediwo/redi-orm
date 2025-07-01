@@ -1,12 +1,12 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"sync"
 
 	js "github.com/dop251/goja"
-	"github.com/rediwo/redi-orm/models"
 	"github.com/rediwo/redi-orm/prisma"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -16,7 +16,6 @@ type Engine struct {
 	vm      *js.Runtime
 	db      types.Database
 	schemas map[string]*schema.Schema
-	models  map[string]*models.Model
 	mu      sync.RWMutex
 }
 
@@ -26,7 +25,6 @@ func New(db types.Database) *Engine {
 		vm:      vm,
 		db:      db,
 		schemas: make(map[string]*schema.Schema),
-		models:  make(map[string]*models.Model),
 	}
 
 	engine.setupGlobalObjects()
@@ -46,14 +44,10 @@ func (e *Engine) RegisterSchema(s *schema.Schema) error {
 		return fmt.Errorf("failed to register schema: %w", err)
 	}
 
-	// Create model
-	model := models.New(s, e.db)
-
 	e.schemas[s.Name] = s
-	e.models[s.Name] = model
 
 	// Register model in JavaScript context
-	e.registerModelInJS(s.Name, model)
+	e.registerModelInJS(s.Name)
 
 	return nil
 }
@@ -63,7 +57,15 @@ func (e *Engine) EnsureSchema() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	return e.db.EnsureSchema()
+	// For now, just create tables for all registered schemas
+	// Full migration support will be added later
+	ctx := context.Background()
+	for modelName := range e.schemas {
+		if err := e.db.CreateModel(ctx, modelName); err != nil {
+			return fmt.Errorf("failed to create model %s: %w", modelName, err)
+		}
+	}
+	return nil
 }
 
 func (e *Engine) setupGlobalObjects() {
@@ -72,93 +74,66 @@ func (e *Engine) setupGlobalObjects() {
 	e.vm.Set("models", modelsObj)
 }
 
-func (e *Engine) registerModelInJS(name string, model *models.Model) {
+func (e *Engine) registerModelInJS(name string) {
 	modelObj := e.vm.NewObject()
 
-	// Register get method
-	modelObj.Set("get", func(call js.FunctionCall) js.Value {
+	// Register findUnique method using new API
+	modelObj.Set("findUnique", func(call js.FunctionCall) js.Value {
 		if len(call.Arguments) < 1 {
-			panic(e.vm.NewTypeError("get() requires an ID argument"))
+			panic(e.vm.NewTypeError("findUnique() requires a where argument"))
 		}
 
-		id := call.Arguments[0].Export()
-		result, err := model.Get(id)
-		if err != nil {
-			panic(e.vm.NewGoError(err))
-		}
-
-		return e.vm.ToValue(result)
+		// This is a simplified implementation
+		// In reality, you'd parse the where conditions properly
+		return e.vm.ToValue(map[string]interface{}{
+			"error": "findUnique not yet fully implemented in JS engine",
+		})
 	})
 
-	// Register select method
-	modelObj.Set("select", func(call js.FunctionCall) js.Value {
-		columns := []string{}
-		if len(call.Arguments) > 0 {
-			if arr, ok := call.Arguments[0].Export().([]interface{}); ok {
-				for _, col := range arr {
-					if str, ok := col.(string); ok {
-						columns = append(columns, str)
-					}
-				}
-			}
-		}
-
-		queryBuilder := model.Select(columns...)
-		return e.createQueryBuilderObject(queryBuilder)
+	// Register findMany method using new API
+	modelObj.Set("findMany", func(call js.FunctionCall) js.Value {
+		// This is a simplified implementation
+		return e.vm.ToValue([]interface{}{
+			map[string]interface{}{
+				"error": "findMany not yet fully implemented in JS engine",
+			},
+		})
 	})
 
-	// Register add method
-	modelObj.Set("add", func(call js.FunctionCall) js.Value {
+	// Register create method using new API
+	modelObj.Set("create", func(call js.FunctionCall) js.Value {
 		if len(call.Arguments) < 1 {
-			panic(e.vm.NewTypeError("add() requires a data argument"))
+			panic(e.vm.NewTypeError("create() requires a data argument"))
 		}
 
-		data, ok := call.Arguments[0].Export().(map[string]interface{})
-		if !ok {
-			panic(e.vm.NewTypeError("add() argument must be an object"))
-		}
-
-		id, err := model.Add(data)
-		if err != nil {
-			panic(e.vm.NewGoError(err))
-		}
-
-		return e.vm.ToValue(id)
+		// This is a simplified implementation
+		return e.vm.ToValue(map[string]interface{}{
+			"error": "create not yet fully implemented in JS engine",
+		})
 	})
 
-	// Register set method (update)
-	modelObj.Set("set", func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) < 2 {
-			panic(e.vm.NewTypeError("set() requires ID and data arguments"))
-		}
-
-		id := call.Arguments[0].Export()
-		data, ok := call.Arguments[1].Export().(map[string]interface{})
-		if !ok {
-			panic(e.vm.NewTypeError("set() second argument must be an object"))
-		}
-
-		err := model.Set(id, data)
-		if err != nil {
-			panic(e.vm.NewGoError(err))
-		}
-
-		return js.Undefined()
-	})
-
-	// Register remove method
-	modelObj.Set("remove", func(call js.FunctionCall) js.Value {
+	// Register update method using new API
+	modelObj.Set("update", func(call js.FunctionCall) js.Value {
 		if len(call.Arguments) < 1 {
-			panic(e.vm.NewTypeError("remove() requires an ID argument"))
+			panic(e.vm.NewTypeError("update() requires where and data arguments"))
 		}
 
-		id := call.Arguments[0].Export()
-		err := model.Remove(id)
-		if err != nil {
-			panic(e.vm.NewGoError(err))
+		// This is a simplified implementation
+		return e.vm.ToValue(map[string]interface{}{
+			"error": "update not yet fully implemented in JS engine",
+		})
+	})
+
+	// Register delete method using new API
+	modelObj.Set("delete", func(call js.FunctionCall) js.Value {
+		if len(call.Arguments) < 1 {
+			panic(e.vm.NewTypeError("delete() requires a where argument"))
 		}
 
-		return js.Undefined()
+		// This is a simplified implementation
+		return e.vm.ToValue(map[string]interface{}{
+			"error": "delete not yet fully implemented in JS engine",
+		})
 	})
 
 	// Register model in models object
@@ -166,83 +141,8 @@ func (e *Engine) registerModelInJS(name string, model *models.Model) {
 	modelsObj.Set(name, modelObj)
 }
 
-func (e *Engine) createQueryBuilderObject(qb *models.QueryBuilder) js.Value {
-	obj := e.vm.NewObject()
-
-	obj.Set("where", func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) < 3 {
-			panic(e.vm.NewTypeError("where() requires field, operator, and value arguments"))
-		}
-
-		field := call.Arguments[0].String()
-		operator := call.Arguments[1].String()
-		value := call.Arguments[2].Export()
-
-		qb.Where(field, operator, value)
-		return obj
-	})
-
-	obj.Set("orderBy", func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) < 1 {
-			panic(e.vm.NewTypeError("orderBy() requires at least field argument"))
-		}
-
-		field := call.Arguments[0].String()
-		direction := "ASC"
-		if len(call.Arguments) > 1 {
-			direction = call.Arguments[1].String()
-		}
-
-		qb.OrderBy(field, direction)
-		return obj
-	})
-
-	obj.Set("limit", func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) < 1 {
-			panic(e.vm.NewTypeError("limit() requires a number argument"))
-		}
-
-		limit := call.Arguments[0].ToInteger()
-		qb.Limit(int(limit))
-		return obj
-	})
-
-	obj.Set("offset", func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) < 1 {
-			panic(e.vm.NewTypeError("offset() requires a number argument"))
-		}
-
-		offset := call.Arguments[0].ToInteger()
-		qb.Offset(int(offset))
-		return obj
-	})
-
-	obj.Set("execute", func(call js.FunctionCall) js.Value {
-		results, err := qb.Execute()
-		if err != nil {
-			panic(e.vm.NewGoError(err))
-		}
-		return e.vm.ToValue(results)
-	})
-
-	obj.Set("first", func(call js.FunctionCall) js.Value {
-		result, err := qb.First()
-		if err != nil {
-			panic(e.vm.NewGoError(err))
-		}
-		return e.vm.ToValue(result)
-	})
-
-	obj.Set("count", func(call js.FunctionCall) js.Value {
-		count, err := qb.Count()
-		if err != nil {
-			panic(e.vm.NewGoError(err))
-		}
-		return e.vm.ToValue(count)
-	})
-
-	return obj
-}
+// createQueryBuilderObject is removed as we now use the new API
+// JavaScript integration will be implemented separately
 
 func (e *Engine) Execute(script string) (interface{}, error) {
 	value, err := e.vm.RunString(script)
@@ -277,9 +177,10 @@ func (e *Engine) LoadPrismaSchema(schemaContent string) error {
 		if err := e.RegisterSchema(schema); err != nil {
 			return fmt.Errorf("failed to register schema %s: %v", schema.Name, err)
 		}
-		
+
 		// Create table in database
-		if err := e.db.CreateModel(schema); err != nil {
+		ctx := context.Background()
+		if err := e.db.CreateModel(ctx, schema.Name); err != nil {
 			return fmt.Errorf("failed to create table for schema %s: %v", schema.Name, err)
 		}
 	}

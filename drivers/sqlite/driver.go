@@ -1,11 +1,12 @@
-package drivers
+package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -16,35 +17,41 @@ func init() {
 	registry.Register("sqlite", func(config types.Config) (types.Database, error) {
 		return NewSQLiteDB(config)
 	})
-
-	// Register SQLite URI parser
-	registry.RegisterURIParser("sqlite", &SQLiteURIParser{})
 }
 
+// SQLiteDB implements the Database interface for SQLite
 type SQLiteDB struct {
-	db       *sql.DB
-	config   types.Config
-	migrator *SQLiteMigrator
-	schemas  map[string]interface{}
+	db          *sql.DB
+	config      types.Config
+	fieldMapper types.FieldMapper
+	schemas     map[string]*schema.Schema
 }
 
+// NewSQLiteDB creates a new SQLite database instance
 func NewSQLiteDB(config types.Config) (*SQLiteDB, error) {
 	return &SQLiteDB{
-		config:  config,
-		schemas: make(map[string]interface{}),
+		config:      config,
+		fieldMapper: types.NewDefaultFieldMapper(),
+		schemas:     make(map[string]*schema.Schema),
 	}, nil
 }
 
-func (s *SQLiteDB) Connect() error {
+// Connect establishes connection to SQLite database
+func (s *SQLiteDB) Connect(ctx context.Context) error {
 	db, err := sql.Open("sqlite3", s.config.FilePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open SQLite database: %w", err)
 	}
+
+	if err := db.PingContext(ctx); err != nil {
+		return fmt.Errorf("failed to ping SQLite database: %w", err)
+	}
+
 	s.db = db
-	s.migrator = NewSQLiteMigrator(db)
 	return nil
 }
 
+// Close closes the database connection
 func (s *SQLiteDB) Close() error {
 	if s.db != nil {
 		return s.db.Close()
@@ -52,417 +59,257 @@ func (s *SQLiteDB) Close() error {
 	return nil
 }
 
-func (s *SQLiteDB) CreateTable(schema *schema.Schema) error {
-	var columns []string
-	for _, field := range schema.Fields {
-		col := fmt.Sprintf("%s %s", field.GetColumnName(), fieldTypeToSQL(field.Type))
+// Ping checks if the database connection is alive
+func (s *SQLiteDB) Ping(ctx context.Context) error {
+	if s.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+	return s.db.PingContext(ctx)
+}
 
-		if field.PrimaryKey {
-			col += " PRIMARY KEY"
-			if field.AutoIncrement {
-				col += " AUTOINCREMENT"
-			}
-		}
-
-		if !field.Nullable && !field.PrimaryKey {
-			col += " NOT NULL"
-		}
-
-		if field.Unique {
-			col += " UNIQUE"
-		}
-
-		if field.Default != nil {
-			col += fmt.Sprintf(" DEFAULT %v", field.Default)
-		}
-
-		columns = append(columns, col)
+// RegisterSchema registers a schema with the database
+func (s *SQLiteDB) RegisterSchema(modelName string, schema *schema.Schema) error {
+	if schema == nil {
+		return fmt.Errorf("schema cannot be nil")
 	}
 
-	query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s)", schema.TableName, strings.Join(columns, ", "))
-	_, err := s.db.Exec(query)
-	return err
+	if err := schema.Validate(); err != nil {
+		return fmt.Errorf("invalid schema: %w", err)
+	}
+
+	s.schemas[modelName] = schema
+
+	// Register with field mapper
+	if mapper, ok := s.fieldMapper.(*types.DefaultFieldMapper); ok {
+		mapper.RegisterSchema(modelName, schema)
+	}
+
+	return nil
 }
 
-func (s *SQLiteDB) CreateModel(schema *schema.Schema) error {
-	return s.CreateTable(schema)
+// GetSchema returns a registered schema
+func (s *SQLiteDB) GetSchema(modelName string) (*schema.Schema, error) {
+	schema, exists := s.schemas[modelName]
+	if !exists {
+		return nil, fmt.Errorf("schema for model '%s' not registered", modelName)
+	}
+	return schema, nil
 }
 
-func (s *SQLiteDB) DropModel(modelName string) error {
-	tableName, err := s.resolveTableName(modelName)
+// GetModels returns all registered model names
+func (s *SQLiteDB) GetModels() []string {
+	models := make([]string, 0, len(s.schemas))
+	for modelName := range s.schemas {
+		models = append(models, modelName)
+	}
+	return models
+}
+
+// GetModelSchema returns schema for a model (alias for GetSchema)
+func (s *SQLiteDB) GetModelSchema(modelName string) (*schema.Schema, error) {
+	return s.GetSchema(modelName)
+}
+
+// ResolveTableName resolves model name to table name
+func (s *SQLiteDB) ResolveTableName(modelName string) (string, error) {
+	return s.fieldMapper.ModelToTable(modelName)
+}
+
+// ResolveFieldName resolves schema field name to column name
+func (s *SQLiteDB) ResolveFieldName(modelName, fieldName string) (string, error) {
+	return s.fieldMapper.SchemaToColumn(modelName, fieldName)
+}
+
+// ResolveFieldNames resolves multiple schema field names to column names
+func (s *SQLiteDB) ResolveFieldNames(modelName string, fieldNames []string) ([]string, error) {
+	return s.fieldMapper.SchemaFieldsToColumns(modelName, fieldNames)
+}
+
+// GetFieldMapper returns the field mapper
+func (s *SQLiteDB) GetFieldMapper() types.FieldMapper {
+	return s.fieldMapper
+}
+
+// CreateModel creates a table for the given model
+func (s *SQLiteDB) CreateModel(ctx context.Context, modelName string) error {
+	schema, err := s.GetSchema(modelName)
 	if err != nil {
-		return err
-	}
-	query := fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName)
-	_, err = s.db.Exec(query)
-	return err
-}
-
-func (s *SQLiteDB) RawInsert(tableName string, data map[string]interface{}) (int64, error) {
-	var columns []string
-	var placeholders []string
-	var values []interface{}
-
-	i := 1
-	for col, val := range data {
-		columns = append(columns, col)
-		placeholders = append(placeholders, "?")
-		values = append(values, val)
-		i++
+		return fmt.Errorf("failed to get schema for model %s: %w", modelName, err)
 	}
 
-	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		tableName,
-		strings.Join(columns, ", "),
-		strings.Join(placeholders, ", "))
-
-	result, err := s.db.Exec(query, values...)
+	sql, err := s.generateCreateTableSQL(schema)
 	if err != nil {
-		return 0, err
+		return fmt.Errorf("failed to generate CREATE TABLE SQL: %w", err)
 	}
 
-	return result.LastInsertId()
-}
-
-func (s *SQLiteDB) RawFindByID(tableName string, id interface{}) (map[string]interface{}, error) {
-	query := fmt.Sprintf("SELECT * FROM %s WHERE id = ? LIMIT 1", tableName)
-	rows, err := s.db.Query(query, id)
+	_, err = s.db.ExecContext(ctx, sql)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to create table: %w", err)
 	}
-	defer rows.Close()
 
-	results, err := s.scanRows(rows)
+	return nil
+}
+
+// DropModel drops the table for the given model
+func (s *SQLiteDB) DropModel(ctx context.Context, modelName string) error {
+	tableName, err := s.ResolveTableName(modelName)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to resolve table name: %w", err)
 	}
 
-	if len(results) == 0 {
-		return nil, sql.ErrNoRows
-	}
-
-	return results[0], nil
-}
-
-func (s *SQLiteDB) RawFind(tableName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
-	query := fmt.Sprintf("SELECT * FROM %s", tableName)
-	var where []string
-	var values []interface{}
-
-	for col, val := range conditions {
-		where = append(where, fmt.Sprintf("%s = ?", col))
-		values = append(values, val)
-	}
-
-	if len(where) > 0 {
-		query += " WHERE " + strings.Join(where, " AND ")
-	}
-
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
-	}
-
-	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", offset)
-	}
-
-	rows, err := s.db.Query(query, values...)
+	sql := fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName)
+	_, err = s.db.ExecContext(ctx, sql)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to drop table: %w", err)
 	}
-	defer rows.Close()
 
-	return s.scanRows(rows)
+	return nil
 }
 
-func (s *SQLiteDB) RawUpdate(tableName string, id interface{}, data map[string]interface{}) error {
-	var sets []string
-	var values []interface{}
-
-	for col, val := range data {
-		sets = append(sets, fmt.Sprintf("%s = ?", col))
-		values = append(values, val)
-	}
-	values = append(values, id)
-
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?",
-		tableName,
-		strings.Join(sets, ", "))
-
-	_, err := s.db.Exec(query, values...)
-	return err
+// Model creates a new model query
+func (s *SQLiteDB) Model(modelName string) types.ModelQuery {
+	return query.NewModelQuery(modelName, s, s.GetFieldMapper())
 }
 
-func (s *SQLiteDB) RawDelete(tableName string, id interface{}) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE id = ?", tableName)
-	_, err := s.db.Exec(query, id)
-	return err
+// Raw creates a new raw query
+func (s *SQLiteDB) Raw(sql string, args ...interface{}) types.RawQuery {
+	return NewSQLiteRawQuery(s.db, sql, args...)
 }
 
-func (s *SQLiteDB) RawSelect(tableName string, columns []string) types.QueryBuilder {
-	return &SQLiteQueryBuilder{
-		db:        s.db,
-		tableName: tableName,
-		columns:   columns,
-	}
-}
-
-func (s *SQLiteDB) Begin() (types.Transaction, error) {
-	tx, err := s.db.Begin()
+// Begin starts a new transaction
+func (s *SQLiteDB) Begin(ctx context.Context) (types.Transaction, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	return &SQLiteTransaction{tx: tx}, nil
+
+	return NewSQLiteTransaction(tx, s), nil
 }
 
+// Exec executes a raw SQL statement
 func (s *SQLiteDB) Exec(query string, args ...interface{}) (sql.Result, error) {
 	return s.db.Exec(query, args...)
 }
 
+// Query executes a raw SQL query that returns rows
 func (s *SQLiteDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
 	return s.db.Query(query, args...)
 }
 
+// QueryRow executes a raw SQL query that returns a single row
 func (s *SQLiteDB) QueryRow(query string, args ...interface{}) *sql.Row {
 	return s.db.QueryRow(query, args...)
 }
 
-// GetDB returns the underlying sql.DB instance
-func (s *SQLiteDB) GetDB() *sql.DB {
-	return s.db
-}
-
-// GetMigrator returns the database migrator for SQLite
-func (s *SQLiteDB) GetMigrator() types.DatabaseMigrator {
-	return s.migrator
-}
-
-// EnsureSchema performs auto-migration for all registered schemas using the base migrator
-func (s *SQLiteDB) EnsureSchema() error {
-	migrator := s.GetMigrator()
-	if migrator == nil {
-		return fmt.Errorf("migrator not available")
+// Transaction executes a function within a transaction
+func (s *SQLiteDB) Transaction(ctx context.Context, fn func(tx types.Transaction) error) error {
+	tx, err := s.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	// Use the base migrator's shared logic
-	if baseMigrator, ok := migrator.(*SQLiteMigrator); ok {
-		return baseMigrator.base.EnsureSchemaForRegisteredSchemas(s.schemas, s.CreateModel)
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback(ctx)
+			panic(r)
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+			return fmt.Errorf("transaction error: %w, rollback error: %w", err, rollbackErr)
+		}
+		return err
 	}
 
-	return fmt.Errorf("invalid migrator type")
-}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
 
-// RegisterSchema registers a schema for model name resolution
-func (s *SQLiteDB) RegisterSchema(modelName string, schema interface{}) error {
-	s.schemas[modelName] = schema
 	return nil
 }
 
-// GetRegisteredSchemas returns all registered schemas
-func (s *SQLiteDB) GetRegisteredSchemas() map[string]interface{} {
-	result := make(map[string]interface{})
-	for name, schema := range s.schemas {
-		result[name] = schema
-	}
-	return result
+// GetMigrator returns a migrator for SQLite (placeholder implementation)
+func (s *SQLiteDB) GetMigrator() types.DatabaseMigrator {
+	// Return a placeholder migrator for now
+	return &SQLiteMigrator{db: s.db}
 }
 
-// resolveTableName converts model name to actual table name using registered schema
-func (s *SQLiteDB) resolveTableName(modelName string) (string, error) {
-	schemaInterface, exists := s.schemas[modelName]
-	if !exists {
-		return "", fmt.Errorf("schema for model '%s' not registered", modelName)
-	}
+// generateCreateTableSQL generates CREATE TABLE SQL for a schema
+func (s *SQLiteDB) generateCreateTableSQL(schema *schema.Schema) (string, error) {
+	var columns []string
 
-	schema, ok := schemaInterface.(*schema.Schema)
-	if !ok {
-		return "", fmt.Errorf("invalid schema type for model '%s'", modelName)
-	}
-
-	return schema.TableName, nil
-}
-
-// convertFieldNames converts schema field names to database column names
-func (s *SQLiteDB) convertFieldNames(modelName string, data map[string]interface{}) (map[string]interface{}, error) {
-	schemaInterface, exists := s.schemas[modelName]
-	if !exists {
-		// If schema not registered, return data as-is
-		return data, nil
-	}
-
-	schema, ok := schemaInterface.(*schema.Schema)
-	if !ok {
-		return data, nil
-	}
-
-	// Create field name mapping
-	fieldMap := make(map[string]string)
 	for _, field := range schema.Fields {
-		fieldMap[field.Name] = field.GetColumnName()
+		column, err := s.generateColumnSQL(field)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate column SQL for field %s: %w", field.Name, err)
+		}
+		columns = append(columns, column)
 	}
 
-	// Convert field names
-	converted := make(map[string]interface{})
-	for key, value := range data {
-		if columnName, exists := fieldMap[key]; exists {
-			converted[columnName] = value
-		} else {
-			// Keep unknown fields as-is (for raw queries)
-			converted[key] = value
+	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n  %s\n)",
+		schema.GetTableName(),
+		fmt.Sprintf("%s", columns[0]))
+
+	if len(columns) > 1 {
+		for _, column := range columns[1:] {
+			sql = sql[:len(sql)-2] + ",\n  " + column + "\n)"
 		}
 	}
 
-	return converted, nil
+	return sql, nil
 }
 
-// convertResultFieldNames converts database column names back to schema field names
-func (s *SQLiteDB) convertResultFieldNames(modelName string, data map[string]interface{}) map[string]interface{} {
-	schemaInterface, exists := s.schemas[modelName]
-	if !exists {
-		// If schema not registered, return data as-is
-		return data
-	}
+// generateColumnSQL generates SQL for a single column
+func (s *SQLiteDB) generateColumnSQL(field schema.Field) (string, error) {
+	columnName := field.GetColumnName()
+	sqlType := s.mapFieldTypeToSQL(field.Type)
 
-	schema, ok := schemaInterface.(*schema.Schema)
-	if !ok {
-		return data
-	}
+	var parts []string
+	parts = append(parts, fmt.Sprintf("%s %s", columnName, sqlType))
 
-	// Create reverse field name mapping (column name -> field name)
-	reverseFieldMap := make(map[string]string)
-	for _, field := range schema.Fields {
-		reverseFieldMap[field.GetColumnName()] = field.Name
-	}
-
-	// Convert column names back to field names
-	converted := make(map[string]interface{})
-	for key, value := range data {
-		if fieldName, exists := reverseFieldMap[key]; exists {
-			converted[fieldName] = value
-		} else {
-			// Keep unknown columns as-is
-			converted[key] = value
+	if field.PrimaryKey {
+		parts = append(parts, "PRIMARY KEY")
+		if field.AutoIncrement {
+			parts = append(parts, "AUTOINCREMENT")
 		}
 	}
 
-	return converted
+	if !field.Nullable && !field.PrimaryKey {
+		parts = append(parts, "NOT NULL")
+	}
+
+	if field.Unique && !field.PrimaryKey {
+		parts = append(parts, "UNIQUE")
+	}
+
+	if field.Default != nil {
+		parts = append(parts, fmt.Sprintf("DEFAULT %v", field.Default))
+	}
+
+	return fmt.Sprintf("%s", parts[0]) + " " + fmt.Sprintf("%s", parts[1:]), nil
 }
 
-// Schema-aware CRUD operations
-func (s *SQLiteDB) Insert(modelName string, data map[string]interface{}) (int64, error) {
-	tableName, err := s.resolveTableName(modelName)
-	if err != nil {
-		return 0, err
+// mapFieldTypeToSQL maps schema field types to SQLite SQL types
+func (s *SQLiteDB) mapFieldTypeToSQL(fieldType schema.FieldType) string {
+	switch fieldType {
+	case schema.FieldTypeString:
+		return "TEXT"
+	case schema.FieldTypeInt:
+		return "INTEGER"
+	case schema.FieldTypeInt64:
+		return "INTEGER"
+	case schema.FieldTypeFloat:
+		return "REAL"
+	case schema.FieldTypeBool:
+		return "INTEGER" // SQLite doesn't have native boolean
+	case schema.FieldTypeDateTime:
+		return "DATETIME"
+	case schema.FieldTypeJSON:
+		return "TEXT" // Store JSON as text in SQLite
+	case schema.FieldTypeDecimal:
+		return "DECIMAL"
+	default:
+		return "TEXT"
 	}
-
-	convertedData, err := s.convertFieldNames(modelName, data)
-	if err != nil {
-		return 0, err
-	}
-
-	return s.RawInsert(tableName, convertedData)
-}
-
-func (s *SQLiteDB) FindByID(modelName string, id interface{}) (map[string]interface{}, error) {
-	tableName, err := s.resolveTableName(modelName)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := s.RawFindByID(tableName, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.convertResultFieldNames(modelName, result), nil
-}
-
-func (s *SQLiteDB) Find(modelName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
-	tableName, err := s.resolveTableName(modelName)
-	if err != nil {
-		return nil, err
-	}
-
-	convertedConditions, err := s.convertFieldNames(modelName, conditions)
-	if err != nil {
-		return nil, err
-	}
-
-	results, err := s.RawFind(tableName, convertedConditions, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert all results back to field names
-	convertedResults := make([]map[string]interface{}, len(results))
-	for i, result := range results {
-		convertedResults[i] = s.convertResultFieldNames(modelName, result)
-	}
-
-	return convertedResults, nil
-}
-
-func (s *SQLiteDB) Update(modelName string, id interface{}, data map[string]interface{}) error {
-	tableName, err := s.resolveTableName(modelName)
-	if err != nil {
-		return err
-	}
-
-	convertedData, err := s.convertFieldNames(modelName, data)
-	if err != nil {
-		return err
-	}
-
-	return s.RawUpdate(tableName, id, convertedData)
-}
-
-func (s *SQLiteDB) Delete(modelName string, id interface{}) error {
-	tableName, err := s.resolveTableName(modelName)
-	if err != nil {
-		return err
-	}
-	return s.RawDelete(tableName, id)
-}
-
-func (s *SQLiteDB) Select(modelName string, columns []string) types.QueryBuilder {
-	tableName, err := s.resolveTableName(modelName)
-	if err != nil {
-		// Return a no-op query builder that will return an error
-		return &SQLiteQueryBuilder{
-			db:        s.db,
-			tableName: "",
-			columns:   columns,
-			err:       err,
-		}
-	}
-	return s.RawSelect(tableName, columns)
-}
-
-func (s *SQLiteDB) scanRows(rows *sql.Rows) ([]map[string]interface{}, error) {
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-
-	var results []map[string]interface{}
-
-	for rows.Next() {
-		values := make([]interface{}, len(cols))
-		valuePtrs := make([]interface{}, len(cols))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, err
-		}
-
-		result := make(map[string]interface{})
-		for i, col := range cols {
-			result[col] = values[i]
-		}
-		results = append(results, result)
-	}
-
-	return results, rows.Err()
 }

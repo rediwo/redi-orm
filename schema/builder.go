@@ -80,6 +80,16 @@ func (fb *FieldBuilder) Index() *FieldBuilder {
 	return fb
 }
 
+func (fb *FieldBuilder) Map(columnName string) *FieldBuilder {
+	fb.field.Map = columnName
+	return fb
+}
+
+func (fb *FieldBuilder) DbType(dbType string) *FieldBuilder {
+	fb.field.DbType = dbType
+	return fb
+}
+
 func (fb *FieldBuilder) Build() Field {
 	return fb.field
 }

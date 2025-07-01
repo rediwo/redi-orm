@@ -1,71 +1,221 @@
-package drivers
+package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 
+	"github.com/rediwo/redi-orm/query"
+	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
 
+// SQLiteTransaction implements the Transaction interface for SQLite
 type SQLiteTransaction struct {
-	tx *sql.Tx
+	tx       *sql.Tx
+	database *SQLiteDB
 }
 
-func (t *SQLiteTransaction) Commit() error {
+// NewSQLiteTransaction creates a new SQLite transaction
+func NewSQLiteTransaction(tx *sql.Tx, database *SQLiteDB) *SQLiteTransaction {
+	return &SQLiteTransaction{
+		tx:       tx,
+		database: database,
+	}
+}
+
+// Model creates a new model query within the transaction
+func (t *SQLiteTransaction) Model(modelName string) types.ModelQuery {
+	// Create a transaction-aware database wrapper
+	txDB := &SQLiteTransactionDB{
+		transaction: t,
+		database:    t.database,
+	}
+	return query.NewModelQuery(modelName, txDB, t.database.GetFieldMapper())
+}
+
+// Raw creates a new raw query within the transaction
+func (t *SQLiteTransaction) Raw(sql string, args ...interface{}) types.RawQuery {
+	return &SQLiteTransactionRawQuery{
+		tx:   t.tx,
+		sql:  sql,
+		args: args,
+	}
+}
+
+// Commit commits the transaction
+func (t *SQLiteTransaction) Commit(ctx context.Context) error {
 	return t.tx.Commit()
 }
 
-func (t *SQLiteTransaction) Rollback() error {
+// Rollback rolls back the transaction
+func (t *SQLiteTransaction) Rollback(ctx context.Context) error {
 	return t.tx.Rollback()
 }
 
-func (t *SQLiteTransaction) Insert(tableName string, data map[string]interface{}) (int64, error) {
-	var columns []string
-	var placeholders []string
-	var values []interface{}
+// Savepoint creates a savepoint (SQLite supports nested transactions via savepoints)
+func (t *SQLiteTransaction) Savepoint(ctx context.Context, name string) error {
+	_, err := t.tx.ExecContext(ctx, fmt.Sprintf("SAVEPOINT %s", name))
+	return err
+}
 
-	for col, val := range data {
-		columns = append(columns, col)
-		placeholders = append(placeholders, "?")
-		values = append(values, val)
+// RollbackTo rolls back to a savepoint
+func (t *SQLiteTransaction) RollbackTo(ctx context.Context, name string) error {
+	_, err := t.tx.ExecContext(ctx, fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", name))
+	return err
+}
+
+// CreateMany performs batch insert within the transaction
+func (t *SQLiteTransaction) CreateMany(ctx context.Context, modelName string, data []interface{}) (types.Result, error) {
+	if len(data) == 0 {
+		return types.Result{}, fmt.Errorf("no data to insert")
 	}
 
-	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		tableName,
-		strings.Join(columns, ", "),
-		strings.Join(placeholders, ", "))
+	// Create an insert query and add all data
+	insertQuery := t.Model(modelName).Insert(data[0])
+	if len(data) > 1 {
+		insertQuery = insertQuery.Values(data[1:]...)
+	}
 
-	result, err := t.tx.Exec(query, values...)
+	return insertQuery.Exec(ctx)
+}
+
+// UpdateMany performs batch update within the transaction
+func (t *SQLiteTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data interface{}) (types.Result, error) {
+	updateQuery := t.Model(modelName).Update(data).WhereCondition(condition)
+	return updateQuery.Exec(ctx)
+}
+
+// DeleteMany performs batch delete within the transaction
+func (t *SQLiteTransaction) DeleteMany(ctx context.Context, modelName string, condition types.Condition) (types.Result, error) {
+	deleteQuery := t.Model(modelName).Delete().WhereCondition(condition)
+	return deleteQuery.Exec(ctx)
+}
+
+// SQLiteTransactionDB wraps the transaction for database operations
+type SQLiteTransactionDB struct {
+	transaction *SQLiteTransaction
+	database    *SQLiteDB
+}
+
+// All Database interface methods that delegate to the transaction
+func (td *SQLiteTransactionDB) Connect(ctx context.Context) error {
+	return fmt.Errorf("cannot connect within a transaction")
+}
+
+func (td *SQLiteTransactionDB) Close() error {
+	return fmt.Errorf("cannot close within a transaction")
+}
+
+func (td *SQLiteTransactionDB) Ping(ctx context.Context) error {
+	return td.database.Ping(ctx)
+}
+
+func (td *SQLiteTransactionDB) RegisterSchema(modelName string, schema *schema.Schema) error {
+	return td.database.RegisterSchema(modelName, schema)
+}
+
+func (td *SQLiteTransactionDB) GetSchema(modelName string) (*schema.Schema, error) {
+	return td.database.GetSchema(modelName)
+}
+
+func (td *SQLiteTransactionDB) CreateModel(ctx context.Context, modelName string) error {
+	return fmt.Errorf("cannot create model within a transaction")
+}
+
+func (td *SQLiteTransactionDB) DropModel(ctx context.Context, modelName string) error {
+	return fmt.Errorf("cannot drop model within a transaction")
+}
+
+func (td *SQLiteTransactionDB) Model(modelName string) types.ModelQuery {
+	return td.transaction.Model(modelName)
+}
+
+func (td *SQLiteTransactionDB) Raw(sql string, args ...interface{}) types.RawQuery {
+	return td.transaction.Raw(sql, args...)
+}
+
+func (td *SQLiteTransactionDB) Begin(ctx context.Context) (types.Transaction, error) {
+	return nil, fmt.Errorf("nested transactions not supported")
+}
+
+func (td *SQLiteTransactionDB) Transaction(ctx context.Context, fn func(tx types.Transaction) error) error {
+	return fn(td.transaction)
+}
+
+func (td *SQLiteTransactionDB) GetModels() []string {
+	return td.database.GetModels()
+}
+
+func (td *SQLiteTransactionDB) GetModelSchema(modelName string) (*schema.Schema, error) {
+	return td.database.GetModelSchema(modelName)
+}
+
+func (td *SQLiteTransactionDB) ResolveTableName(modelName string) (string, error) {
+	return td.database.ResolveTableName(modelName)
+}
+
+func (td *SQLiteTransactionDB) ResolveFieldName(modelName, fieldName string) (string, error) {
+	return td.database.ResolveFieldName(modelName, fieldName)
+}
+
+func (td *SQLiteTransactionDB) ResolveFieldNames(modelName string, fieldNames []string) ([]string, error) {
+	return td.database.ResolveFieldNames(modelName, fieldNames)
+}
+
+func (td *SQLiteTransactionDB) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return td.transaction.tx.Exec(query, args...)
+}
+
+func (td *SQLiteTransactionDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	return td.transaction.tx.Query(query, args...)
+}
+
+func (td *SQLiteTransactionDB) QueryRow(query string, args ...interface{}) *sql.Row {
+	return td.transaction.tx.QueryRow(query, args...)
+}
+
+func (td *SQLiteTransactionDB) GetMigrator() types.DatabaseMigrator {
+	return td.database.GetMigrator()
+}
+
+// SQLiteTransactionRawQuery implements RawQuery for transactions
+type SQLiteTransactionRawQuery struct {
+	tx   *sql.Tx
+	sql  string
+	args []interface{}
+}
+
+func (q *SQLiteTransactionRawQuery) Exec(ctx context.Context) (types.Result, error) {
+	result, err := q.tx.ExecContext(ctx, q.sql, q.args...)
 	if err != nil {
-		return 0, err
+		return types.Result{}, err
 	}
 
-	return result.LastInsertId()
+	lastInsertID, _ := result.LastInsertId()
+	rowsAffected, _ := result.RowsAffected()
+
+	return types.Result{
+		LastInsertID: lastInsertID,
+		RowsAffected: rowsAffected,
+	}, nil
 }
 
-func (t *SQLiteTransaction) Update(tableName string, id interface{}, data map[string]interface{}) error {
-	var sets []string
-	var values []interface{}
-
-	for col, val := range data {
-		sets = append(sets, fmt.Sprintf("%s = ?", col))
-		values = append(values, val)
+func (q *SQLiteTransactionRawQuery) Find(ctx context.Context, dest interface{}) error {
+	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
+	if err != nil {
+		return err
 	}
-	values = append(values, id)
+	defer rows.Close()
 
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?",
-		tableName,
-		strings.Join(sets, ", "))
-
-	_, err := t.tx.Exec(query, values...)
-	return err
+	// Simplified implementation - would need proper result scanning
+	return fmt.Errorf("transaction raw query result scanning not yet implemented")
 }
 
-func (t *SQLiteTransaction) Delete(tableName string, id interface{}) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE id = ?", tableName)
-	_, err := t.tx.Exec(query, id)
-	return err
-}
+func (q *SQLiteTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+	row := q.tx.QueryRowContext(ctx, q.sql, q.args...)
 
-var _ types.Transaction = (*SQLiteTransaction)(nil)
+	// Simplified implementation - would need proper result scanning
+	_ = row
+	return fmt.Errorf("transaction raw query result scanning not yet implemented")
+}

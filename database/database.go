@@ -10,7 +10,12 @@ import (
 type Config = types.Config
 type Database = types.Database
 type Transaction = types.Transaction
-type QueryBuilder = types.QueryBuilder
+type ModelQuery = types.ModelQuery
+type SelectQuery = types.SelectQuery
+type InsertQuery = types.InsertQuery
+type UpdateQuery = types.UpdateQuery
+type DeleteQuery = types.DeleteQuery
+type RawQuery = types.RawQuery
 
 // New creates a new database instance from a Config
 func New(config Config) (Database, error) {

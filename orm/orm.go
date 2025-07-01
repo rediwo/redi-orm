@@ -1,6 +1,7 @@
 package orm
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -141,7 +142,7 @@ func InitializeORM(schemaDir string, options ...ORMOptions) error {
 			return fmt.Errorf("failed to create database connection: %w", err)
 		}
 
-		if err := db.Connect(); err != nil {
+		if err := db.Connect(context.Background()); err != nil {
 			return fmt.Errorf("failed to connect to database: %w", err)
 		}
 

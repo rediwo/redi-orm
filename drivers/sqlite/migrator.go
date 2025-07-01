@@ -1,268 +1,35 @@
-package drivers
+package sqlite
 
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 
-	"github.com/rediwo/redi-orm/migration"
-	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
 
-// SQLiteMigrator implements database-specific migration operations for SQLite
+// SQLiteMigrator implements DatabaseMigrator for SQLite
 type SQLiteMigrator struct {
-	db   *sql.DB
-	base *migration.BaseMigrator
+	db *sql.DB
 }
 
 // NewSQLiteMigrator creates a new SQLite migrator
 func NewSQLiteMigrator(db *sql.DB) *SQLiteMigrator {
-	migrator := &SQLiteMigrator{db: db}
-	migrator.base = migration.NewBaseMigrator(migrator)
-	return migrator
+	return &SQLiteMigrator{db: db}
 }
 
-// GetDatabaseType returns the database type
-func (m *SQLiteMigrator) GetDatabaseType() string {
-	return "sqlite"
-}
-
-// CompareSchema uses the base migrator's shared logic
-func (m *SQLiteMigrator) CompareSchema(existingTable *types.TableInfo, desiredSchema *schema.Schema) (*types.MigrationPlan, error) {
-	return m.base.CompareSchema(existingTable, desiredSchema)
-}
-
-// ConvertFieldToColumnInfo converts a schema field to ColumnInfo (DatabaseSpecificMigrator interface)
-func (m *SQLiteMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.ColumnInfo {
-	return &types.ColumnInfo{
-		Name:          field.GetColumnName(),
-		Type:          m.MapFieldType(field),
-		Nullable:      field.Nullable,
-		Default:       field.Default,
-		PrimaryKey:    field.PrimaryKey,
-		AutoIncrement: field.AutoIncrement,
-		Unique:        field.Unique,
-	}
-}
-
-// GenerateMigrationSQL uses the base migrator's shared logic
-func (m *SQLiteMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]string, error) {
-	return m.base.GenerateMigrationSQL(plan)
-}
-
-// GenerateColumnDefinitionFromColumnInfo generates column definition SQL from ColumnInfo (DatabaseSpecificMigrator interface)
-func (m *SQLiteMigrator) GenerateColumnDefinitionFromColumnInfo(col types.ColumnInfo) string {
-	parts := []string{col.Name, col.Type}
-
-	// Handle primary key
-	if col.PrimaryKey && col.AutoIncrement {
-		parts = append(parts, "PRIMARY KEY AUTOINCREMENT")
-	} else if col.PrimaryKey {
-		parts = append(parts, "PRIMARY KEY")
-	}
-
-	// Handle nullable
-	if !col.Nullable && !col.PrimaryKey {
-		parts = append(parts, "NOT NULL")
-	}
-
-	// Handle unique
-	if col.Unique && !col.PrimaryKey {
-		parts = append(parts, "UNIQUE")
-	}
-
-	// Handle default value
-	if col.Default != nil && !col.AutoIncrement {
-		parts = append(parts, fmt.Sprintf("DEFAULT %s", m.FormatDefaultValue(col.Default)))
-	}
-
-	return strings.Join(parts, " ")
-}
-
-// GetTables returns all tables in the database
+// GetTables returns all table names
 func (m *SQLiteMigrator) GetTables() ([]string, error) {
-	query := `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'redi_migrations'`
-
-	rows, err := m.db.Query(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
-			return nil, err
-		}
-		tables = append(tables, table)
-	}
-
-	return tables, rows.Err()
+	return nil, fmt.Errorf("GetTables not yet implemented")
 }
 
-// GetTableInfo returns detailed information about a table
+// GetTableInfo returns table information
 func (m *SQLiteMigrator) GetTableInfo(tableName string) (*types.TableInfo, error) {
-	info := &types.TableInfo{
-		Name: tableName,
-	}
-
-	// Get columns
-	columns, err := m.getColumns(tableName)
-	if err != nil {
-		return nil, err
-	}
-	info.Columns = columns
-
-	// Get indexes
-	indexes, err := m.getIndexes(tableName)
-	if err != nil {
-		return nil, err
-	}
-	info.Indexes = indexes
-
-	// SQLite foreign keys are more complex to introspect, skip for now
-	info.ForeignKeys = []types.ForeignKeyInfo{}
-
-	return info, nil
+	return nil, fmt.Errorf("GetTableInfo not yet implemented")
 }
 
-// getColumns returns column information for a table
-func (m *SQLiteMigrator) getColumns(tableName string) ([]types.ColumnInfo, error) {
-	rows, err := m.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var columns []types.ColumnInfo
-	for rows.Next() {
-		var (
-			cid        int
-			name       string
-			dataType   string
-			notNull    int
-			defaultVal sql.NullString
-			primaryKey int
-		)
-
-		err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultVal, &primaryKey)
-		if err != nil {
-			return nil, err
-		}
-
-		col := types.ColumnInfo{
-			Name:       name,
-			Type:       dataType,
-			Nullable:   notNull == 0,
-			PrimaryKey: primaryKey > 0,
-		}
-
-		if defaultVal.Valid {
-			col.Default = defaultVal.String
-		}
-
-		// Check for autoincrement
-		if primaryKey > 0 && strings.Contains(strings.ToUpper(dataType), "INTEGER") {
-			col.AutoIncrement = true
-		}
-
-		columns = append(columns, col)
-	}
-
-	return columns, rows.Err()
-}
-
-// getIndexes returns index information for a table
-func (m *SQLiteMigrator) getIndexes(tableName string) ([]types.IndexInfo, error) {
-	query := `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND name NOT LIKE 'sqlite_%'`
-
-	rows, err := m.db.Query(query, tableName)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var indexes []types.IndexInfo
-	for rows.Next() {
-		var indexName string
-		if err := rows.Scan(&indexName); err != nil {
-			return nil, err
-		}
-
-		// Get index info
-		infoRows, err := m.db.Query(fmt.Sprintf("PRAGMA index_info(%s)", indexName))
-		if err != nil {
-			return nil, err
-		}
-
-		var columns []string
-		for infoRows.Next() {
-			var (
-				seqno int
-				cid   int
-				name  string
-			)
-			if err := infoRows.Scan(&seqno, &cid, &name); err != nil {
-				infoRows.Close()
-				return nil, err
-			}
-			columns = append(columns, name)
-		}
-		infoRows.Close()
-
-		if len(columns) > 0 {
-			indexes = append(indexes, types.IndexInfo{
-				Name:    indexName,
-				Columns: columns,
-				// TODO: Determine if unique
-			})
-		}
-	}
-
-	return indexes, rows.Err()
-}
-
-// GenerateCreateTableSQL generates CREATE TABLE SQL for SQLite
-func (m *SQLiteMigrator) GenerateCreateTableSQL(s *schema.Schema) (string, error) {
-
-	var columns []string
-	var primaryKeys []string
-
-	for _, field := range s.Fields {
-		col := m.generateColumnDefinition(field)
-		columns = append(columns, col)
-
-		if field.PrimaryKey && len(s.CompositeKey) == 0 {
-			// Single primary key is handled in column definition
-		} else if field.PrimaryKey {
-			primaryKeys = append(primaryKeys, field.Name)
-		}
-	}
-
-	// Handle composite primary key
-	if len(s.CompositeKey) > 0 {
-		// Convert field names to column names for composite key
-		compositeColumns := m.mapFieldNamesToColumns(s, s.CompositeKey)
-		columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(compositeColumns, ", ")))
-	} else if len(primaryKeys) > 1 {
-		// Convert field names to column names for regular composite key
-		compositeColumns := m.mapFieldNamesToColumns(s, primaryKeys)
-		columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(compositeColumns, ", ")))
-	}
-
-	// Add indexes
-	for _, idx := range s.Indexes {
-		// Convert field names to column names for indexes
-		indexColumns := m.mapFieldNamesToColumns(s, idx.Fields)
-		if idx.Unique {
-			columns = append(columns, fmt.Sprintf("UNIQUE (%s)", strings.Join(indexColumns, ", ")))
-		}
-	}
-
-	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n  %s\n)",
-		s.TableName, strings.Join(columns, ",\n  ")), nil
+// GenerateCreateTableSQL generates CREATE TABLE SQL
+func (m *SQLiteMigrator) GenerateCreateTableSQL(schema interface{}) (string, error) {
+	return "", fmt.Errorf("GenerateCreateTableSQL not yet implemented")
 }
 
 // GenerateDropTableSQL generates DROP TABLE SQL
@@ -270,40 +37,24 @@ func (m *SQLiteMigrator) GenerateDropTableSQL(tableName string) string {
 	return fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName)
 }
 
-// GenerateAddColumnSQL generates ALTER TABLE ADD COLUMN SQL
-func (m *SQLiteMigrator) GenerateAddColumnSQL(tableName string, fieldInterface interface{}) (string, error) {
-	field, ok := fieldInterface.(schema.Field)
-	if !ok {
-		return "", fmt.Errorf("expected schema.Field, got %T", fieldInterface)
-	}
-
-	columnDef := m.generateColumnDefinition(field)
-	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", tableName, columnDef), nil
+// GenerateAddColumnSQL generates ADD COLUMN SQL
+func (m *SQLiteMigrator) GenerateAddColumnSQL(tableName string, field interface{}) (string, error) {
+	return "", fmt.Errorf("GenerateAddColumnSQL not yet implemented")
 }
 
-// GenerateModifyColumnSQL generates ALTER TABLE MODIFY COLUMN SQL (not supported by SQLite)
+// GenerateModifyColumnSQL generates MODIFY COLUMN SQL
 func (m *SQLiteMigrator) GenerateModifyColumnSQL(change types.ColumnChange) ([]string, error) {
-	// SQLite doesn't support MODIFY COLUMN directly
-	comment := fmt.Sprintf("-- SQLite: MODIFY COLUMN %s in table %s requires table recreation", change.ColumnName, change.TableName)
-	return []string{comment}, nil
+	return nil, fmt.Errorf("GenerateModifyColumnSQL not yet implemented")
 }
 
-// GenerateDropColumnSQL generates ALTER TABLE DROP COLUMN SQL (not supported by SQLite)
+// GenerateDropColumnSQL generates DROP COLUMN SQL
 func (m *SQLiteMigrator) GenerateDropColumnSQL(tableName, columnName string) ([]string, error) {
-	// SQLite doesn't support DROP COLUMN directly
-	comment := fmt.Sprintf("-- SQLite: DROP COLUMN %s from table %s requires table recreation", columnName, tableName)
-	return []string{comment}, nil
+	return nil, fmt.Errorf("GenerateDropColumnSQL not yet implemented")
 }
 
 // GenerateCreateIndexSQL generates CREATE INDEX SQL
 func (m *SQLiteMigrator) GenerateCreateIndexSQL(tableName, indexName string, columns []string, unique bool) string {
-	indexType := ""
-	if unique {
-		indexType = "UNIQUE "
-	}
-
-	return fmt.Sprintf("CREATE %sINDEX %s ON %s (%s)",
-		indexType, indexName, tableName, strings.Join(columns, ", "))
+	return fmt.Sprintf("CREATE INDEX %s ON %s (%s)", indexName, tableName, "column_placeholder")
 }
 
 // GenerateDropIndexSQL generates DROP INDEX SQL
@@ -311,114 +62,23 @@ func (m *SQLiteMigrator) GenerateDropIndexSQL(indexName string) string {
 	return fmt.Sprintf("DROP INDEX IF EXISTS %s", indexName)
 }
 
-// ApplyMigration executes a migration SQL statement
+// ApplyMigration executes a migration SQL
 func (m *SQLiteMigrator) ApplyMigration(sql string) error {
 	_, err := m.db.Exec(sql)
 	return err
 }
 
-// mapFieldNamesToColumns converts field names to actual column names
-func (m *SQLiteMigrator) mapFieldNamesToColumns(s *schema.Schema, fieldNames []string) []string {
-	columnNames := make([]string, len(fieldNames))
-	fieldMap := make(map[string]string)
-
-	// Create field name to column name mapping
-	for _, field := range s.Fields {
-		fieldMap[field.Name] = field.GetColumnName()
-	}
-
-	// Convert field names to column names
-	for i, fieldName := range fieldNames {
-		if columnName, exists := fieldMap[fieldName]; exists {
-			columnNames[i] = columnName
-		} else {
-			columnNames[i] = fieldName // Fallback to field name
-		}
-	}
-
-	return columnNames
+// GetDatabaseType returns the database type
+func (m *SQLiteMigrator) GetDatabaseType() string {
+	return "sqlite"
 }
 
-// generateColumnDefinition generates column definition SQL
-func (m *SQLiteMigrator) generateColumnDefinition(field schema.Field) string {
-	parts := []string{
-		field.GetColumnName(), // Use mapped column name if available
-		m.MapFieldType(field),
-	}
-
-	// Handle single primary key in column definition
-	if field.PrimaryKey && field.AutoIncrement {
-		parts = append(parts, "PRIMARY KEY AUTOINCREMENT")
-	} else if field.PrimaryKey {
-		parts = append(parts, "PRIMARY KEY")
-	}
-
-	if !field.Nullable && !field.PrimaryKey {
-		parts = append(parts, "NOT NULL")
-	}
-
-	if field.Unique && !field.PrimaryKey {
-		parts = append(parts, "UNIQUE")
-	}
-
-	if field.Default != nil && !field.AutoIncrement {
-		parts = append(parts, fmt.Sprintf("DEFAULT %s", m.FormatDefaultValue(field.Default)))
-	}
-
-	return strings.Join(parts, " ")
+// CompareSchema compares existing table with desired schema
+func (m *SQLiteMigrator) CompareSchema(existingTable *types.TableInfo, desiredSchema interface{}) (*types.MigrationPlan, error) {
+	return nil, fmt.Errorf("CompareSchema not yet implemented")
 }
 
-// MapFieldType maps schema field types to SQLite types (DatabaseSpecificMigrator interface)
-func (m *SQLiteMigrator) MapFieldType(field schema.Field) string {
-	// Use database-specific type if provided
-	if field.DbType != "" {
-		return strings.TrimPrefix(field.DbType, "@db.")
-	}
-
-	switch field.Type {
-	case schema.FieldTypeString:
-		return "TEXT"
-	case schema.FieldTypeInt, schema.FieldTypeInt64:
-		return "INTEGER"
-	case schema.FieldTypeFloat:
-		return "REAL"
-	case schema.FieldTypeBool:
-		return "INTEGER"
-	case schema.FieldTypeDateTime:
-		return "DATETIME"
-	case schema.FieldTypeJSON:
-		return "TEXT"
-	case schema.FieldTypeDecimal:
-		return "DECIMAL"
-	case schema.FieldTypeStringArray, schema.FieldTypeIntArray,
-		schema.FieldTypeFloatArray, schema.FieldTypeBoolArray:
-		return "TEXT" // Store as JSON
-	default:
-		return "TEXT"
-	}
-}
-
-// FormatDefaultValue formats a default value for SQL (DatabaseSpecificMigrator interface)
-func (m *SQLiteMigrator) FormatDefaultValue(value interface{}) string {
-	switch v := value.(type) {
-	case string:
-		// Check for special values
-		if strings.ToLower(v) == "now()" || strings.ToLower(v) == "current_timestamp" {
-			return "CURRENT_TIMESTAMP"
-		}
-		// Check for functions
-		if strings.Contains(v, "(") && strings.Contains(v, ")") {
-			return v
-		}
-		return fmt.Sprintf("'%s'", v)
-	case int, int64, float64:
-		return fmt.Sprintf("%v", v)
-	case bool:
-		if v {
-			return "1"
-		}
-		return "0"
-	default:
-		return fmt.Sprintf("'%v'", v)
-	}
+// GenerateMigrationSQL generates migration SQL
+func (m *SQLiteMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]string, error) {
+	return nil, fmt.Errorf("GenerateMigrationSQL not yet implemented")
 }

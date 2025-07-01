@@ -1,11 +1,12 @@
-package drivers
+package mysql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -16,25 +17,27 @@ func init() {
 	registry.Register("mysql", func(config types.Config) (types.Database, error) {
 		return NewMySQLDB(config)
 	})
-
-	// Register MySQL URI parser
-	registry.RegisterURIParser("mysql", &MySQLURIParser{})
 }
 
+// MySQLDB implements the Database interface for MySQL
 type MySQLDB struct {
-	db      *sql.DB
-	config  types.Config
-	schemas map[string]interface{}
+	db          *sql.DB
+	config      types.Config
+	fieldMapper types.FieldMapper
+	schemas     map[string]*schema.Schema
 }
 
+// NewMySQLDB creates a new MySQL database instance
 func NewMySQLDB(config types.Config) (*MySQLDB, error) {
 	return &MySQLDB{
-		config:  config,
-		schemas: make(map[string]interface{}),
+		config:      config,
+		fieldMapper: types.NewDefaultFieldMapper(),
+		schemas:     make(map[string]*schema.Schema),
 	}, nil
 }
 
-func (m *MySQLDB) Connect() error {
+// Connect establishes connection to MySQL database
+func (m *MySQLDB) Connect(ctx context.Context) error {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4",
 		m.config.User,
 		m.config.Password,
@@ -45,17 +48,18 @@ func (m *MySQLDB) Connect() error {
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open MySQL database: %w", err)
 	}
 
-	if err := db.Ping(); err != nil {
-		return err
+	if err := db.PingContext(ctx); err != nil {
+		return fmt.Errorf("failed to ping MySQL database: %w", err)
 	}
 
 	m.db = db
 	return nil
 }
 
+// Close closes the database connection
 func (m *MySQLDB) Close() error {
 	if m.db != nil {
 		return m.db.Close()
@@ -63,416 +67,378 @@ func (m *MySQLDB) Close() error {
 	return nil
 }
 
-func (m *MySQLDB) CreateTable(schema *schema.Schema) error {
+// Ping checks if the database connection is alive
+func (m *MySQLDB) Ping(ctx context.Context) error {
+	if m.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+	return m.db.PingContext(ctx)
+}
 
-	var columns []string
-	for _, field := range schema.Fields {
-		col := fmt.Sprintf("`%s` %s", field.GetColumnName(), fieldTypeToSQL(field.Type))
-
-		if field.PrimaryKey {
-			col += " PRIMARY KEY"
-			if field.AutoIncrement {
-				col += " AUTO_INCREMENT"
-			}
-		}
-
-		if !field.Nullable && !field.PrimaryKey {
-			col += " NOT NULL"
-		}
-
-		if field.Unique {
-			col += " UNIQUE"
-		}
-
-		if field.Default != nil {
-			col += fmt.Sprintf(" DEFAULT %v", field.Default)
-		}
-
-		columns = append(columns, col)
+// RegisterSchema registers a schema with the database
+func (m *MySQLDB) RegisterSchema(modelName string, schema *schema.Schema) error {
+	if schema == nil {
+		return fmt.Errorf("schema cannot be nil")
 	}
 
-	query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS `%s` (%s)", schema.TableName, strings.Join(columns, ", "))
-	_, err := m.db.Exec(query)
-	return err
+	if err := schema.Validate(); err != nil {
+		return fmt.Errorf("invalid schema: %w", err)
+	}
+
+	m.schemas[modelName] = schema
+
+	// Register with field mapper
+	if mapper, ok := m.fieldMapper.(*types.DefaultFieldMapper); ok {
+		mapper.RegisterSchema(modelName, schema)
+	}
+
+	return nil
 }
 
-func (m *MySQLDB) CreateModel(schema *schema.Schema) error {
-	return m.CreateTable(schema)
+// GetSchema returns a registered schema
+func (m *MySQLDB) GetSchema(modelName string) (*schema.Schema, error) {
+	schema, exists := m.schemas[modelName]
+	if !exists {
+		return nil, fmt.Errorf("schema for model '%s' not registered", modelName)
+	}
+	return schema, nil
 }
 
-func (m *MySQLDB) DropModel(modelName string) error {
-	tableName, err := m.resolveTableName(modelName)
+// GetModels returns all registered model names
+func (m *MySQLDB) GetModels() []string {
+	models := make([]string, 0, len(m.schemas))
+	for modelName := range m.schemas {
+		models = append(models, modelName)
+	}
+	return models
+}
+
+// GetModelSchema returns schema for a model (alias for GetSchema)
+func (m *MySQLDB) GetModelSchema(modelName string) (*schema.Schema, error) {
+	return m.GetSchema(modelName)
+}
+
+// ResolveTableName resolves model name to table name
+func (m *MySQLDB) ResolveTableName(modelName string) (string, error) {
+	return m.fieldMapper.ModelToTable(modelName)
+}
+
+// ResolveFieldName resolves schema field name to column name
+func (m *MySQLDB) ResolveFieldName(modelName, fieldName string) (string, error) {
+	return m.fieldMapper.SchemaToColumn(modelName, fieldName)
+}
+
+// ResolveFieldNames resolves multiple schema field names to column names
+func (m *MySQLDB) ResolveFieldNames(modelName string, fieldNames []string) ([]string, error) {
+	return m.fieldMapper.SchemaFieldsToColumns(modelName, fieldNames)
+}
+
+// GetFieldMapper returns the field mapper
+func (m *MySQLDB) GetFieldMapper() types.FieldMapper {
+	return m.fieldMapper
+}
+
+// CreateModel creates a table for the given model
+func (m *MySQLDB) CreateModel(ctx context.Context, modelName string) error {
+	schema, err := m.GetSchema(modelName)
 	if err != nil {
+		return fmt.Errorf("failed to get schema for model %s: %w", modelName, err)
+	}
+
+	sql, err := m.generateCreateTableSQL(schema)
+	if err != nil {
+		return fmt.Errorf("failed to generate CREATE TABLE SQL: %w", err)
+	}
+
+	_, err = m.db.ExecContext(ctx, sql)
+	if err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+
+	return nil
+}
+
+// DropModel drops the table for the given model
+func (m *MySQLDB) DropModel(ctx context.Context, modelName string) error {
+	tableName, err := m.ResolveTableName(modelName)
+	if err != nil {
+		return fmt.Errorf("failed to resolve table name: %w", err)
+	}
+
+	sql := fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName)
+	_, err = m.db.ExecContext(ctx, sql)
+	if err != nil {
+		return fmt.Errorf("failed to drop table: %w", err)
+	}
+
+	return nil
+}
+
+// Model creates a new model query
+func (m *MySQLDB) Model(modelName string) types.ModelQuery {
+	return query.NewModelQuery(modelName, m, m.GetFieldMapper())
+}
+
+// Raw creates a new raw query
+func (m *MySQLDB) Raw(sql string, args ...interface{}) types.RawQuery {
+	return NewMySQLRawQuery(m.db, sql, args...)
+}
+
+// Begin starts a new transaction
+func (m *MySQLDB) Begin(ctx context.Context) (types.Transaction, error) {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	return NewMySQLTransaction(tx, m), nil
+}
+
+// Transaction executes a function within a transaction
+func (m *MySQLDB) Transaction(ctx context.Context, fn func(tx types.Transaction) error) error {
+	tx, err := m.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback(ctx)
+			panic(r)
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+			return fmt.Errorf("transaction error: %w, rollback error: %w", err, rollbackErr)
+		}
 		return err
 	}
-	query := fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName)
-	_, err = m.db.Exec(query)
-	return err
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
-func (m *MySQLDB) RawInsert(tableName string, data map[string]interface{}) (int64, error) {
-	var columns []string
-	var placeholders []string
-	var values []interface{}
-
-	for col, val := range data {
-		columns = append(columns, fmt.Sprintf("`%s`", col))
-		placeholders = append(placeholders, "?")
-		values = append(values, val)
-	}
-
-	query := fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)",
-		tableName,
-		strings.Join(columns, ", "),
-		strings.Join(placeholders, ", "))
-
-	result, err := m.db.Exec(query, values...)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.LastInsertId()
-}
-
-func (m *MySQLDB) RawFindByID(tableName string, id interface{}) (map[string]interface{}, error) {
-	query := fmt.Sprintf("SELECT * FROM `%s` WHERE id = ? LIMIT 1", tableName)
-	rows, err := m.db.Query(query, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	results, err := m.scanRows(rows)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(results) == 0 {
-		return nil, sql.ErrNoRows
-	}
-
-	return results[0], nil
-}
-
-func (m *MySQLDB) RawFind(tableName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
-	query := fmt.Sprintf("SELECT * FROM `%s`", tableName)
-	var where []string
-	var values []interface{}
-
-	for col, val := range conditions {
-		where = append(where, fmt.Sprintf("`%s` = ?", col))
-		values = append(values, val)
-	}
-
-	if len(where) > 0 {
-		query += " WHERE " + strings.Join(where, " AND ")
-	}
-
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
-	}
-
-	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", offset)
-	}
-
-	rows, err := m.db.Query(query, values...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return m.scanRows(rows)
-}
-
-func (m *MySQLDB) RawUpdate(tableName string, id interface{}, data map[string]interface{}) error {
-	var sets []string
-	var values []interface{}
-
-	for col, val := range data {
-		sets = append(sets, fmt.Sprintf("`%s` = ?", col))
-		values = append(values, val)
-	}
-	values = append(values, id)
-
-	query := fmt.Sprintf("UPDATE `%s` SET %s WHERE id = ?",
-		tableName,
-		strings.Join(sets, ", "))
-
-	_, err := m.db.Exec(query, values...)
-	return err
-}
-
-func (m *MySQLDB) RawDelete(tableName string, id interface{}) error {
-	query := fmt.Sprintf("DELETE FROM `%s` WHERE id = ?", tableName)
-	_, err := m.db.Exec(query, id)
-	return err
-}
-
-func (m *MySQLDB) RawSelect(tableName string, columns []string) types.QueryBuilder {
-	return &MySQLQueryBuilder{
-		db:        m.db,
-		tableName: tableName,
-		columns:   columns,
-	}
-}
-
-func (m *MySQLDB) Begin() (types.Transaction, error) {
-	tx, err := m.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	return &MySQLTransaction{tx: tx}, nil
-}
-
+// Exec executes a raw SQL statement
 func (m *MySQLDB) Exec(query string, args ...interface{}) (sql.Result, error) {
 	return m.db.Exec(query, args...)
 }
 
+// Query executes a raw SQL query that returns rows
 func (m *MySQLDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
 	return m.db.Query(query, args...)
 }
 
+// QueryRow executes a raw SQL query that returns a single row
 func (m *MySQLDB) QueryRow(query string, args ...interface{}) *sql.Row {
 	return m.db.QueryRow(query, args...)
 }
 
-// GetMigrator returns a MySQL migrator for schema migrations
-func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {
-	return NewMySQLMigrator(m.db)
+// generateCreateTableSQL generates CREATE TABLE SQL for MySQL
+func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) {
+	// Simplified implementation - would need full MySQL-specific logic
+	return "", fmt.Errorf("MySQL CREATE TABLE generation not yet implemented")
 }
 
-// EnsureSchema performs auto-migration for all registered schemas using the base migrator
-func (m *MySQLDB) EnsureSchema() error {
-	migrator := m.GetMigrator()
-	if migrator == nil {
-		return fmt.Errorf("migrator not available")
-	}
-
-	// Use the base migrator's shared logic
-	if baseMigrator, ok := migrator.(*MySQLMigrator); ok {
-		return baseMigrator.base.EnsureSchemaForRegisteredSchemas(m.schemas, m.CreateModel)
-	}
-
-	return fmt.Errorf("invalid migrator type")
+// MySQLRawQuery implements RawQuery for MySQL (simplified implementation)
+type MySQLRawQuery struct {
+	db   *sql.DB
+	sql  string
+	args []interface{}
 }
 
-// RegisterSchema registers a schema for model name resolution
-func (m *MySQLDB) RegisterSchema(modelName string, schema interface{}) error {
-	m.schemas[modelName] = schema
+func NewMySQLRawQuery(db *sql.DB, sql string, args ...interface{}) types.RawQuery {
+	return &MySQLRawQuery{
+		db:   db,
+		sql:  sql,
+		args: args,
+	}
+}
+
+func (q *MySQLRawQuery) Exec(ctx context.Context) (types.Result, error) {
+	result, err := q.db.ExecContext(ctx, q.sql, q.args...)
+	if err != nil {
+		return types.Result{}, err
+	}
+
+	lastInsertID, _ := result.LastInsertId()
+	rowsAffected, _ := result.RowsAffected()
+
+	return types.Result{
+		LastInsertID: lastInsertID,
+		RowsAffected: rowsAffected,
+	}, nil
+}
+
+func (q *MySQLRawQuery) Find(ctx context.Context, dest interface{}) error {
+	return fmt.Errorf("MySQL raw query result scanning not yet implemented")
+}
+
+func (q *MySQLRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+	return fmt.Errorf("MySQL raw query result scanning not yet implemented")
+}
+
+// MySQLTransaction implements Transaction for MySQL (simplified implementation)
+type MySQLTransaction struct {
+	tx *sql.Tx
+	db *MySQLDB
+}
+
+func NewMySQLTransaction(tx *sql.Tx, database *MySQLDB) types.Transaction {
+	return &MySQLTransaction{
+		tx: tx,
+		db: database,
+	}
+}
+
+func (t *MySQLTransaction) Model(modelName string) types.ModelQuery {
+	// For now, return a placeholder
 	return nil
 }
 
-// GetRegisteredSchemas returns all registered schemas
-func (m *MySQLDB) GetRegisteredSchemas() map[string]interface{} {
-	result := make(map[string]interface{})
-	for name, schema := range m.schemas {
-		result[name] = schema
-	}
-	return result
+func (t *MySQLTransaction) Raw(sql string, args ...interface{}) types.RawQuery {
+	return &MySQLTransactionRawQuery{tx: t.tx, sql: sql, args: args}
 }
 
-// resolveTableName converts model name to actual table name using registered schema
-func (m *MySQLDB) resolveTableName(modelName string) (string, error) {
-	schemaInterface, exists := m.schemas[modelName]
-	if !exists {
-		return "", fmt.Errorf("schema for model '%s' not registered", modelName)
-	}
-
-	schema, ok := schemaInterface.(*schema.Schema)
-	if !ok {
-		return "", fmt.Errorf("invalid schema type for model '%s'", modelName)
-	}
-
-	return schema.TableName, nil
+func (t *MySQLTransaction) Commit(ctx context.Context) error {
+	return t.tx.Commit()
 }
 
-// convertFieldNames converts schema field names to database column names
-func (m *MySQLDB) convertFieldNames(modelName string, data map[string]interface{}) (map[string]interface{}, error) {
-	schemaInterface, exists := m.schemas[modelName]
-	if !exists {
-		// If schema not registered, return data as-is
-		return data, nil
-	}
-
-	schema, ok := schemaInterface.(*schema.Schema)
-	if !ok {
-		return data, nil
-	}
-
-	// Create field name mapping
-	fieldMap := make(map[string]string)
-	for _, field := range schema.Fields {
-		fieldMap[field.Name] = field.GetColumnName()
-	}
-
-	// Convert field names
-	converted := make(map[string]interface{})
-	for key, value := range data {
-		if columnName, exists := fieldMap[key]; exists {
-			converted[columnName] = value
-		} else {
-			// Keep unknown fields as-is (for raw queries)
-			converted[key] = value
-		}
-	}
-
-	return converted, nil
+func (t *MySQLTransaction) Rollback(ctx context.Context) error {
+	return t.tx.Rollback()
 }
 
-// convertResultFieldNames converts database column names back to schema field names
-func (m *MySQLDB) convertResultFieldNames(modelName string, data map[string]interface{}) map[string]interface{} {
-	schemaInterface, exists := m.schemas[modelName]
-	if !exists {
-		// If schema not registered, return data as-is
-		return data
-	}
-
-	schema, ok := schemaInterface.(*schema.Schema)
-	if !ok {
-		return data
-	}
-
-	// Create reverse field name mapping (column name -> field name)
-	reverseFieldMap := make(map[string]string)
-	for _, field := range schema.Fields {
-		reverseFieldMap[field.GetColumnName()] = field.Name
-	}
-
-	// Convert column names back to field names
-	converted := make(map[string]interface{})
-	for key, value := range data {
-		if fieldName, exists := reverseFieldMap[key]; exists {
-			converted[fieldName] = value
-		} else {
-			// Keep unknown columns as-is
-			converted[key] = value
-		}
-	}
-
-	return converted
+func (t *MySQLTransaction) Savepoint(ctx context.Context, name string) error {
+	return fmt.Errorf("savepoints not yet implemented for MySQL")
 }
 
-// Schema-aware CRUD operations
-func (m *MySQLDB) Insert(modelName string, data map[string]interface{}) (int64, error) {
-	tableName, err := m.resolveTableName(modelName)
-	if err != nil {
-		return 0, err
-	}
-
-	convertedData, err := m.convertFieldNames(modelName, data)
-	if err != nil {
-		return 0, err
-	}
-
-	return m.RawInsert(tableName, convertedData)
+func (t *MySQLTransaction) RollbackTo(ctx context.Context, name string) error {
+	return fmt.Errorf("savepoints not yet implemented for MySQL")
 }
 
-func (m *MySQLDB) FindByID(modelName string, id interface{}) (map[string]interface{}, error) {
-	tableName, err := m.resolveTableName(modelName)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := m.RawFindByID(tableName, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return m.convertResultFieldNames(modelName, result), nil
+func (t *MySQLTransaction) CreateMany(ctx context.Context, modelName string, data []interface{}) (types.Result, error) {
+	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
 }
 
-func (m *MySQLDB) Find(modelName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
-	tableName, err := m.resolveTableName(modelName)
-	if err != nil {
-		return nil, err
-	}
-
-	convertedConditions, err := m.convertFieldNames(modelName, conditions)
-	if err != nil {
-		return nil, err
-	}
-
-	results, err := m.RawFind(tableName, convertedConditions, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert all results back to field names
-	convertedResults := make([]map[string]interface{}, len(results))
-	for i, result := range results {
-		convertedResults[i] = m.convertResultFieldNames(modelName, result)
-	}
-
-	return convertedResults, nil
+func (t *MySQLTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data interface{}) (types.Result, error) {
+	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
 }
 
-func (m *MySQLDB) Update(modelName string, id interface{}, data map[string]interface{}) error {
-	tableName, err := m.resolveTableName(modelName)
-	if err != nil {
-		return err
-	}
-
-	convertedData, err := m.convertFieldNames(modelName, data)
-	if err != nil {
-		return err
-	}
-
-	return m.RawUpdate(tableName, id, convertedData)
+func (t *MySQLTransaction) DeleteMany(ctx context.Context, modelName string, condition types.Condition) (types.Result, error) {
+	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
 }
 
-func (m *MySQLDB) Delete(modelName string, id interface{}) error {
-	tableName, err := m.resolveTableName(modelName)
-	if err != nil {
-		return err
-	}
-	return m.RawDelete(tableName, id)
+// MySQLTransactionRawQuery implements RawQuery for MySQL transactions
+type MySQLTransactionRawQuery struct {
+	tx   *sql.Tx
+	sql  string
+	args []interface{}
 }
 
-func (m *MySQLDB) Select(modelName string, columns []string) types.QueryBuilder {
-	tableName, err := m.resolveTableName(modelName)
+func (q *MySQLTransactionRawQuery) Exec(ctx context.Context) (types.Result, error) {
+	result, err := q.tx.ExecContext(ctx, q.sql, q.args...)
 	if err != nil {
-		// Return a no-op query builder that will return an error
-		return &MySQLQueryBuilder{
-			db:        m.db,
-			tableName: "",
-			columns:   columns,
-			err:       err,
-		}
+		return types.Result{}, err
 	}
-	return m.RawSelect(tableName, columns)
+
+	lastInsertID, _ := result.LastInsertId()
+	rowsAffected, _ := result.RowsAffected()
+
+	return types.Result{
+		LastInsertID: lastInsertID,
+		RowsAffected: rowsAffected,
+	}, nil
 }
 
-func (m *MySQLDB) scanRows(rows *sql.Rows) ([]map[string]interface{}, error) {
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
+func (q *MySQLTransactionRawQuery) Find(ctx context.Context, dest interface{}) error {
+	return fmt.Errorf("MySQL transaction raw query result scanning not yet implemented")
+}
 
-	var results []map[string]interface{}
+func (q *MySQLTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+	return fmt.Errorf("MySQL transaction raw query result scanning not yet implemented")
+}
 
-	for rows.Next() {
-		values := make([]interface{}, len(cols))
-		valuePtrs := make([]interface{}, len(cols))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
+// GetMigrator returns a migrator for MySQL (placeholder implementation)
+func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {
+	// Return a placeholder migrator for now
+	return &MySQLMigrator{db: m.db}
+}
 
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, err
-		}
+// MySQLMigrator implements DatabaseMigrator for MySQL (placeholder implementation)
+type MySQLMigrator struct {
+	db *sql.DB
+}
 
-		result := make(map[string]interface{})
-		for i, col := range cols {
-			// Convert MySQL byte slices to strings for better usability
-			if b, ok := values[i].([]byte); ok {
-				result[col] = string(b)
-			} else {
-				result[col] = values[i]
-			}
-		}
-		results = append(results, result)
-	}
+// NewMySQLMigrator creates a new MySQL migrator
+func NewMySQLMigrator(db *sql.DB) *MySQLMigrator {
+	return &MySQLMigrator{db: db}
+}
 
-	return results, rows.Err()
+// GetTables returns all table names
+func (m *MySQLMigrator) GetTables() ([]string, error) {
+	return nil, fmt.Errorf("GetTables not yet implemented")
+}
+
+// GetTableInfo returns table information
+func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error) {
+	return nil, fmt.Errorf("GetTableInfo not yet implemented")
+}
+
+// GenerateCreateTableSQL generates CREATE TABLE SQL
+func (m *MySQLMigrator) GenerateCreateTableSQL(schema interface{}) (string, error) {
+	return "", fmt.Errorf("GenerateCreateTableSQL not yet implemented")
+}
+
+// GenerateDropTableSQL generates DROP TABLE SQL
+func (m *MySQLMigrator) GenerateDropTableSQL(tableName string) string {
+	return fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName)
+}
+
+// GenerateAddColumnSQL generates ADD COLUMN SQL
+func (m *MySQLMigrator) GenerateAddColumnSQL(tableName string, field interface{}) (string, error) {
+	return "", fmt.Errorf("GenerateAddColumnSQL not yet implemented")
+}
+
+// GenerateModifyColumnSQL generates MODIFY COLUMN SQL
+func (m *MySQLMigrator) GenerateModifyColumnSQL(change types.ColumnChange) ([]string, error) {
+	return nil, fmt.Errorf("GenerateModifyColumnSQL not yet implemented")
+}
+
+// GenerateDropColumnSQL generates DROP COLUMN SQL
+func (m *MySQLMigrator) GenerateDropColumnSQL(tableName, columnName string) ([]string, error) {
+	return nil, fmt.Errorf("GenerateDropColumnSQL not yet implemented")
+}
+
+// GenerateCreateIndexSQL generates CREATE INDEX SQL
+func (m *MySQLMigrator) GenerateCreateIndexSQL(tableName, indexName string, columns []string, unique bool) string {
+	return fmt.Sprintf("CREATE INDEX %s ON `%s` (%s)", indexName, tableName, "column_placeholder")
+}
+
+// GenerateDropIndexSQL generates DROP INDEX SQL
+func (m *MySQLMigrator) GenerateDropIndexSQL(indexName string) string {
+	return fmt.Sprintf("DROP INDEX %s", indexName)
+}
+
+// ApplyMigration executes a migration SQL
+func (m *MySQLMigrator) ApplyMigration(sql string) error {
+	_, err := m.db.Exec(sql)
+	return err
+}
+
+// GetDatabaseType returns the database type
+func (m *MySQLMigrator) GetDatabaseType() string {
+	return "mysql"
+}
+
+// CompareSchema compares existing table with desired schema
+func (m *MySQLMigrator) CompareSchema(existingTable *types.TableInfo, desiredSchema interface{}) (*types.MigrationPlan, error) {
+	return nil, fmt.Errorf("CompareSchema not yet implemented")
+}
+
+// GenerateMigrationSQL generates migration SQL
+func (m *MySQLMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]string, error) {
+	return nil, fmt.Errorf("GenerateMigrationSQL not yet implemented")
 }

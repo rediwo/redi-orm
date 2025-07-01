@@ -3,7 +3,9 @@ package schema
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
+	"unicode"
 )
 
 type FieldType string
@@ -86,10 +88,77 @@ type Index struct {
 func New(name string) *Schema {
 	return &Schema{
 		Name:      name,
-		TableName: strings.ToLower(name) + "s",
+		TableName: ModelNameToTableName(name),
 		Fields:    []Field{},
 		Relations: make(map[string]Relation),
 		Indexes:   []Index{},
+	}
+}
+
+// ModelNameToTableName converts model name to default table name (pluralized, snake_case)
+func ModelNameToTableName(modelName string) string {
+	snakeCase := CamelToSnakeCase(modelName)
+	return Pluralize(snakeCase)
+}
+
+// CamelToSnakeCase converts camelCase to snake_case
+func CamelToSnakeCase(input string) string {
+	if input == "" {
+		return ""
+	}
+
+	// Add underscore before uppercase letters that follow lowercase letters or numbers
+	re1 := regexp.MustCompile("([a-z0-9])([A-Z])")
+	result := re1.ReplaceAllString(input, "${1}_${2}")
+
+	// Add underscore before uppercase letters that are followed by lowercase letters
+	// and preceded by uppercase letters (for cases like XMLHttpRequest -> xml_http_request)
+	re2 := regexp.MustCompile("([A-Z])([A-Z][a-z])")
+	result = re2.ReplaceAllString(result, "${1}_${2}")
+
+	return strings.ToLower(result)
+}
+
+// Pluralize adds 's' to make a word plural (simple implementation)
+func Pluralize(word string) string {
+	if word == "" {
+		return word
+	}
+
+	word = strings.ToLower(word)
+
+	// Simple pluralization rules
+	if strings.HasSuffix(word, "s") || strings.HasSuffix(word, "x") ||
+		strings.HasSuffix(word, "z") || strings.HasSuffix(word, "ch") ||
+		strings.HasSuffix(word, "sh") {
+		return word + "es"
+	}
+
+	if strings.HasSuffix(word, "y") && len(word) > 1 {
+		prev := rune(word[len(word)-2])
+		if !isVowel(prev) {
+			return word[:len(word)-1] + "ies"
+		}
+	}
+
+	if strings.HasSuffix(word, "f") {
+		return word[:len(word)-1] + "ves"
+	}
+
+	if strings.HasSuffix(word, "fe") {
+		return word[:len(word)-2] + "ves"
+	}
+
+	return word + "s"
+}
+
+// isVowel checks if a character is a vowel
+func isVowel(r rune) bool {
+	switch unicode.ToLower(r) {
+	case 'a', 'e', 'i', 'o', 'u':
+		return true
+	default:
+		return false
 	}
 }
 
@@ -177,6 +246,108 @@ func (s *Schema) Validate() error {
 	}
 
 	return nil
+}
+
+// GetFieldByColumnName returns a field by its database column name
+func (s *Schema) GetFieldByColumnName(columnName string) (*Field, error) {
+	for i := range s.Fields {
+		if s.Fields[i].GetColumnName() == columnName {
+			return &s.Fields[i], nil
+		}
+	}
+	return nil, fmt.Errorf("field with column name %s not found", columnName)
+}
+
+// GetFieldNameByColumnName returns the schema field name for a given column name
+func (s *Schema) GetFieldNameByColumnName(columnName string) (string, error) {
+	field, err := s.GetFieldByColumnName(columnName)
+	if err != nil {
+		return "", err
+	}
+	return field.Name, nil
+}
+
+// GetColumnNameByFieldName returns the database column name for a given schema field name
+func (s *Schema) GetColumnNameByFieldName(fieldName string) (string, error) {
+	field, err := s.GetField(fieldName)
+	if err != nil {
+		return "", err
+	}
+	return field.GetColumnName(), nil
+}
+
+// MapFieldNamesToColumns converts a slice of schema field names to database column names
+func (s *Schema) MapFieldNamesToColumns(fieldNames []string) ([]string, error) {
+	columnNames := make([]string, len(fieldNames))
+	for i, fieldName := range fieldNames {
+		columnName, err := s.GetColumnNameByFieldName(fieldName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map field %s: %w", fieldName, err)
+		}
+		columnNames[i] = columnName
+	}
+	return columnNames, nil
+}
+
+// MapColumnNamesToFields converts a slice of database column names to schema field names
+func (s *Schema) MapColumnNamesToFields(columnNames []string) ([]string, error) {
+	fieldNames := make([]string, len(columnNames))
+	for i, columnName := range columnNames {
+		fieldName, err := s.GetFieldNameByColumnName(columnName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map column %s: %w", columnName, err)
+		}
+		fieldNames[i] = fieldName
+	}
+	return fieldNames, nil
+}
+
+// MapSchemaDataToColumns converts data with schema field names to data with database column names
+func (s *Schema) MapSchemaDataToColumns(data map[string]interface{}) (map[string]interface{}, error) {
+	mapped := make(map[string]interface{})
+	for fieldName, value := range data {
+		columnName, err := s.GetColumnNameByFieldName(fieldName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map field %s: %w", fieldName, err)
+		}
+		mapped[columnName] = value
+	}
+	return mapped, nil
+}
+
+// MapColumnDataToSchema converts data with database column names to data with schema field names
+func (s *Schema) MapColumnDataToSchema(data map[string]interface{}) (map[string]interface{}, error) {
+	mapped := make(map[string]interface{})
+	for columnName, value := range data {
+		fieldName, err := s.GetFieldNameByColumnName(columnName)
+		if err != nil {
+			// If column not found in schema, keep original column name (for raw queries)
+			mapped[columnName] = value
+			continue
+		}
+		mapped[fieldName] = value
+	}
+	return mapped, nil
+}
+
+// GetTableName returns the database table name (same as TableName field, but method for consistency)
+func (s *Schema) GetTableName() string {
+	return s.TableName
+}
+
+// HasRelation checks if a relation exists
+func (s *Schema) HasRelation(relationName string) bool {
+	_, exists := s.Relations[relationName]
+	return exists
+}
+
+// GetRelation returns a relation by name
+func (s *Schema) GetRelation(relationName string) (Relation, error) {
+	relation, exists := s.Relations[relationName]
+	if !exists {
+		return Relation{}, fmt.Errorf("relation %s not found", relationName)
+	}
+	return relation, nil
 }
 
 func FieldTypeFromGo(t reflect.Type) FieldType {
