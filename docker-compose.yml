@@ -1,10 +1,9 @@
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8.0
+    container_name: redi-orm-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: testpass
       MYSQL_DATABASE: testdb
       MYSQL_USER: testuser
       MYSQL_PASSWORD: testpass
@@ -14,13 +13,14 @@ services:
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 10s
-      retries: 10
+      retries: 5
       interval: 10s
     volumes:
       - mysql_data:/var/lib/mysql
 
-  postgres:
+  postgresql:
     image: postgres:15
+    container_name: redi-orm-postgresql
     environment:
       POSTGRES_DB: testdb
       POSTGRES_USER: testuser
@@ -30,11 +30,11 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
       timeout: 10s
-      retries: 10
+      retries: 5
       interval: 10s
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgresql_data:/var/lib/postgresql/data
 
 volumes:
   mysql_data:
-  postgres_data:
+  postgresql_data:

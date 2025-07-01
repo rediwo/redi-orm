@@ -12,7 +12,7 @@ import (
 func TestPrismaASTDemo(t *testing.T) {
 	// Create database
 	db, err := database.New(types.Config{
-		Type:     types.SQLite,
+		Type:     "sqlite",
 		FilePath: ":memory:",
 	})
 	if err != nil {
@@ -210,7 +210,7 @@ func TestPrismaASTDemo(t *testing.T) {
 func TestPrismaSchemaExample(t *testing.T) {
 	// Create database
 	db, err := database.New(types.Config{
-		Type:     types.SQLite,
+		Type:     "sqlite",
 		FilePath: ":memory:",
 	})
 	if err != nil {
@@ -378,7 +378,7 @@ model Tag {
 func TestPrismaEnumMapping(t *testing.T) {
 	// Create database
 	db, err := database.New(types.Config{
-		Type:     types.SQLite,
+		Type:     "sqlite",
 		FilePath: ":memory:",
 	})
 	if err != nil {
@@ -452,7 +452,7 @@ model Article {
 func TestPrismaCompositeKeys(t *testing.T) {
 	// Create database
 	db, err := database.New(types.Config{
-		Type:     types.SQLite,
+		Type:     "sqlite",
 		FilePath: ":memory:",
 	})
 	if err != nil {
@@ -464,7 +464,7 @@ func TestPrismaCompositeKeys(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create engine 
+	// Create engine
 	eng := engine.New(db)
 
 	// Define schema with composite primary key
@@ -534,7 +534,7 @@ model Role {
 func TestPrismaDecimalSupport(t *testing.T) {
 	// Create database
 	db, err := database.New(types.Config{
-		Type:     types.SQLite,
+		Type:     "sqlite",
 		FilePath: ":memory:",
 	})
 	if err != nil {

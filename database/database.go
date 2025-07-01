@@ -2,26 +2,19 @@ package database
 
 import (
 	"fmt"
+	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/types"
 )
 
 // Re-export types for backward compatibility
-type DatabaseType = types.DatabaseType
 type Config = types.Config
 type Database = types.Database
 type Transaction = types.Transaction
 type QueryBuilder = types.QueryBuilder
 
-// Re-export constants
-const (
-	SQLite     = types.SQLite
-	MySQL      = types.MySQL
-	PostgreSQL = types.PostgreSQL
-)
-
 // New creates a new database instance from a Config
 func New(config Config) (Database, error) {
-	factory, err := getDriver(config.Type)
+	factory, err := registry.Get(config.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -29,13 +22,14 @@ func New(config Config) (Database, error) {
 }
 
 // NewFromURI creates a new database instance from a URI string
-// Supported formats:
+// The URI is parsed by the appropriate driver's URI parser
+// Supported formats depend on the registered drivers:
 // - sqlite:///path/to/database.db
 // - sqlite://:memory:
 // - mysql://user:pass@host:port/database
 // - postgresql://user:pass@host:port/database
 func NewFromURI(uri string) (Database, error) {
-	config, err := ParseURI(uri)
+	config, err := registry.ParseURI(uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}

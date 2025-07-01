@@ -24,7 +24,7 @@ func SetupTestDB(t *testing.T) *TestDB {
 	tempFile := "test_" + t.Name() + ".db"
 
 	db, err := database.New(database.Config{
-		Type:     database.SQLite,
+		Type:     "sqlite",
 		FilePath: tempFile,
 	})
 	if err != nil {
@@ -184,10 +184,8 @@ func NewMockDatabase() *MockDatabase {
 func (m *MockDatabase) Connect() error { return nil }
 func (m *MockDatabase) Close() error   { return nil }
 
-func (m *MockDatabase) CreateTable(s interface{}) error {
-	if schema, ok := s.(*schema.Schema); ok {
-		m.tables[schema.TableName] = schema
-	}
+func (m *MockDatabase) CreateTable(schema *schema.Schema) error {
+	m.tables[schema.TableName] = schema
 	return nil
 }
 
@@ -319,6 +317,49 @@ func (m *MockDatabase) Query(query string, args ...interface{}) (*sql.Rows, erro
 
 func (m *MockDatabase) QueryRow(query string, args ...interface{}) *sql.Row {
 	return nil
+}
+
+func (m *MockDatabase) GetMigrator() types.DatabaseMigrator {
+	return nil
+}
+
+func (m *MockDatabase) EnsureSchema() error {
+	return nil
+}
+
+// RegisterSchema registers a schema for model name resolution
+func (m *MockDatabase) RegisterSchema(modelName string, schema interface{}) error {
+	return nil
+}
+
+// GetRegisteredSchemas returns all registered schemas
+func (m *MockDatabase) GetRegisteredSchemas() map[string]interface{} {
+	return make(map[string]interface{})
+}
+
+// Raw operations (mock implementations)
+func (m *MockDatabase) RawInsert(tableName string, data map[string]interface{}) (int64, error) {
+	return m.Insert(tableName, data)
+}
+
+func (m *MockDatabase) RawFindByID(tableName string, id interface{}) (map[string]interface{}, error) {
+	return m.FindByID(tableName, id)
+}
+
+func (m *MockDatabase) RawFind(tableName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
+	return m.Find(tableName, conditions, limit, offset)
+}
+
+func (m *MockDatabase) RawUpdate(tableName string, id interface{}, data map[string]interface{}) error {
+	return m.Update(tableName, id, data)
+}
+
+func (m *MockDatabase) RawDelete(tableName string, id interface{}) error {
+	return m.Delete(tableName, id)
+}
+
+func (m *MockDatabase) RawSelect(tableName string, columns []string) types.QueryBuilder {
+	return m.Select(tableName, columns)
 }
 
 // MockQueryBuilder provides a mock query builder for testing

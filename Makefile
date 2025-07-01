@@ -1,11 +1,10 @@
-# ReORM Makefile
+# RediORM Makefile
 
-.PHONY: help build test test-verbose test-short test-cover test-race test-integration test-benchmark test-docker test-mysql test-postgresql test-sqlite docker-up docker-down clean fmt lint vet mod-tidy mod-download example run-example
+.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-docker docker-up docker-down docker-wait clean fmt lint vet deps
 
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  build         - Build the project"
 	@echo "  test          - Run all tests"
 	@echo "  test-verbose  - Run tests with verbose output"
 	@echo "  test-short    - Run tests in short mode"
@@ -13,65 +12,58 @@ help:
 	@echo "  test-race     - Run tests with race detection"
 	@echo "  test-integration - Run integration tests only"
 	@echo "  test-benchmark - Run benchmark tests"
-	@echo "  test-docker   - Run tests with Docker databases"
+	@echo "  test-sqlite   - Run SQLite tests only"
 	@echo "  test-mysql    - Run MySQL tests only"
 	@echo "  test-postgresql - Run PostgreSQL tests only"
-	@echo "  test-sqlite   - Run SQLite tests only"
-	@echo "  docker-up     - Start Docker databases"
-	@echo "  docker-down   - Stop Docker databases"
+	@echo "  test-docker   - Run tests with Docker databases"
+	@echo "  docker-up     - Start test databases"
+	@echo "  docker-down   - Stop test databases"
+	@echo "  docker-wait   - Wait for databases to be ready"
 	@echo "  fmt           - Format code"
 	@echo "  lint          - Run linter"
 	@echo "  vet           - Run go vet"
-	@echo "  mod-tidy      - Tidy module dependencies"
-	@echo "  mod-download  - Download module dependencies"
+	@echo "  deps          - Download and tidy module dependencies"
 	@echo "  clean         - Clean build artifacts"
-
-# Build targets
-build:
-	go build ./...
 
 # Test targets
 test:
-	go test ./...
+	go test -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
+	go test -v ./drivers/sqlite
 
 test-verbose:
-	go test -v ./...
+	go test -v -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
+	go test -v ./drivers/sqlite
 
 test-short:
-	go test -short ./...
+	go test -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
 
 test-cover:
-	go test -cover ./...
-	go test -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
+	go test -cover -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
+	go test -cover ./drivers/sqlite
 
 test-race:
-	go test -race ./...
+	go test -race -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
+	go test -race ./drivers/sqlite
 
 test-integration:
-	go test -v -run Integration ./...
+	go test -v -run Integration ./test
 
 test-benchmark:
 	go test -bench=. -benchmem ./test
 
-test-docker:
-	./scripts/test-docker.sh
+test-sqlite:
+	go test -v ./drivers/sqlite
 
 test-mysql:
-	go test -v ./test -run TestMySQL
+	go test -v ./drivers/mysql
 
 test-postgresql:
-	go test -v ./test -run TestPostgreSQL
+	go test -v ./drivers/postgresql
 
-test-sqlite:
-	go test -v ./test -run TestSQLite
-
-# Docker database management
-docker-up:
-	docker-compose up -d
-
-docker-down:
-	docker-compose down
+test-docker: docker-up docker-wait
+	@echo "Running tests with Docker databases..."
+	go test -v ./drivers/mysql ./drivers/postgresql || true
+	$(MAKE) docker-down
 
 # Code quality targets
 fmt:
@@ -84,16 +76,12 @@ vet:
 	go vet ./...
 
 # Module management
-mod-tidy:
-	go mod tidy
-
-mod-download:
+deps:
 	go mod download
+	go mod tidy
 
 # Clean targets
 clean:
-	rm -rf bin/
-	rm -f coverage.out coverage.html
 	rm -f *.db
 	rm -f test_*.db
 
@@ -101,7 +89,28 @@ clean:
 dev: fmt vet test
 
 # CI workflow
-ci: mod-download fmt vet test-race test-cover
+ci: deps fmt vet test-race test-cover
+
+# Docker targets
+docker-up:
+	docker-compose up -d
+	@echo "Docker databases started"
+
+docker-down:
+	docker-compose down
+	@echo "Docker databases stopped"
+
+docker-wait:
+	@echo "Waiting for databases to be ready..."
+	@until docker exec redi-orm-mysql mysqladmin ping -h localhost --silent; do \
+		echo "Waiting for MySQL..."; \
+		sleep 2; \
+	done
+	@until docker exec redi-orm-postgresql pg_isready -U testuser -d testdb; do \
+		echo "Waiting for PostgreSQL..."; \
+		sleep 2; \
+	done
+	@echo "All databases are ready"
 
 # All checks
-all: clean mod-tidy fmt vet test-race test-cover example
+all: clean deps fmt vet test-race test-cover

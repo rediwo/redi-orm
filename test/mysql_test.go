@@ -11,7 +11,7 @@ import (
 
 func setupMySQLDB(t *testing.T) types.Database {
 	config := types.Config{
-		Type:     types.MySQL,
+		Type:     "mysql",
 		Host:     "localhost",
 		Port:     3306,
 		Database: "testdb",

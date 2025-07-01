@@ -17,7 +17,7 @@ const (
 	FieldTypeDateTime FieldType = "datetime"
 	FieldTypeJSON     FieldType = "json"
 	FieldTypeDecimal  FieldType = "decimal"
-	
+
 	// Array types
 	FieldTypeStringArray   FieldType = "string[]"
 	FieldTypeIntArray      FieldType = "int[]"
@@ -37,8 +37,17 @@ type Field struct {
 	Unique        bool
 	Default       interface{}
 	Index         bool
-	DbType        string      // Database-specific type (e.g., "@db.VarChar(255)", "@db.Money")
-	DbAttributes  []string    // Additional database attributes
+	DbType        string   // Database-specific type (e.g., "@db.VarChar(255)", "@db.Money")
+	DbAttributes  []string // Additional database attributes
+	Map           string   // Column name mapping (@map("column_name"))
+}
+
+// GetColumnName returns the actual database column name for this field
+func (f Field) GetColumnName() string {
+	if f.Map != "" {
+		return f.Map
+	}
+	return f.Name
 }
 
 type Relation struct {
@@ -141,7 +150,7 @@ func (s *Schema) Validate() error {
 	// Check primary key constraints
 	hasSinglePrimaryKey := false
 	hasCompositePrimaryKey := len(s.CompositeKey) > 0
-	
+
 	for _, field := range s.Fields {
 		if field.PrimaryKey {
 			if hasSinglePrimaryKey {

@@ -91,7 +91,7 @@ func BenchmarkBasicOperations(b *testing.B) {
 func BenchmarkSchemaRegistration(b *testing.B) {
 	// Create database
 	db, err := database.New(database.Config{
-		Type:     database.SQLite,
+		Type:     "sqlite",
 		FilePath: ":memory:",
 	})
 	if err != nil {

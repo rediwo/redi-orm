@@ -11,7 +11,7 @@ import (
 
 func setupPostgreSQLDB(t *testing.T) types.Database {
 	config := types.Config{
-		Type:     types.PostgreSQL,
+		Type:     "postgresql",
 		Host:     "localhost",
 		Port:     5432,
 		Database: "testdb",

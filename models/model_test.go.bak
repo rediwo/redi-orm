@@ -26,13 +26,125 @@ func newMockDB() *mockDB {
 func (m *mockDB) Connect() error { return nil }
 func (m *mockDB) Close() error   { return nil }
 
-func (m *mockDB) CreateTable(schema *schema.Schema) error {
+func (m *mockDB) CreateTable(schema interface{}) error {
 	return nil
 }
 
 func (m *mockDB) DropTable(tableName string) error {
 	delete(m.data, tableName)
 	return nil
+}
+
+func (m *mockDB) Insert(tableName string, data map[string]interface{}) (int64, error) {
+	if m.data[tableName] == nil {
+		m.data[tableName] = []map[string]interface{}{}
+	}
+
+	// Add ID to data
+	newData := make(map[string]interface{})
+	for k, v := range data {
+		newData[k] = v
+	}
+	newData["id"] = m.nextID
+
+	m.data[tableName] = append(m.data[tableName], newData)
+	m.lastInsertedID = m.nextID
+	m.nextID++
+
+	return m.lastInsertedID, nil
+}
+
+func (m *mockDB) FindByID(tableName string, id interface{}) (map[string]interface{}, error) {
+	records, exists := m.data[tableName]
+	if !exists {
+		return nil, nil
+	}
+
+	for _, record := range records {
+		if record["id"] == id {
+			return record, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (m *mockDB) Find(tableName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
+	records, exists := m.data[tableName]
+	if !exists {
+		return []map[string]interface{}{}, nil
+	}
+
+	var filtered []map[string]interface{}
+
+	// Apply conditions
+	for _, record := range records {
+		match := true
+		for key, value := range conditions {
+			if record[key] != value {
+				match = false
+				break
+			}
+		}
+		if match {
+			filtered = append(filtered, record)
+		}
+	}
+
+	// Apply offset and limit
+	start := offset
+	if start >= len(filtered) {
+		return []map[string]interface{}{}, nil
+	}
+
+	end := len(filtered)
+	if limit > 0 && start+limit < end {
+		end = start + limit
+	}
+
+	return filtered[start:end], nil
+}
+
+func (m *mockDB) Update(tableName string, id interface{}, data map[string]interface{}) error {
+	records, exists := m.data[tableName]
+	if !exists {
+		return nil
+	}
+
+	for i, record := range records {
+		if record["id"] == id {
+			for key, value := range data {
+				m.data[tableName][i][key] = value
+			}
+			break
+		}
+	}
+
+	return nil
+}
+
+func (m *mockDB) Delete(tableName string, id interface{}) error {
+	records, exists := m.data[tableName]
+	if !exists {
+		return nil
+	}
+
+	for i, record := range records {
+		if record["id"] == id {
+			m.data[tableName] = append(records[:i], records[i+1:]...)
+			break
+		}
+	}
+
+	return nil
+}
+
+func (m *mockDB) Select(tableName string, columns []string) types.QueryBuilder {
+	return &mockQueryBuilder{
+		db:        m,
+		tableName: tableName,
+		columns:   columns,
+	}
 }
 
 func (m *mockDB) Begin() (types.Transaction, error) {
@@ -52,10 +164,6 @@ func (m *mockDB) QueryRow(query string, args ...interface{}) *sql.Row {
 }
 
 func (m *mockDB) GetMigrator() types.DatabaseMigrator {
-	return nil
-}
-
-func (m *mockDB) EnsureSchema() error {
 	return nil
 }
 

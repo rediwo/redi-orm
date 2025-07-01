@@ -41,9 +41,9 @@ func (e *Engine) RegisterSchema(s *schema.Schema) error {
 		return fmt.Errorf("invalid schema: %w", err)
 	}
 
-	// Create table
-	if err := e.db.CreateTable(s); err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
+	// Register schema with database (but don't create table yet)
+	if err := e.db.RegisterSchema(s.Name, s); err != nil {
+		return fmt.Errorf("failed to register schema: %w", err)
 	}
 
 	// Create model
@@ -56,6 +56,14 @@ func (e *Engine) RegisterSchema(s *schema.Schema) error {
 	e.registerModelInJS(s.Name, model)
 
 	return nil
+}
+
+// EnsureSchema performs auto-migration for all registered schemas
+func (e *Engine) EnsureSchema() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.db.EnsureSchema()
 }
 
 func (e *Engine) setupGlobalObjects() {
@@ -252,7 +260,7 @@ func (e *Engine) GetVM() *js.Runtime {
 func (e *Engine) LoadPrismaSchema(schemaContent string) error {
 	lexer := prisma.NewLexer(schemaContent)
 	parser := prisma.NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
 	if len(parser.Errors()) > 0 {
 		return fmt.Errorf("parser errors: %v", parser.Errors())

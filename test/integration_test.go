@@ -18,14 +18,14 @@ func TestIntegrationMultiDatabase(t *testing.T) {
 		{
 			name: "SQLite",
 			config: types.Config{
-				Type:     types.SQLite,
+				Type:     "sqlite",
 				FilePath: ":memory:",
 			},
 		},
 		{
 			name: "MySQL",
 			config: types.Config{
-				Type:     types.MySQL,
+				Type:     "mysql",
 				Host:     "localhost",
 				Port:     3306,
 				Database: "testdb",
@@ -36,7 +36,7 @@ func TestIntegrationMultiDatabase(t *testing.T) {
 		{
 			name: "PostgreSQL",
 			config: types.Config{
-				Type:     types.PostgreSQL,
+				Type:     "postgresql",
 				Host:     "localhost",
 				Port:     5432,
 				Database: "testdb",
@@ -56,7 +56,7 @@ func TestIntegrationMultiDatabase(t *testing.T) {
 func testDatabaseWithJavaScript(t *testing.T, config types.Config) {
 	db, err := database.New(config)
 	if err != nil {
-		if config.Type != types.SQLite {
+		if config.Type != "sqlite" {
 			t.Skipf("Failed to create %s database: %v (Docker might not be running)", config.Type, err)
 		} else {
 			t.Fatalf("Failed to create SQLite database: %v", err)
@@ -64,7 +64,7 @@ func testDatabaseWithJavaScript(t *testing.T, config types.Config) {
 	}
 
 	if err := db.Connect(); err != nil {
-		if config.Type != types.SQLite {
+		if config.Type != "sqlite" {
 			t.Skipf("Failed to connect to %s: %v (Docker might not be running)", config.Type, err)
 		} else {
 			t.Fatalf("Failed to connect to SQLite: %v", err)
@@ -85,13 +85,13 @@ func testDatabaseWithJavaScript(t *testing.T, config types.Config) {
 		AddField(schema.NewField("user_id").Int64().Build())
 
 	jsEngine := engine.New(db)
-	
+
 	err = jsEngine.RegisterSchema(userSchema)
 	if err != nil {
 		t.Fatalf("Failed to register User schema: %v", err)
 	}
 	defer db.DropTable(userSchema.TableName)
-	
+
 	err = jsEngine.RegisterSchema(postSchema)
 	if err != nil {
 		t.Fatalf("Failed to register Post schema: %v", err)
@@ -171,7 +171,7 @@ func testDatabaseWithJavaScript(t *testing.T, config types.Config) {
 
 	// Set dbType variable in JavaScript context
 	jsEngine.GetVM().Set("dbType", string(config.Type))
-	
+
 	result, err := jsEngine.Execute(testScript)
 	if err != nil {
 		t.Fatalf("JavaScript execution failed: %v", err)
@@ -191,14 +191,14 @@ func TestIntegrationTransactions(t *testing.T) {
 		{
 			name: "SQLite",
 			config: types.Config{
-				Type:     types.SQLite,
+				Type:     "sqlite",
 				FilePath: ":memory:",
 			},
 		},
 		{
 			name: "MySQL",
 			config: types.Config{
-				Type:     types.MySQL,
+				Type:     "mysql",
 				Host:     "localhost",
 				Port:     3306,
 				Database: "testdb",
@@ -209,7 +209,7 @@ func TestIntegrationTransactions(t *testing.T) {
 		{
 			name: "PostgreSQL",
 			config: types.Config{
-				Type:     types.PostgreSQL,
+				Type:     "postgresql",
 				Host:     "localhost",
 				Port:     5432,
 				Database: "testdb",
@@ -229,7 +229,7 @@ func TestIntegrationTransactions(t *testing.T) {
 func testTransactions(t *testing.T, config types.Config) {
 	db, err := database.New(config)
 	if err != nil {
-		if config.Type != types.SQLite {
+		if config.Type != "sqlite" {
 			t.Skipf("Failed to create %s database: %v (Docker might not be running)", config.Type, err)
 		} else {
 			t.Fatalf("Failed to create SQLite database: %v", err)
@@ -237,7 +237,7 @@ func testTransactions(t *testing.T, config types.Config) {
 	}
 
 	if err := db.Connect(); err != nil {
-		if config.Type != types.SQLite {
+		if config.Type != "sqlite" {
 			t.Skipf("Failed to connect to %s: %v (Docker might not be running)", config.Type, err)
 		} else {
 			t.Fatalf("Failed to connect to SQLite: %v", err)

@@ -20,15 +20,15 @@ func New(s *schema.Schema, db types.Database) *Model {
 }
 
 func (m *Model) Get(id interface{}) (map[string]interface{}, error) {
-	return m.db.FindByID(m.schema.TableName, id)
+	return m.db.FindByID(m.schema.Name, id)
 }
 
 func (m *Model) Select(columns ...string) *QueryBuilder {
 	return &QueryBuilder{
 		db:        m.db,
-		tableName: m.schema.TableName,
+		tableName: m.schema.Name,
 		columns:   columns,
-		qb:        m.db.Select(m.schema.TableName, columns),
+		qb:        m.db.Select(m.schema.Name, columns),
 	}
 }
 
@@ -38,7 +38,7 @@ func (m *Model) Add(data map[string]interface{}) (int64, error) {
 		return 0, err
 	}
 
-	return m.db.Insert(m.schema.TableName, data)
+	return m.db.Insert(m.schema.Name, data)
 }
 
 func (m *Model) Set(id interface{}, data map[string]interface{}) error {
@@ -47,11 +47,11 @@ func (m *Model) Set(id interface{}, data map[string]interface{}) error {
 		return err
 	}
 
-	return m.db.Update(m.schema.TableName, id, data)
+	return m.db.Update(m.schema.Name, id, data)
 }
 
 func (m *Model) Remove(id interface{}) error {
-	return m.db.Delete(m.schema.TableName, id)
+	return m.db.Delete(m.schema.Name, id)
 }
 
 func (m *Model) validateData(data map[string]interface{}, isInsert bool) error {
