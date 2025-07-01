@@ -18,6 +18,9 @@ func init() {
 	registry.Register("sqlite", func(config types.Config) (types.Database, error) {
 		return NewSQLiteDB(config)
 	})
+	
+	// Register SQLite URI parser
+	registry.RegisterURIParser("sqlite", NewSQLiteURIParser())
 }
 
 // SQLiteDB implements the Database interface for SQLite
@@ -230,10 +233,9 @@ func (s *SQLiteDB) Transaction(ctx context.Context, fn func(tx types.Transaction
 	return nil
 }
 
-// GetMigrator returns a migrator for SQLite (placeholder implementation)
+// GetMigrator returns a migrator for SQLite
 func (s *SQLiteDB) GetMigrator() types.DatabaseMigrator {
-	// Return a placeholder migrator for now
-	return &SQLiteMigrator{db: s.db}
+	return NewSQLiteMigrator(s.db, s)
 }
 
 // generateCreateTableSQL generates CREATE TABLE SQL for a schema
