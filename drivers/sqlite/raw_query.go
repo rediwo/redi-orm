@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // SQLiteRawQuery implements the RawQuery interface for SQLite
@@ -44,23 +45,14 @@ func (q *SQLiteRawQuery) Exec(ctx context.Context) (types.Result, error) {
 func (q *SQLiteRawQuery) Find(ctx context.Context, dest interface{}) error {
 	rows, err := q.db.QueryContext(ctx, q.sql, q.args...)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to execute query: %w", err)
 	}
 	defer rows.Close()
 
-	// This is a simplified implementation
-	// In a real implementation, you'd want to properly scan the rows into dest
-	// For now, we'll return an error indicating it needs implementation
-	return fmt.Errorf("SQLite raw query result scanning not yet implemented")
+	return utils.ScanRows(rows, dest)
 }
 
 // FindOne executes the raw query and returns a single result
 func (q *SQLiteRawQuery) FindOne(ctx context.Context, dest interface{}) error {
-	row := q.db.QueryRowContext(ctx, q.sql, q.args...)
-
-	// This is a simplified implementation
-	// In a real implementation, you'd want to properly scan the row into dest
-	// For now, we'll return an error indicating it needs implementation
-	_ = row
-	return fmt.Errorf("SQLite raw query result scanning not yet implemented")
+	return utils.ScanRowContext(q.db, ctx, q.sql, q.args, dest)
 }

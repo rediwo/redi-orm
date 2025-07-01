@@ -8,6 +8,7 @@ import (
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // SQLiteTransaction implements the Transaction interface for SQLite
@@ -204,18 +205,13 @@ func (q *SQLiteTransactionRawQuery) Exec(ctx context.Context) (types.Result, err
 func (q *SQLiteTransactionRawQuery) Find(ctx context.Context, dest interface{}) error {
 	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to execute query: %w", err)
 	}
 	defer rows.Close()
 
-	// Simplified implementation - would need proper result scanning
-	return fmt.Errorf("transaction raw query result scanning not yet implemented")
+	return utils.ScanRows(rows, dest)
 }
 
 func (q *SQLiteTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
-	row := q.tx.QueryRowContext(ctx, q.sql, q.args...)
-
-	// Simplified implementation - would need proper result scanning
-	_ = row
-	return fmt.Errorf("transaction raw query result scanning not yet implemented")
+	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
 }

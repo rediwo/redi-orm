@@ -8,6 +8,7 @@ import (
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // MySQLTransaction implements types.Transaction for MySQL
@@ -235,11 +236,10 @@ func (q *MySQLTransactionRawQuery) Find(ctx context.Context, dest interface{}) e
 	}
 	defer rows.Close()
 
-	return scanRows(rows, dest)
+	return utils.ScanRows(rows, dest)
 }
 
 // FindOne executes the query and scans a single result into dest within a transaction
 func (q *MySQLTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
-	row := q.tx.QueryRowContext(ctx, q.sql, q.args...)
-	return scanRow(row, dest)
+	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
 }

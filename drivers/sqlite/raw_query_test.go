@@ -197,15 +197,24 @@ func TestSQLiteRawQuery_Find(t *testing.T) {
 		"test1", 10, "test2", 20)
 	require.NoError(t, err)
 
-	// Test Find (placeholder implementation)
+	// Test Find
 	rawQuery := db.Raw("SELECT * FROM test_table ORDER BY id")
 	
-	var dest []map[string]interface{}
+	type TestRow struct {
+		ID    int
+		Name  string
+		Value int
+	}
+	
+	var dest []TestRow
 	err = rawQuery.Find(ctx, &dest)
 	
-	// Should return error because Find is not yet implemented
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "raw query result scanning not yet implemented")
+	assert.NoError(t, err)
+	assert.Len(t, dest, 2)
+	assert.Equal(t, "test1", dest[0].Name)
+	assert.Equal(t, 10, dest[0].Value)
+	assert.Equal(t, "test2", dest[1].Name)
+	assert.Equal(t, 20, dest[1].Value)
 }
 
 func TestSQLiteRawQuery_FindOne(t *testing.T) {
@@ -227,15 +236,22 @@ func TestSQLiteRawQuery_FindOne(t *testing.T) {
 	_, err = db.Exec("INSERT INTO test_table (name, value) VALUES (?, ?)", "test1", 10)
 	require.NoError(t, err)
 
-	// Test FindOne (placeholder implementation)
+	// Test FindOne
 	rawQuery := db.Raw("SELECT * FROM test_table WHERE id = ?", 1)
 	
-	var dest map[string]interface{}
+	type TestRow struct {
+		ID    int
+		Name  string
+		Value int
+	}
+	
+	var dest TestRow
 	err = rawQuery.FindOne(ctx, &dest)
 	
-	// Should return error because FindOne is not yet implemented
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "raw query result scanning not yet implemented")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, dest.ID)
+	assert.Equal(t, "test1", dest.Name)
+	assert.Equal(t, 10, dest.Value)
 }
 
 func TestSQLiteRawQuery_ErrorHandling(t *testing.T) {

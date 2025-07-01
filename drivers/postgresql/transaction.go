@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"reflect"
-	"strings"
 
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -120,29 +118,12 @@ func (q *PostgreSQLTransactionRawQuery) Find(ctx context.Context, dest interface
 	}
 	defer rows.Close()
 
-	// Use the shared scanning logic
-	return scanRows(rows, dest)
+	return utils.ScanRows(rows, dest)
 }
 
 // FindOne executes the query and scans a single row into dest
 func (q *PostgreSQLTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
-	// Handle single value scanning
-	if isSimpleType(reflect.TypeOf(dest).Elem()) {
-		return q.tx.QueryRowContext(ctx, q.sql, q.args...).Scan(dest)
-	}
-
-	// Handle struct scanning
-	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
-	if err != nil {
-		return fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		return sql.ErrNoRows
-	}
-
-	return scanRow(rows, dest)
+	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
 }
 
 // PostgreSQLTransactionDB wraps PostgreSQLDB for transaction context
@@ -190,101 +171,3 @@ func (t *PostgreSQLTransactionDB) GetModelSchema(modelName string) (*schema.Sche
 	return t.PostgreSQLDB.GetModelSchema(modelName)
 }
 
-// Helper function to scan rows (shared between Find implementations)
-func scanRows(rows *sql.Rows, dest interface{}) error {
-	destValue := reflect.ValueOf(dest)
-	if destValue.Kind() != reflect.Ptr || destValue.Elem().Kind() != reflect.Slice {
-		return fmt.Errorf("dest must be a pointer to slice")
-	}
-
-	sliceValue := destValue.Elem()
-	elementType := sliceValue.Type().Elem()
-	isPtr := elementType.Kind() == reflect.Ptr
-	if isPtr {
-		elementType = elementType.Elem()
-	}
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return fmt.Errorf("failed to get columns: %w", err)
-	}
-
-	for rows.Next() {
-		elem := reflect.New(elementType).Elem()
-		scanDest := make([]interface{}, len(columns))
-		
-		for i, col := range columns {
-			field := elem.FieldByNameFunc(func(name string) bool {
-				field, _ := elementType.FieldByName(name)
-				if tag := field.Tag.Get("db"); tag != "" {
-					return tag == col
-				}
-				if tag := field.Tag.Get("json"); tag != "" {
-					return tag == col
-				}
-				if strings.EqualFold(field.Name, col) {
-					return true
-				}
-				return utils.ToCamelCase(col) == name ||
-					   utils.ToSnakeCase(name) == col
-			})
-			
-			if field.IsValid() && field.CanSet() {
-				scanDest[i] = field.Addr().Interface()
-			} else {
-				var dummy interface{}
-				scanDest[i] = &dummy
-			}
-		}
-
-		if err := rows.Scan(scanDest...); err != nil {
-			return fmt.Errorf("failed to scan row: %w", err)
-		}
-
-		if isPtr {
-			sliceValue.Set(reflect.Append(sliceValue, elem.Addr()))
-		} else {
-			sliceValue.Set(reflect.Append(sliceValue, elem))
-		}
-	}
-
-	return rows.Err()
-}
-
-// Helper function to scan a single row
-func scanRow(rows *sql.Rows, dest interface{}) error {
-	columns, err := rows.Columns()
-	if err != nil {
-		return fmt.Errorf("failed to get columns: %w", err)
-	}
-
-	destValue := reflect.ValueOf(dest).Elem()
-	destType := destValue.Type()
-
-	scanDest := make([]interface{}, len(columns))
-	for i, col := range columns {
-		field := destValue.FieldByNameFunc(func(name string) bool {
-			field, _ := destType.FieldByName(name)
-			if tag := field.Tag.Get("db"); tag != "" {
-				return tag == col
-			}
-			if tag := field.Tag.Get("json"); tag != "" {
-				return tag == col
-			}
-			if strings.EqualFold(field.Name, col) {
-				return true
-			}
-			return utils.ToCamelCase(col) == name ||
-				   utils.ToSnakeCase(name) == col
-		})
-		
-		if field.IsValid() && field.CanSet() {
-			scanDest[i] = field.Addr().Interface()
-		} else {
-			var dummy interface{}
-			scanDest[i] = &dummy
-		}
-	}
-
-	return rows.Scan(scanDest...)
-}

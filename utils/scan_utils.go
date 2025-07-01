@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -83,6 +84,35 @@ func ScanRow(rows *sql.Rows, dest interface{}) error {
 // ScanRowSimple scans a sql.Row into dest (for simple queries)
 func ScanRowSimple(row *sql.Row, dest interface{}) error {
 	return row.Scan(dest)
+}
+
+// ScanRowContext handles scanning from QueryRowContext for both simple and complex types
+func ScanRowContext(db interface{ QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error) }, 
+	ctx context.Context, query string, args []interface{}, dest interface{}) error {
+	
+	destType := reflect.TypeOf(dest)
+	if destType.Kind() != reflect.Ptr {
+		return fmt.Errorf("dest must be a pointer")
+	}
+
+	// Handle simple types with QueryRow
+	if IsSimpleType(destType.Elem()) {
+		switch d := db.(type) {
+		case *sql.DB:
+			return d.QueryRowContext(ctx, query, args...).Scan(dest)
+		case *sql.Tx:
+			return d.QueryRowContext(ctx, query, args...).Scan(dest)
+		}
+	}
+
+	// Handle complex types with smart scanning
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer rows.Close()
+
+	return ScanRow(rows, dest)
 }
 
 // prepareScanDestinations prepares scan destinations with smart field mapping

@@ -574,19 +574,28 @@ func TestSQLiteTransactionRawQuery(t *testing.T) {
 	assert.Equal(t, int64(1), result.LastInsertID)
 	assert.Equal(t, int64(1), result.RowsAffected)
 
-	// Test Find (placeholder implementation)
+	// Test Find
 	rawQuery = tx.Raw("SELECT * FROM test_table")
-	var dest []map[string]interface{}
+	type TestRow struct {
+		ID    int
+		Name  string
+		Value int
+	}
+	var dest []TestRow
 	err = rawQuery.Find(ctx, &dest)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "transaction raw query result scanning not yet implemented")
+	assert.NoError(t, err)
+	assert.Len(t, dest, 1)
+	assert.Equal(t, "test", dest[0].Name)
+	assert.Equal(t, 42, dest[0].Value)
 
-	// Test FindOne (placeholder implementation)
+	// Test FindOne
 	rawQuery = tx.Raw("SELECT * FROM test_table WHERE id = ?", 1)
-	var destOne map[string]interface{}
+	var destOne TestRow
 	err = rawQuery.FindOne(ctx, &destOne)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "transaction raw query result scanning not yet implemented")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, destOne.ID)
+	assert.Equal(t, "test", destOne.Name)
+	assert.Equal(t, 42, destOne.Value)
 }
 
 func TestSQLiteTransaction_ErrorHandling(t *testing.T) {
