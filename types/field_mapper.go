@@ -2,11 +2,10 @@ package types
 
 import (
 	"fmt"
-	"regexp"
-	"strings"
 	"unicode"
 
 	"github.com/rediwo/redi-orm/schema"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // DefaultFieldMapper provides default field mapping implementation
@@ -107,120 +106,12 @@ func (m *DefaultFieldMapper) ModelToTable(modelName string) (string, error) {
 
 // Utility functions for case conversion
 
-// CamelToSnakeCase converts camelCase to snake_case
-func CamelToSnakeCase(input string) string {
-	if input == "" {
-		return ""
-	}
-
-	// Add underscore before uppercase letters that follow lowercase letters or numbers
-	re1 := regexp.MustCompile("([a-z0-9])([A-Z])")
-	result := re1.ReplaceAllString(input, "${1}_${2}")
-
-	// Add underscore before uppercase letters that are followed by lowercase letters
-	// and preceded by uppercase letters (for cases like XMLHttpRequest -> xml_http_request)
-	re2 := regexp.MustCompile("([A-Z])([A-Z][a-z])")
-	result = re2.ReplaceAllString(result, "${1}_${2}")
-
-	return strings.ToLower(result)
-}
-
-// SnakeToCamelCase converts snake_case to camelCase
-func SnakeToCamelCase(input string) string {
-	if input == "" {
-		return ""
-	}
-
-	parts := strings.Split(input, "_")
-	if len(parts) == 1 {
-		return input
-	}
-
-	result := parts[0]
-	for i := 1; i < len(parts); i++ {
-		if len(parts[i]) > 0 {
-			result += strings.ToUpper(string(parts[i][0])) + parts[i][1:]
-		}
-	}
-
-	return result
-}
-
-// ToPascalCase converts string to PascalCase
-func ToPascalCase(input string) string {
-	if input == "" {
-		return ""
-	}
-
-	// If it's snake_case, convert first
-	if strings.Contains(input, "_") {
-		parts := strings.Split(input, "_")
-		result := ""
-		for _, part := range parts {
-			if len(part) > 0 {
-				result += strings.ToUpper(string(part[0])) + strings.ToLower(part[1:])
-			}
-		}
-		return result
-	}
-
-	// If it's already camelCase, just capitalize first letter
-	if len(input) > 0 {
-		return strings.ToUpper(string(input[0])) + input[1:]
-	}
-
-	return input
-}
-
 // ModelNameToTableName converts model name to default table name (pluralized, snake_case)
 func ModelNameToTableName(modelName string) string {
-	snakeCase := CamelToSnakeCase(modelName)
-	return Pluralize(snakeCase)
+	snakeCase := utils.ToSnakeCase(modelName)
+	return utils.Pluralize(snakeCase)
 }
 
-// Pluralize adds 's' to make a word plural (simple implementation)
-// For more complex pluralization, consider using a dedicated library
-func Pluralize(word string) string {
-	if word == "" {
-		return word
-	}
-
-	word = strings.ToLower(word)
-
-	// Simple pluralization rules
-	if strings.HasSuffix(word, "s") || strings.HasSuffix(word, "x") ||
-		strings.HasSuffix(word, "z") || strings.HasSuffix(word, "ch") ||
-		strings.HasSuffix(word, "sh") {
-		return word + "es"
-	}
-
-	if strings.HasSuffix(word, "y") && len(word) > 1 {
-		prev := rune(word[len(word)-2])
-		if !isVowel(prev) {
-			return word[:len(word)-1] + "ies"
-		}
-	}
-
-	if strings.HasSuffix(word, "f") {
-		return word[:len(word)-1] + "ves"
-	}
-
-	if strings.HasSuffix(word, "fe") {
-		return word[:len(word)-2] + "ves"
-	}
-
-	return word + "s"
-}
-
-// isVowel checks if a character is a vowel
-func isVowel(r rune) bool {
-	switch unicode.ToLower(r) {
-	case 'a', 'e', 'i', 'o', 'u':
-		return true
-	default:
-		return false
-	}
-}
 
 // ValidateFieldName checks if a field name is valid
 func ValidateFieldName(fieldName string) error {

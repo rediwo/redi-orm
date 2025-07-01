@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rediwo/redi-orm/query"
@@ -287,7 +288,7 @@ func (s *SQLiteDB) generateColumnSQL(field schema.Field) (string, error) {
 		parts = append(parts, fmt.Sprintf("DEFAULT %v", field.Default))
 	}
 
-	return fmt.Sprintf("%s", parts[0]) + " " + fmt.Sprintf("%s", parts[1:]), nil
+	return strings.Join(parts, " "), nil
 }
 
 // mapFieldTypeToSQL maps schema field types to SQLite SQL types

@@ -16,7 +16,7 @@ type SQLiteRawQuery struct {
 }
 
 // NewSQLiteRawQuery creates a new SQLite raw query
-func NewSQLiteRawQuery(db *sql.DB, sql string, args ...interface{}) *SQLiteRawQuery {
+func NewSQLiteRawQuery(db *sql.DB, sql string, args ...interface{}) types.RawQuery {
 	return &SQLiteRawQuery{
 		db:   db,
 		sql:  sql,

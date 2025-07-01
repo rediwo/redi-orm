@@ -3,9 +3,8 @@ package schema
 import (
 	"fmt"
 	"reflect"
-	"regexp"
-	"strings"
-	"unicode"
+
+	"github.com/rediwo/redi-orm/utils"
 )
 
 type FieldType string
@@ -49,7 +48,8 @@ func (f Field) GetColumnName() string {
 	if f.Map != "" {
 		return f.Map
 	}
-	return f.Name
+	// Automatically convert camelCase field names to snake_case column names
+	return utils.ToSnakeCase(f.Name)
 }
 
 type Relation struct {
@@ -97,70 +97,10 @@ func New(name string) *Schema {
 
 // ModelNameToTableName converts model name to default table name (pluralized, snake_case)
 func ModelNameToTableName(modelName string) string {
-	snakeCase := CamelToSnakeCase(modelName)
-	return Pluralize(snakeCase)
+	snakeCase := utils.ToSnakeCase(modelName)
+	return utils.Pluralize(snakeCase)
 }
 
-// CamelToSnakeCase converts camelCase to snake_case
-func CamelToSnakeCase(input string) string {
-	if input == "" {
-		return ""
-	}
-
-	// Add underscore before uppercase letters that follow lowercase letters or numbers
-	re1 := regexp.MustCompile("([a-z0-9])([A-Z])")
-	result := re1.ReplaceAllString(input, "${1}_${2}")
-
-	// Add underscore before uppercase letters that are followed by lowercase letters
-	// and preceded by uppercase letters (for cases like XMLHttpRequest -> xml_http_request)
-	re2 := regexp.MustCompile("([A-Z])([A-Z][a-z])")
-	result = re2.ReplaceAllString(result, "${1}_${2}")
-
-	return strings.ToLower(result)
-}
-
-// Pluralize adds 's' to make a word plural (simple implementation)
-func Pluralize(word string) string {
-	if word == "" {
-		return word
-	}
-
-	word = strings.ToLower(word)
-
-	// Simple pluralization rules
-	if strings.HasSuffix(word, "s") || strings.HasSuffix(word, "x") ||
-		strings.HasSuffix(word, "z") || strings.HasSuffix(word, "ch") ||
-		strings.HasSuffix(word, "sh") {
-		return word + "es"
-	}
-
-	if strings.HasSuffix(word, "y") && len(word) > 1 {
-		prev := rune(word[len(word)-2])
-		if !isVowel(prev) {
-			return word[:len(word)-1] + "ies"
-		}
-	}
-
-	if strings.HasSuffix(word, "f") {
-		return word[:len(word)-1] + "ves"
-	}
-
-	if strings.HasSuffix(word, "fe") {
-		return word[:len(word)-2] + "ves"
-	}
-
-	return word + "s"
-}
-
-// isVowel checks if a character is a vowel
-func isVowel(r rune) bool {
-	switch unicode.ToLower(r) {
-	case 'a', 'e', 'i', 'o', 'u':
-		return true
-	default:
-		return false
-	}
-}
 
 func (s *Schema) WithTableName(name string) *Schema {
 	s.TableName = name
@@ -366,3 +306,4 @@ func FieldTypeFromGo(t reflect.Type) FieldType {
 		return FieldTypeString
 	}
 }
+
