@@ -17,6 +17,24 @@ func ScanRows(rows *sql.Rows, dest interface{}) error {
 
 	sliceValue := destValue.Elem()
 	elementType := sliceValue.Type().Elem()
+	
+	// Check if dest is *[]map[string]interface{}
+	if elementType.Kind() == reflect.Map && 
+		elementType.Key().Kind() == reflect.String && 
+		elementType.Elem().Kind() == reflect.Interface &&
+		elementType.Elem().NumMethod() == 0 {
+		// Use ScanRowsToMaps for map scanning
+		results, err := ScanRowsToMaps(rows)
+		if err != nil {
+			return err
+		}
+		// Set the results to the destination slice
+		resultValue := reflect.ValueOf(results)
+		sliceValue.Set(resultValue)
+		return nil
+	}
+
+	// Handle struct scanning
 	isPtr := elementType.Kind() == reflect.Ptr
 	if isPtr {
 		elementType = elementType.Elem()
@@ -152,6 +170,51 @@ func prepareScanDestinations(destValue reflect.Value, destType reflect.Type, col
 	}
 	
 	return scanDest, nil
+}
+
+// ScanRowsToMaps scans SQL rows into a slice of maps
+// This is useful for raw queries where the result structure is not known at compile time
+func ScanRowsToMaps(rows *sql.Rows) ([]map[string]interface{}, error) {
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	// Prepare result slice
+	var results []map[string]interface{}
+
+	// Create a slice of interface{} to hold column values
+	values := make([]interface{}, len(columns))
+	valuePtrs := make([]interface{}, len(columns))
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+
+	// Scan all rows
+	for rows.Next() {
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Create map for this row
+		rowMap := make(map[string]interface{})
+		for i, col := range columns {
+			val := values[i]
+			// Handle byte arrays (convert to string)
+			if b, ok := val.([]byte); ok {
+				rowMap[col] = string(b)
+			} else {
+				rowMap[col] = val
+			}
+		}
+		results = append(results, rowMap)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return results, nil
 }
 
 // IsSimpleType checks if a type is a simple type (not struct, slice, etc.)

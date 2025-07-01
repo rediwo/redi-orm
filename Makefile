@@ -1,6 +1,6 @@
 # RediORM Makefile
 
-.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-docker docker-up docker-down docker-wait clean fmt lint vet deps
+.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-orm test-docker docker-up docker-down docker-wait clean fmt lint vet deps
 
 # Default target
 help:
@@ -15,6 +15,7 @@ help:
 	@echo "  test-sqlite   - Run SQLite tests only"
 	@echo "  test-mysql    - Run MySQL tests only"
 	@echo "  test-postgresql - Run PostgreSQL tests only"
+	@echo "  test-orm      - Run ORM module tests only"
 	@echo "  test-docker   - Run tests with Docker databases"
 	@echo "  docker-up     - Start test databases"
 	@echo "  docker-down   - Stop test databases"
@@ -55,6 +56,9 @@ test-mysql:
 
 test-postgresql:
 	go test -v ./drivers/postgresql
+
+test-orm:
+	go test -v ./modules/orm/tests
 
 test-docker: docker-up docker-wait
 	@echo "Running tests with Docker databases..."

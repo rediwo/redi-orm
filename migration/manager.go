@@ -125,7 +125,7 @@ func (m *Manager) executeMigration(version string, changes []SchemaChange, check
 
 	// Record migration in history
 	_, err = tx.Exec(
-		"INSERT INTO redi_migrations (version, name, checksum) VALUES (?, ?, ?)",
+		"INSERT INTO " + MigrationsTableName + " (version, name, checksum) VALUES (?, ?, ?)",
 		version, "auto-migration", checksum,
 	)
 	if err != nil {
@@ -188,7 +188,7 @@ func (m *Manager) ResetMigrations() error {
 	}
 
 	// Clear migration history
-	_, err = m.db.Exec("DELETE FROM redi_migrations")
+	_, err = m.db.Exec("DELETE FROM " + MigrationsTableName)
 	if err != nil {
 		log.Printf("Warning: Failed to clear migration history: %v", err)
 	}

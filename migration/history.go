@@ -16,10 +16,10 @@ func NewHistoryManager(db *sql.DB) *HistoryManager {
 	return &HistoryManager{db: db}
 }
 
-// EnsureMigrationTable creates the redi_migrations table if it doesn't exist
+// EnsureMigrationTable creates the migrations table if it doesn't exist
 func (h *HistoryManager) EnsureMigrationTable() error {
 	query := `
-	CREATE TABLE IF NOT EXISTS redi_migrations (
+	CREATE TABLE IF NOT EXISTS ` + MigrationsTableName + ` (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		version VARCHAR(255) NOT NULL UNIQUE,
 		name VARCHAR(255),
@@ -33,7 +33,7 @@ func (h *HistoryManager) EnsureMigrationTable() error {
 
 // GetAppliedMigrations returns all applied migrations
 func (h *HistoryManager) GetAppliedMigrations() ([]Migration, error) {
-	query := `SELECT id, version, name, applied_at, checksum FROM redi_migrations ORDER BY id`
+	query := `SELECT id, version, name, applied_at, checksum FROM ` + MigrationsTableName + ` ORDER BY id`
 
 	rows, err := h.db.Query(query)
 	if err != nil {
@@ -56,14 +56,14 @@ func (h *HistoryManager) GetAppliedMigrations() ([]Migration, error) {
 
 // RecordMigration records a new migration in the history
 func (h *HistoryManager) RecordMigration(version, name, checksum string) error {
-	query := `INSERT INTO redi_migrations (version, name, checksum) VALUES (?, ?, ?)`
+	query := `INSERT INTO ` + MigrationsTableName + ` (version, name, checksum) VALUES (?, ?, ?)`
 	_, err := h.db.Exec(query, version, name, checksum)
 	return err
 }
 
 // IsMigrationApplied checks if a migration version has been applied
 func (h *HistoryManager) IsMigrationApplied(version string) (bool, error) {
-	query := `SELECT COUNT(*) FROM redi_migrations WHERE version = ?`
+	query := `SELECT COUNT(*) FROM ` + MigrationsTableName + ` WHERE version = ?`
 
 	var count int
 	err := h.db.QueryRow(query, version).Scan(&count)
@@ -76,7 +76,7 @@ func (h *HistoryManager) IsMigrationApplied(version string) (bool, error) {
 
 // GetLastMigration returns the most recent migration
 func (h *HistoryManager) GetLastMigration() (*Migration, error) {
-	query := `SELECT id, version, name, applied_at, checksum FROM redi_migrations ORDER BY id DESC LIMIT 1`
+	query := `SELECT id, version, name, applied_at, checksum FROM ` + MigrationsTableName + ` ORDER BY id DESC LIMIT 1`
 
 	var m Migration
 	err := h.db.QueryRow(query).Scan(&m.ID, &m.Version, &m.Name, &m.AppliedAt, &m.Checksum)
@@ -92,7 +92,7 @@ func (h *HistoryManager) GetLastMigration() (*Migration, error) {
 
 // RemoveMigration removes a migration from the history (for rollback)
 func (h *HistoryManager) RemoveMigration(version string) error {
-	query := `DELETE FROM redi_migrations WHERE version = ?`
+	query := `DELETE FROM ` + MigrationsTableName + ` WHERE version = ?`
 	_, err := h.db.Exec(query, version)
 	return err
 }

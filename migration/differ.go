@@ -65,6 +65,11 @@ func (d *Differ) ComputeDiff(schemas map[string]*schema.Schema) ([]SchemaChange,
 	}
 
 	for _, table := range currentTables {
+		// Skip system tables (like migrations table)
+		if table == MigrationsTableName {
+			continue
+		}
+		
 		if !desiredTableMap[table] {
 			changes = append(changes, SchemaChange{
 				Type:      ChangeTypeDropTable,

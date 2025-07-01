@@ -4,6 +4,11 @@ import (
 	"time"
 )
 
+const (
+	// MigrationsTableName is the name of the table that stores migration history
+	MigrationsTableName = "redi_migrations"
+)
+
 // Migration represents a database migration
 type Migration struct {
 	ID        int
