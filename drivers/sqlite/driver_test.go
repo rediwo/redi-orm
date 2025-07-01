@@ -19,9 +19,9 @@ func TestSQLiteDB_NewSQLiteDB(t *testing.T) {
 	db, err := NewSQLiteDB(config)
 	require.NoError(t, err)
 	assert.NotNil(t, db)
-	assert.Equal(t, config, db.config)
-	assert.NotNil(t, db.fieldMapper)
-	assert.NotNil(t, db.schemas)
+	assert.Equal(t, config, db.Config)
+	assert.NotNil(t, db.FieldMapper)
+	assert.NotNil(t, db.Schemas)
 }
 
 func TestSQLiteDB_Connect(t *testing.T) {
@@ -74,7 +74,7 @@ func TestSQLiteDB_RegisterSchema(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify schema is stored
-	storedSchema, exists := db.schemas["User"]
+	storedSchema, exists := db.Schemas["User"]
 	assert.True(t, exists)
 	assert.Equal(t, userSchema, storedSchema)
 

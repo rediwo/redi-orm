@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
+	"github.com/rediwo/redi-orm/drivers/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
@@ -30,18 +31,13 @@ func init() {
 
 // PostgreSQLDB implements the Database interface for PostgreSQL
 type PostgreSQLDB struct {
-	config      types.Config
-	db          *sql.DB
-	fieldMapper types.FieldMapper
-	schemas     map[string]*schema.Schema
+	*base.Driver
 }
 
 // NewPostgreSQLDB creates a new PostgreSQL database instance
 func NewPostgreSQLDB(config types.Config) (*PostgreSQLDB, error) {
 	return &PostgreSQLDB{
-		config:      config,
-		fieldMapper: types.NewDefaultFieldMapper(),
-		schemas:     make(map[string]*schema.Schema),
+		Driver: base.NewDriver(config),
 	}, nil
 }
 
@@ -52,7 +48,7 @@ func (p *PostgreSQLDB) GetDriverType() string {
 
 // Connect establishes a connection to the PostgreSQL database
 func (p *PostgreSQLDB) Connect(ctx context.Context) error {
-	if p.db != nil {
+	if p.DB != nil {
 		return nil
 	}
 
@@ -67,7 +63,7 @@ func (p *PostgreSQLDB) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	p.db = db
+	p.SetDB(db)
 	return nil
 }
 
@@ -75,20 +71,20 @@ func (p *PostgreSQLDB) Connect(ctx context.Context) error {
 func (p *PostgreSQLDB) buildDSN() string {
 	var parts []string
 
-	if p.config.Host != "" {
-		parts = append(parts, fmt.Sprintf("host=%s", p.config.Host))
+	if p.Config.Host != "" {
+		parts = append(parts, fmt.Sprintf("host=%s", p.Config.Host))
 	}
-	if p.config.Port > 0 {
-		parts = append(parts, fmt.Sprintf("port=%d", p.config.Port))
+	if p.Config.Port > 0 {
+		parts = append(parts, fmt.Sprintf("port=%d", p.Config.Port))
 	}
-	if p.config.User != "" {
-		parts = append(parts, fmt.Sprintf("user=%s", p.config.User))
+	if p.Config.User != "" {
+		parts = append(parts, fmt.Sprintf("user=%s", p.Config.User))
 	}
-	if p.config.Password != "" {
-		parts = append(parts, fmt.Sprintf("password=%s", p.config.Password))
+	if p.Config.Password != "" {
+		parts = append(parts, fmt.Sprintf("password=%s", p.Config.Password))
 	}
-	if p.config.Database != "" {
-		parts = append(parts, fmt.Sprintf("dbname=%s", p.config.Database))
+	if p.Config.Database != "" {
+		parts = append(parts, fmt.Sprintf("dbname=%s", p.Config.Database))
 	}
 	
 	// Add sslmode if not specified
@@ -106,84 +102,11 @@ func (p *PostgreSQLDB) buildDSN() string {
 	return strings.Join(parts, " ")
 }
 
-// Close closes the database connection
-func (p *PostgreSQLDB) Close() error {
-	if p.db != nil {
-		return p.db.Close()
-	}
-	return nil
+// SyncSchemas synchronizes all loaded schemas with the database
+func (p *PostgreSQLDB) SyncSchemas(ctx context.Context) error {
+	return p.Driver.SyncSchemas(ctx, p)
 }
 
-// Ping pings the database
-func (p *PostgreSQLDB) Ping(ctx context.Context) error {
-	if p.db == nil {
-		return fmt.Errorf("database not connected")
-	}
-	return p.db.PingContext(ctx)
-}
-
-// RegisterSchema registers a schema with the database
-func (p *PostgreSQLDB) RegisterSchema(modelName string, s *schema.Schema) error {
-	if s == nil {
-		return fmt.Errorf("schema cannot be nil")
-	}
-
-	if err := s.Validate(); err != nil {
-		return fmt.Errorf("invalid schema: %w", err)
-	}
-
-	p.schemas[modelName] = s
-
-	// Register with field mapper
-	if mapper, ok := p.fieldMapper.(*types.DefaultFieldMapper); ok {
-		mapper.RegisterSchema(modelName, s)
-	}
-
-	return nil
-}
-
-// GetSchema returns the schema for a model
-func (p *PostgreSQLDB) GetSchema(modelName string) (*schema.Schema, error) {
-	s, exists := p.schemas[modelName]
-	if !exists {
-		return nil, fmt.Errorf("schema not found for model: %s", modelName)
-	}
-	return s, nil
-}
-
-// GetModelSchema returns the schema for a model (alias for GetSchema)
-func (p *PostgreSQLDB) GetModelSchema(modelName string) (*schema.Schema, error) {
-	return p.GetSchema(modelName)
-}
-
-// GetModels returns all registered model names
-func (p *PostgreSQLDB) GetModels() []string {
-	models := make([]string, 0, len(p.schemas))
-	for modelName := range p.schemas {
-		models = append(models, modelName)
-	}
-	return models
-}
-
-// ResolveTableName resolves model name to table name
-func (p *PostgreSQLDB) ResolveTableName(modelName string) (string, error) {
-	return p.fieldMapper.ModelToTable(modelName)
-}
-
-// ResolveFieldName resolves field name to column name
-func (p *PostgreSQLDB) ResolveFieldName(modelName, fieldName string) (string, error) {
-	return p.fieldMapper.SchemaToColumn(modelName, fieldName)
-}
-
-// ResolveFieldNames resolves multiple field names to column names
-func (p *PostgreSQLDB) ResolveFieldNames(modelName string, fieldNames []string) ([]string, error) {
-	return p.fieldMapper.SchemaFieldsToColumns(modelName, fieldNames)
-}
-
-// GetFieldMapper returns the field mapper
-func (p *PostgreSQLDB) GetFieldMapper() types.FieldMapper {
-	return p.fieldMapper
-}
 
 // CreateModel creates a table from the registered schema
 func (p *PostgreSQLDB) CreateModel(ctx context.Context, modelName string) error {
@@ -197,7 +120,7 @@ func (p *PostgreSQLDB) CreateModel(ctx context.Context, modelName string) error 
 		return err
 	}
 
-	_, err = p.db.ExecContext(ctx, sql)
+	_, err = p.DB.ExecContext(ctx, sql)
 	return err
 }
 
@@ -209,7 +132,7 @@ func (p *PostgreSQLDB) DropModel(ctx context.Context, modelName string) error {
 	}
 
 	sql := fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", p.quoteIdentifier(tableName))
-	_, err = p.db.ExecContext(ctx, sql)
+	_, err = p.DB.ExecContext(ctx, sql)
 	return err
 }
 
@@ -221,7 +144,7 @@ func (p *PostgreSQLDB) Model(modelName string) types.ModelQuery {
 // Raw creates a raw query
 func (p *PostgreSQLDB) Raw(query string, args ...interface{}) types.RawQuery {
 	return &PostgreSQLRawQuery{
-		db:   p.db,
+		db:   p.DB,
 		sql:  query,
 		args: args,
 	}
@@ -229,7 +152,7 @@ func (p *PostgreSQLDB) Raw(query string, args ...interface{}) types.RawQuery {
 
 // Transaction executes a function within a transaction
 func (p *PostgreSQLDB) Transaction(ctx context.Context, fn func(tx types.Transaction) error) error {
-	sqlTx, err := p.db.BeginTx(ctx, nil)
+	sqlTx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -255,7 +178,7 @@ func (p *PostgreSQLDB) Transaction(ctx context.Context, fn func(tx types.Transac
 
 // Begin starts a new transaction
 func (p *PostgreSQLDB) Begin(ctx context.Context) (types.Transaction, error) {
-	sqlTx, err := p.db.BeginTx(ctx, nil)
+	sqlTx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -268,22 +191,22 @@ func (p *PostgreSQLDB) Begin(ctx context.Context) (types.Transaction, error) {
 
 // Exec executes a raw SQL query
 func (p *PostgreSQLDB) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return p.db.Exec(query, args...)
+	return p.DB.Exec(query, args...)
 }
 
 // Query executes a raw SQL query and returns rows
 func (p *PostgreSQLDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return p.db.Query(query, args...)
+	return p.DB.Query(query, args...)
 }
 
 // QueryRow executes a raw SQL query and returns a single row
 func (p *PostgreSQLDB) QueryRow(query string, args ...interface{}) *sql.Row {
-	return p.db.QueryRow(query, args...)
+	return p.DB.QueryRow(query, args...)
 }
 
 // GetMigrator returns the migrator for this database
 func (p *PostgreSQLDB) GetMigrator() types.DatabaseMigrator {
-	return NewPostgreSQLMigrator(p.db, p)
+	return NewPostgreSQLMigrator(p.DB, p)
 }
 
 // generateCreateTableSQL generates CREATE TABLE SQL for PostgreSQL

@@ -180,6 +180,21 @@ func (td *SQLiteTransactionDB) GetMigrator() types.DatabaseMigrator {
 	return td.database.GetMigrator()
 }
 
+// LoadSchema is not supported within a transaction
+func (td *SQLiteTransactionDB) LoadSchema(ctx context.Context, schemaContent string) error {
+	return fmt.Errorf("cannot load schema within a transaction")
+}
+
+// LoadSchemaFrom is not supported within a transaction
+func (td *SQLiteTransactionDB) LoadSchemaFrom(ctx context.Context, filename string) error {
+	return fmt.Errorf("cannot load schema from file within a transaction")
+}
+
+// SyncSchemas is not supported within a transaction
+func (td *SQLiteTransactionDB) SyncSchemas(ctx context.Context) error {
+	return fmt.Errorf("cannot sync schemas within a transaction")
+}
+
 // SQLiteTransactionRawQuery implements RawQuery for transactions
 type SQLiteTransactionRawQuery struct {
 	tx   *sql.Tx

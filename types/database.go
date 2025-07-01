@@ -97,6 +97,11 @@ type Database interface {
 	GetSchema(modelName string) (*schema.Schema, error)
 	CreateModel(ctx context.Context, modelName string) error
 	DropModel(ctx context.Context, modelName string) error
+	
+	// Schema loading with auto-migration
+	LoadSchema(ctx context.Context, schemaContent string) error
+	LoadSchemaFrom(ctx context.Context, filename string) error
+	SyncSchemas(ctx context.Context) error
 
 	// Model query builder (uses modelName)
 	Model(modelName string) ModelQuery

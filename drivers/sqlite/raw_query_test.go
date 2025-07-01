@@ -31,12 +31,12 @@ func TestSQLiteRawQuery_NewSQLiteRawQuery(t *testing.T) {
 	// Cast to SQLiteRawQuery to test internal structure
 	sqliteRaw, ok := rawQuery.(*SQLiteRawQuery)
 	require.True(t, ok)
-	assert.Equal(t, db.db, sqliteRaw.db)
+	assert.Equal(t, db.DB, sqliteRaw.db)
 	assert.Equal(t, sql, sqliteRaw.sql)
 	assert.Equal(t, args, sqliteRaw.args)
 
 	// Test direct constructor
-	directRaw := NewSQLiteRawQuery(db.db, sql, args...)
+	directRaw := NewSQLiteRawQuery(db.DB, sql, args...)
 	require.NotNil(t, directRaw)
 }
 

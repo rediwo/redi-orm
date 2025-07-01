@@ -108,6 +108,18 @@ func (m *mockDatabase) QueryRow(query string, args ...interface{}) *sql.Row {
 	return nil
 }
 
+func (m *mockDatabase) LoadSchema(ctx context.Context, schemaContent string) error {
+	return nil
+}
+
+func (m *mockDatabase) LoadSchemaFrom(ctx context.Context, filename string) error {
+	return nil
+}
+
+func (m *mockDatabase) SyncSchemas(ctx context.Context) error {
+	return nil
+}
+
 // Mock factory function
 func mockFactory(config types.Config) (types.Database, error) {
 	if config.Type != "mock" {

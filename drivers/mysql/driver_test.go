@@ -73,9 +73,9 @@ func TestMySQLDB_NewMySQLDB(t *testing.T) {
 	db, err := NewMySQLDB(config)
 	assert.NoError(t, err)
 	assert.NotNil(t, db)
-	assert.Equal(t, config, db.config)
-	assert.NotNil(t, db.fieldMapper)
-	assert.NotNil(t, db.schemas)
+	assert.Equal(t, config, db.Config)
+	assert.NotNil(t, db.FieldMapper)
+	assert.NotNil(t, db.Schemas)
 }
 
 func TestMySQLDB_Connect(t *testing.T) {
@@ -88,7 +88,7 @@ func TestMySQLDB_Connect(t *testing.T) {
 	ctx := context.Background()
 	err = db.Connect(ctx)
 	assert.NoError(t, err)
-	assert.NotNil(t, db.db)
+	assert.NotNil(t, db.DB)
 
 	// Test ping
 	err = db.Ping(ctx)

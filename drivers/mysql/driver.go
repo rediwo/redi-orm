@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/rediwo/redi-orm/drivers/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
@@ -25,29 +26,24 @@ func init() {
 
 // MySQLDB implements the Database interface for MySQL
 type MySQLDB struct {
-	db          *sql.DB
-	config      types.Config
-	fieldMapper types.FieldMapper
-	schemas     map[string]*schema.Schema
+	*base.Driver
 }
 
 // NewMySQLDB creates a new MySQL database instance
 func NewMySQLDB(config types.Config) (*MySQLDB, error) {
 	return &MySQLDB{
-		config:      config,
-		fieldMapper: types.NewDefaultFieldMapper(),
-		schemas:     make(map[string]*schema.Schema),
+		Driver: base.NewDriver(config),
 	}, nil
 }
 
 // Connect establishes connection to MySQL database
 func (m *MySQLDB) Connect(ctx context.Context) error {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4",
-		m.config.User,
-		m.config.Password,
-		m.config.Host,
-		m.config.Port,
-		m.config.Database,
+		m.Config.User,
+		m.Config.Password,
+		m.Config.Host,
+		m.Config.Port,
+		m.Config.Database,
 	)
 
 	db, err := sql.Open("mysql", dsn)
@@ -59,87 +55,13 @@ func (m *MySQLDB) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to ping MySQL database: %w", err)
 	}
 
-	m.db = db
+	m.SetDB(db)
 	return nil
 }
 
-// Close closes the database connection
-func (m *MySQLDB) Close() error {
-	if m.db != nil {
-		return m.db.Close()
-	}
-	return nil
-}
-
-// Ping checks if the database connection is alive
-func (m *MySQLDB) Ping(ctx context.Context) error {
-	if m.db == nil {
-		return fmt.Errorf("database not connected")
-	}
-	return m.db.PingContext(ctx)
-}
-
-// RegisterSchema registers a schema with the database
-func (m *MySQLDB) RegisterSchema(modelName string, schema *schema.Schema) error {
-	if schema == nil {
-		return fmt.Errorf("schema cannot be nil")
-	}
-
-	if err := schema.Validate(); err != nil {
-		return fmt.Errorf("invalid schema: %w", err)
-	}
-
-	m.schemas[modelName] = schema
-
-	// Register with field mapper
-	if mapper, ok := m.fieldMapper.(*types.DefaultFieldMapper); ok {
-		mapper.RegisterSchema(modelName, schema)
-	}
-
-	return nil
-}
-
-// GetSchema returns a registered schema
-func (m *MySQLDB) GetSchema(modelName string) (*schema.Schema, error) {
-	schema, exists := m.schemas[modelName]
-	if !exists {
-		return nil, fmt.Errorf("schema for model '%s' not registered", modelName)
-	}
-	return schema, nil
-}
-
-// GetModels returns all registered model names
-func (m *MySQLDB) GetModels() []string {
-	models := make([]string, 0, len(m.schemas))
-	for modelName := range m.schemas {
-		models = append(models, modelName)
-	}
-	return models
-}
-
-// GetModelSchema returns schema for a model (alias for GetSchema)
-func (m *MySQLDB) GetModelSchema(modelName string) (*schema.Schema, error) {
-	return m.GetSchema(modelName)
-}
-
-// ResolveTableName resolves model name to table name
-func (m *MySQLDB) ResolveTableName(modelName string) (string, error) {
-	return m.fieldMapper.ModelToTable(modelName)
-}
-
-// ResolveFieldName resolves schema field name to column name
-func (m *MySQLDB) ResolveFieldName(modelName, fieldName string) (string, error) {
-	return m.fieldMapper.SchemaToColumn(modelName, fieldName)
-}
-
-// ResolveFieldNames resolves multiple schema field names to column names
-func (m *MySQLDB) ResolveFieldNames(modelName string, fieldNames []string) ([]string, error) {
-	return m.fieldMapper.SchemaFieldsToColumns(modelName, fieldNames)
-}
-
-// GetFieldMapper returns the field mapper
-func (m *MySQLDB) GetFieldMapper() types.FieldMapper {
-	return m.fieldMapper
+// SyncSchemas synchronizes all loaded schemas with the database
+func (m *MySQLDB) SyncSchemas(ctx context.Context) error {
+	return m.Driver.SyncSchemas(ctx, m)
 }
 
 // CreateModel creates a table for the given model
@@ -154,7 +76,7 @@ func (m *MySQLDB) CreateModel(ctx context.Context, modelName string) error {
 		return fmt.Errorf("failed to generate CREATE TABLE SQL: %w", err)
 	}
 
-	_, err = m.db.ExecContext(ctx, sql)
+	_, err = m.DB.ExecContext(ctx, sql)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
@@ -170,7 +92,7 @@ func (m *MySQLDB) DropModel(ctx context.Context, modelName string) error {
 	}
 
 	sql := fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName)
-	_, err = m.db.ExecContext(ctx, sql)
+	_, err = m.DB.ExecContext(ctx, sql)
 	if err != nil {
 		return fmt.Errorf("failed to drop table: %w", err)
 	}
@@ -185,12 +107,12 @@ func (m *MySQLDB) Model(modelName string) types.ModelQuery {
 
 // Raw creates a new raw query
 func (m *MySQLDB) Raw(sql string, args ...interface{}) types.RawQuery {
-	return NewMySQLRawQuery(m.db, sql, args...)
+	return NewMySQLRawQuery(m.DB, sql, args...)
 }
 
 // Begin starts a new transaction
 func (m *MySQLDB) Begin(ctx context.Context) (types.Transaction, error) {
-	tx, err := m.db.BeginTx(ctx, nil)
+	tx, err := m.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -228,17 +150,17 @@ func (m *MySQLDB) Transaction(ctx context.Context, fn func(tx types.Transaction)
 
 // Exec executes a raw SQL statement
 func (m *MySQLDB) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return m.db.Exec(query, args...)
+	return m.DB.Exec(query, args...)
 }
 
 // Query executes a raw SQL query that returns rows
 func (m *MySQLDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return m.db.Query(query, args...)
+	return m.DB.Query(query, args...)
 }
 
 // QueryRow executes a raw SQL query that returns a single row
 func (m *MySQLDB) QueryRow(query string, args ...interface{}) *sql.Row {
-	return m.db.QueryRow(query, args...)
+	return m.DB.QueryRow(query, args...)
 }
 
 // generateCreateTableSQL generates CREATE TABLE SQL for MySQL
@@ -346,5 +268,5 @@ func (m *MySQLDB) formatDefaultValue(value interface{}) string {
 
 // GetMigrator returns a migrator for MySQL
 func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {
-	return NewMySQLMigrator(m.db, m)
+	return NewMySQLMigrator(m.DB, m)
 }

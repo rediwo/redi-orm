@@ -183,6 +183,21 @@ func (tdb *MySQLTransactionDB) GetMigrator() types.DatabaseMigrator {
 	return tdb.db.GetMigrator()
 }
 
+// LoadSchema is not supported within a transaction
+func (tdb *MySQLTransactionDB) LoadSchema(ctx context.Context, schemaContent string) error {
+	return fmt.Errorf("cannot load schema within a transaction")
+}
+
+// LoadSchemaFrom is not supported within a transaction
+func (tdb *MySQLTransactionDB) LoadSchemaFrom(ctx context.Context, filename string) error {
+	return fmt.Errorf("cannot load schema from file within a transaction")
+}
+
+// SyncSchemas is not supported within a transaction
+func (tdb *MySQLTransactionDB) SyncSchemas(ctx context.Context) error {
+	return fmt.Errorf("cannot sync schemas within a transaction")
+}
+
 // Exec executes a query within the transaction
 func (tdb *MySQLTransactionDB) Exec(query string, args ...interface{}) (sql.Result, error) {
 	return tdb.tx.tx.Exec(query, args...)

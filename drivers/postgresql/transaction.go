@@ -171,3 +171,18 @@ func (t *PostgreSQLTransactionDB) GetModelSchema(modelName string) (*schema.Sche
 	return t.PostgreSQLDB.GetModelSchema(modelName)
 }
 
+// LoadSchema is not supported within a transaction
+func (t *PostgreSQLTransactionDB) LoadSchema(ctx context.Context, schemaContent string) error {
+	return fmt.Errorf("cannot load schema within a transaction")
+}
+
+// LoadSchemaFrom is not supported within a transaction
+func (t *PostgreSQLTransactionDB) LoadSchemaFrom(ctx context.Context, filename string) error {
+	return fmt.Errorf("cannot load schema from file within a transaction")
+}
+
+// SyncSchemas is not supported within a transaction
+func (t *PostgreSQLTransactionDB) SyncSchemas(ctx context.Context) error {
+	return fmt.Errorf("cannot sync schemas within a transaction")
+}
+

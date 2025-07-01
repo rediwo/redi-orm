@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/rediwo/redi-orm/drivers/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
@@ -25,24 +26,19 @@ func init() {
 
 // SQLiteDB implements the Database interface for SQLite
 type SQLiteDB struct {
-	db          *sql.DB
-	config      types.Config
-	fieldMapper types.FieldMapper
-	schemas     map[string]*schema.Schema
+	*base.Driver
 }
 
 // NewSQLiteDB creates a new SQLite database instance
 func NewSQLiteDB(config types.Config) (*SQLiteDB, error) {
 	return &SQLiteDB{
-		config:      config,
-		fieldMapper: types.NewDefaultFieldMapper(),
-		schemas:     make(map[string]*schema.Schema),
+		Driver: base.NewDriver(config),
 	}, nil
 }
 
 // Connect establishes connection to SQLite database
 func (s *SQLiteDB) Connect(ctx context.Context) error {
-	db, err := sql.Open("sqlite3", s.config.FilePath)
+	db, err := sql.Open("sqlite3", s.Config.FilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open SQLite database: %w", err)
 	}
@@ -51,87 +47,13 @@ func (s *SQLiteDB) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to ping SQLite database: %w", err)
 	}
 
-	s.db = db
+	s.SetDB(db)
 	return nil
 }
 
-// Close closes the database connection
-func (s *SQLiteDB) Close() error {
-	if s.db != nil {
-		return s.db.Close()
-	}
-	return nil
-}
-
-// Ping checks if the database connection is alive
-func (s *SQLiteDB) Ping(ctx context.Context) error {
-	if s.db == nil {
-		return fmt.Errorf("database not connected")
-	}
-	return s.db.PingContext(ctx)
-}
-
-// RegisterSchema registers a schema with the database
-func (s *SQLiteDB) RegisterSchema(modelName string, schema *schema.Schema) error {
-	if schema == nil {
-		return fmt.Errorf("schema cannot be nil")
-	}
-
-	if err := schema.Validate(); err != nil {
-		return fmt.Errorf("invalid schema: %w", err)
-	}
-
-	s.schemas[modelName] = schema
-
-	// Register with field mapper
-	if mapper, ok := s.fieldMapper.(*types.DefaultFieldMapper); ok {
-		mapper.RegisterSchema(modelName, schema)
-	}
-
-	return nil
-}
-
-// GetSchema returns a registered schema
-func (s *SQLiteDB) GetSchema(modelName string) (*schema.Schema, error) {
-	schema, exists := s.schemas[modelName]
-	if !exists {
-		return nil, fmt.Errorf("schema for model '%s' not registered", modelName)
-	}
-	return schema, nil
-}
-
-// GetModels returns all registered model names
-func (s *SQLiteDB) GetModels() []string {
-	models := make([]string, 0, len(s.schemas))
-	for modelName := range s.schemas {
-		models = append(models, modelName)
-	}
-	return models
-}
-
-// GetModelSchema returns schema for a model (alias for GetSchema)
-func (s *SQLiteDB) GetModelSchema(modelName string) (*schema.Schema, error) {
-	return s.GetSchema(modelName)
-}
-
-// ResolveTableName resolves model name to table name
-func (s *SQLiteDB) ResolveTableName(modelName string) (string, error) {
-	return s.fieldMapper.ModelToTable(modelName)
-}
-
-// ResolveFieldName resolves schema field name to column name
-func (s *SQLiteDB) ResolveFieldName(modelName, fieldName string) (string, error) {
-	return s.fieldMapper.SchemaToColumn(modelName, fieldName)
-}
-
-// ResolveFieldNames resolves multiple schema field names to column names
-func (s *SQLiteDB) ResolveFieldNames(modelName string, fieldNames []string) ([]string, error) {
-	return s.fieldMapper.SchemaFieldsToColumns(modelName, fieldNames)
-}
-
-// GetFieldMapper returns the field mapper
-func (s *SQLiteDB) GetFieldMapper() types.FieldMapper {
-	return s.fieldMapper
+// SyncSchemas synchronizes all loaded schemas with the database
+func (s *SQLiteDB) SyncSchemas(ctx context.Context) error {
+	return s.Driver.SyncSchemas(ctx, s)
 }
 
 // CreateModel creates a table for the given model
@@ -146,7 +68,7 @@ func (s *SQLiteDB) CreateModel(ctx context.Context, modelName string) error {
 		return fmt.Errorf("failed to generate CREATE TABLE SQL: %w", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, sql)
+	_, err = s.DB.ExecContext(ctx, sql)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
@@ -162,7 +84,7 @@ func (s *SQLiteDB) DropModel(ctx context.Context, modelName string) error {
 	}
 
 	sql := fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName)
-	_, err = s.db.ExecContext(ctx, sql)
+	_, err = s.DB.ExecContext(ctx, sql)
 	if err != nil {
 		return fmt.Errorf("failed to drop table: %w", err)
 	}
@@ -177,32 +99,17 @@ func (s *SQLiteDB) Model(modelName string) types.ModelQuery {
 
 // Raw creates a new raw query
 func (s *SQLiteDB) Raw(sql string, args ...interface{}) types.RawQuery {
-	return NewSQLiteRawQuery(s.db, sql, args...)
+	return NewSQLiteRawQuery(s.DB, sql, args...)
 }
 
 // Begin starts a new transaction
 func (s *SQLiteDB) Begin(ctx context.Context) (types.Transaction, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	return NewSQLiteTransaction(tx, s), nil
-}
-
-// Exec executes a raw SQL statement
-func (s *SQLiteDB) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return s.db.Exec(query, args...)
-}
-
-// Query executes a raw SQL query that returns rows
-func (s *SQLiteDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return s.db.Query(query, args...)
-}
-
-// QueryRow executes a raw SQL query that returns a single row
-func (s *SQLiteDB) QueryRow(query string, args ...interface{}) *sql.Row {
-	return s.db.QueryRow(query, args...)
 }
 
 // Transaction executes a function within a transaction
@@ -233,9 +140,10 @@ func (s *SQLiteDB) Transaction(ctx context.Context, fn func(tx types.Transaction
 	return nil
 }
 
+
 // GetMigrator returns a migrator for SQLite
 func (s *SQLiteDB) GetMigrator() types.DatabaseMigrator {
-	return NewSQLiteMigrator(s.db, s)
+	return NewSQLiteMigrator(s.DB, s)
 }
 
 // generateCreateTableSQL generates CREATE TABLE SQL for a schema
