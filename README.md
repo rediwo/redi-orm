@@ -33,6 +33,7 @@ import (
     "log"
     "github.com/rediwo/redi-orm/database"
     "github.com/rediwo/redi-orm/schema"
+    "github.com/rediwo/redi-orm/utils"
 )
 
 func main() {
@@ -48,24 +49,63 @@ func main() {
     }
     defer db.Close()
     
-    // Define schema programmatically
-    userSchema := schema.New("User").
-        AddField(schema.NewField("id").Int().PrimaryKey().AutoIncrement().Build()).
-        AddField(schema.NewField("email").String().Unique().Build()).
-        AddField(schema.NewField("name").String().Build())
-    
-    db.RegisterSchema(userSchema)
-    
-    // Create tables
-    if err := db.CreateModel(ctx, "User"); err != nil {
+    // Option 1: Load schema from string (Prisma-style)
+    schemaContent := `
+        model User {
+            id    Int     @id @default(autoincrement())
+            email String  @unique
+            name  String
+        }
+        
+        model Post {
+            id      Int    @id @default(autoincrement())
+            title   String
+            content String
+            userId  Int
+        }
+    `
+    if err := db.LoadSchema(ctx, schemaContent); err != nil {
         log.Fatal(err)
     }
+    
+    // Option 2: Load schema from file
+    // if err := db.LoadSchemaFrom(ctx, "./schema.prisma"); err != nil {
+    //     log.Fatal(err)
+    // }
+    
+    // Option 3: Define schema programmatically
+    // userSchema := schema.New("User").
+    //     AddField(schema.NewField("id").Int().PrimaryKey().AutoIncrement().Build()).
+    //     AddField(schema.NewField("email").String().Unique().Build()).
+    //     AddField(schema.NewField("name").String().Build())
+    // db.RegisterSchema(userSchema)
+    
+    // Sync all loaded schemas with database
+    if err := db.SyncSchemas(ctx); err != nil {
+        log.Fatal(err)
+    }
+    
+    // After sync, models are available
+    models := db.GetModels() // ["User", "Post"]
     
     // Insert data
     result, err := db.Model("User").
         Insert(map[string]interface{}{
             "email": "alice@example.com",
             "name": "Alice",
+        }).
+        Exec(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    userID := result.LastInsertID
+    
+    // Insert with relations
+    _, err = db.Model("Post").
+        Insert(map[string]interface{}{
+            "title": "Hello World",
+            "content": "My first post",
+            "userId": userID,
         }).
         Exec(ctx)
     
@@ -77,8 +117,23 @@ func main() {
         OrderBy("name", "ASC").
         FindMany(ctx, &users)
     
+    // Count
+    count, err := db.Model("Post").
+        Where("userId").Equals(userID).
+        Count(ctx)
+    
+    // Update
+    _, err = db.Model("User").
+        Update(map[string]interface{}{"name": "Alice Smith"}).
+        Where("id").Equals(userID).
+        Exec(ctx)
+    
     // Raw SQL
     rows, err := db.Query("SELECT * FROM users WHERE created_at > ?", "2024-01-01")
+    defer rows.Close()
+    
+    // Use utils for scanning
+    results, err := utils.ScanRowsToMaps(rows)
 }
 ```
 
@@ -215,6 +270,29 @@ redi-orm/
 
 ### Schema Loading
 
+Both Go and JavaScript APIs support the same schema loading methods:
+
+**Go:**
+```go
+// From string
+err := db.LoadSchema(ctx, `
+    model User {
+        id    Int    @id @default(autoincrement())
+        email String @unique @map("email_address")
+        name  String
+    }
+`)
+
+// From file
+err := db.LoadSchemaFrom(ctx, "./schema.prisma")
+
+// Multiple schemas
+db.LoadSchema(ctx, userSchema)
+db.LoadSchema(ctx, postSchema)
+db.SyncSchemas(ctx) // Apply all at once
+```
+
+**JavaScript:**
 ```javascript
 // From string
 await db.loadSchema(`
