@@ -41,8 +41,8 @@ type Transaction interface {
 type Database interface {
 	Connect() error
 	Close() error
-	CreateTable(schema *schema.Schema) error
-	DropTable(tableName string) error
+	CreateModel(schema *schema.Schema) error
+	DropModel(modelName string) error
 
 	// Schema management
 	RegisterSchema(modelName string, schema interface{}) error
@@ -89,7 +89,8 @@ type DatabaseMigrator interface {
 	GenerateCreateTableSQL(schema *schema.Schema) (string, error)
 	GenerateDropTableSQL(tableName string) string
 	GenerateAddColumnSQL(tableName string, field interface{}) (string, error)
-	GenerateDropColumnSQL(tableName, columnName string) string
+	GenerateModifyColumnSQL(change ColumnChange) ([]string, error)
+	GenerateDropColumnSQL(tableName, columnName string) ([]string, error)
 	GenerateCreateIndexSQL(tableName, indexName string, columns []string, unique bool) string
 	GenerateDropIndexSQL(indexName string) string
 

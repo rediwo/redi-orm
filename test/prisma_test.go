@@ -155,10 +155,23 @@ func TestPrismaASTDemo(t *testing.T) {
 		t.Errorf("Expected 2 schemas, got %d", len(schemas))
 	}
 
-	// Register schemas with the engine
+	// Register schemas with database and create tables
+	for name, schema := range schemas {
+		// Register with database
+		if err := db.RegisterSchema(name, schema); err != nil {
+			t.Fatalf("Failed to register schema %s with database: %v", name, err)
+		}
+		
+		// Create table
+		if err := db.CreateModel(schema); err != nil {
+			t.Fatalf("Failed to create table for schema %s: %v", name, err)
+		}
+	}
+	
+	// Register schemas with the JavaScript engine
 	for name, schema := range schemas {
 		if err := eng.RegisterSchema(schema); err != nil {
-			t.Fatalf("Failed to register schema %s: %v", name, err)
+			t.Fatalf("Failed to register schema %s with JS engine: %v", name, err)
 		}
 	}
 

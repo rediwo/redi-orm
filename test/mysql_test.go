@@ -40,46 +40,58 @@ func TestMySQLConnection(t *testing.T) {
 	}
 }
 
-func TestMySQLCreateTable(t *testing.T) {
+func TestMySQLCreateModel(t *testing.T) {
 	db := setupMySQLDB(t)
 	defer db.Close()
 
-	schema := schema.New("User").
+	// Use unique model name for this test
+	modelName := "MySQLCreateModelTest"
+	userSchema := schema.New(modelName).
 		AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
 		AddField(schema.NewField("name").String().Build()).
 		AddField(schema.NewField("email").String().Unique().Build()).
 		AddField(schema.NewField("age").Int().Nullable().Build()).
 		AddField(schema.NewField("created_at").DateTime().Build())
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(userSchema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to create model: %v", err)
 	}
 
-	db.DropTable(schema.TableName)
+	// Clean up
+	db.DropModel(modelName)
 }
 
 func TestMySQLInsert(t *testing.T) {
 	db := setupMySQLDB(t)
 	defer db.Close()
 
-	schema := schema.New("User").
+	// Use unique model name for this test
+	modelName := "MySQLInsertTest"
+	userSchema := schema.New(modelName).
 		AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
 		AddField(schema.NewField("name").String().Build()).
 		AddField(schema.NewField("email").String().Unique().Build())
 
-	err := db.CreateTable(schema)
+	// Register schema first
+	err := db.RegisterSchema(modelName, userSchema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to register schema: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+
+	err = db.CreateModel(userSchema)
+	if err != nil {
+		t.Errorf("Failed to create model: %v", err)
+	}
+	defer db.DropModel(modelName)
 
 	data := map[string]interface{}{
 		"name":  "John Doe",
 		"email": "john@example.com",
 	}
 
-	id, err := db.Insert(schema.TableName, data)
+	// Use model-based Insert operation
+	id, err := db.Insert(modelName, data)
 	if err != nil {
 		t.Errorf("Failed to insert data: %v", err)
 	}
@@ -93,28 +105,38 @@ func TestMySQLFindByID(t *testing.T) {
 	db := setupMySQLDB(t)
 	defer db.Close()
 
-	schema := schema.New("User").
+	// Use unique model name for this test
+	modelName := "MySQLFindByIDTest"
+	userSchema := schema.New(modelName).
 		AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
 		AddField(schema.NewField("name").String().Build()).
 		AddField(schema.NewField("email").String().Unique().Build())
 
-	err := db.CreateTable(schema)
+	// Register schema first
+	err := db.RegisterSchema(modelName, userSchema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to register schema: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+
+	err = db.CreateModel(userSchema)
+	if err != nil {
+		t.Errorf("Failed to create model: %v", err)
+	}
+	defer db.DropModel(modelName)
 
 	data := map[string]interface{}{
 		"name":  "John Doe",
 		"email": "john@example.com",
 	}
 
-	id, err := db.Insert(schema.TableName, data)
+	// Use model-based Insert operation
+	id, err := db.Insert(modelName, data)
 	if err != nil {
 		t.Errorf("Failed to insert data: %v", err)
 	}
 
-	result, err := db.FindByID(schema.TableName, id)
+	// Use model-based FindByID operation
+	result, err := db.FindByID(modelName, id)
 	if err != nil {
 		t.Errorf("Failed to find by ID: %v", err)
 	}
@@ -128,16 +150,24 @@ func TestMySQLFind(t *testing.T) {
 	db := setupMySQLDB(t)
 	defer db.Close()
 
-	schema := schema.New("User").
+	// Use unique model name for this test
+	modelName := "MySQLFindTest"
+	userSchema := schema.New(modelName).
 		AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
 		AddField(schema.NewField("name").String().Build()).
 		AddField(schema.NewField("age").Int().Build())
 
-	err := db.CreateTable(schema)
+	// Register schema first
+	err := db.RegisterSchema(modelName, userSchema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to register schema: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+
+	err = db.CreateModel(userSchema)
+	if err != nil {
+		t.Errorf("Failed to create model: %v", err)
+	}
+	defer db.DropModel(modelName)
 
 	testData := []map[string]interface{}{
 		{"name": "John", "age": 25},
@@ -146,13 +176,13 @@ func TestMySQLFind(t *testing.T) {
 	}
 
 	for _, data := range testData {
-		_, err := db.Insert(schema.TableName, data)
+		_, err := db.Insert(modelName, data)
 		if err != nil {
 			t.Errorf("Failed to insert test data: %v", err)
 		}
 	}
 
-	results, err := db.Find(schema.TableName, map[string]interface{}{
+	results, err := db.Find(modelName, map[string]interface{}{
 		"age": 25,
 	}, 0, 0)
 
@@ -169,23 +199,31 @@ func TestMySQLUpdate(t *testing.T) {
 	db := setupMySQLDB(t)
 	defer db.Close()
 
-	schema := schema.New("User").
+	// Use unique model name for this test
+	modelName := "MySQLUpdateTest"
+	userSchema := schema.New(modelName).
 		AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
 		AddField(schema.NewField("name").String().Build()).
 		AddField(schema.NewField("age").Int().Build())
 
-	err := db.CreateTable(schema)
+	// Register schema first
+	err := db.RegisterSchema(modelName, userSchema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to register schema: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+
+	err = db.CreateModel(userSchema)
+	if err != nil {
+		t.Errorf("Failed to create model: %v", err)
+	}
+	defer db.DropModel(modelName)
 
 	data := map[string]interface{}{
 		"name": "John Doe",
 		"age":  25,
 	}
 
-	id, err := db.Insert(schema.TableName, data)
+	id, err := db.Insert(modelName, data)
 	if err != nil {
 		t.Errorf("Failed to insert data: %v", err)
 	}
@@ -194,12 +232,12 @@ func TestMySQLUpdate(t *testing.T) {
 		"age": 30,
 	}
 
-	err = db.Update(schema.TableName, id, updateData)
+	err = db.Update(modelName, id, updateData)
 	if err != nil {
 		t.Errorf("Failed to update data: %v", err)
 	}
 
-	result, err := db.FindByID(schema.TableName, id)
+	result, err := db.FindByID(modelName, id)
 	if err != nil {
 		t.Errorf("Failed to find updated record: %v", err)
 	}
@@ -218,31 +256,39 @@ func TestMySQLDelete(t *testing.T) {
 	db := setupMySQLDB(t)
 	defer db.Close()
 
-	schema := schema.New("User").
+	// Use unique model name for this test
+	modelName := "MySQLDeleteTest"
+	userSchema := schema.New(modelName).
 		AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
 		AddField(schema.NewField("name").String().Build())
 
-	err := db.CreateTable(schema)
+	// Register schema first
+	err := db.RegisterSchema(modelName, userSchema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to register schema: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+
+	err = db.CreateModel(userSchema)
+	if err != nil {
+		t.Errorf("Failed to create model: %v", err)
+	}
+	defer db.DropModel(modelName)
 
 	data := map[string]interface{}{
 		"name": "John Doe",
 	}
 
-	id, err := db.Insert(schema.TableName, data)
+	id, err := db.Insert(modelName, data)
 	if err != nil {
 		t.Errorf("Failed to insert data: %v", err)
 	}
 
-	err = db.Delete(schema.TableName, id)
+	err = db.Delete(modelName, id)
 	if err != nil {
 		t.Errorf("Failed to delete data: %v", err)
 	}
 
-	_, err = db.FindByID(schema.TableName, id)
+	_, err = db.FindByID(modelName, id)
 	if err == nil {
 		t.Errorf("Expected error when finding deleted record, but got none")
 	}
@@ -252,15 +298,23 @@ func TestMySQLTransaction(t *testing.T) {
 	db := setupMySQLDB(t)
 	defer db.Close()
 
-	schema := schema.New("User").
+	// Use unique model name for this test
+	modelName := "MySQLTransactionTest"
+	userSchema := schema.New(modelName).
 		AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
 		AddField(schema.NewField("name").String().Build())
 
-	err := db.CreateTable(schema)
+	// Register schema first
+	err := db.RegisterSchema(modelName, userSchema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to register schema: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+
+	err = db.CreateModel(userSchema)
+	if err != nil {
+		t.Errorf("Failed to create model: %v", err)
+	}
+	defer db.DropModel(modelName)
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -271,7 +325,7 @@ func TestMySQLTransaction(t *testing.T) {
 		"name": "John Doe",
 	}
 
-	id, err := tx.Insert(schema.TableName, data)
+	id, err := tx.Insert(userSchema.TableName, data)
 	if err != nil {
 		tx.Rollback()
 		t.Errorf("Failed to insert in transaction: %v", err)
@@ -282,7 +336,7 @@ func TestMySQLTransaction(t *testing.T) {
 		t.Errorf("Failed to commit transaction: %v", err)
 	}
 
-	result, err := db.FindByID(schema.TableName, id)
+	result, err := db.FindByID(modelName, id)
 	if err != nil {
 		t.Errorf("Failed to find committed record: %v", err)
 	}
@@ -296,16 +350,24 @@ func TestMySQLQueryBuilder(t *testing.T) {
 	db := setupMySQLDB(t)
 	defer db.Close()
 
-	schema := schema.New("User").
+	// Use unique model name for this test
+	modelName := "MySQLQueryBuilderTest"
+	userSchema := schema.New(modelName).
 		AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
 		AddField(schema.NewField("name").String().Build()).
 		AddField(schema.NewField("age").Int().Build())
 
-	err := db.CreateTable(schema)
+	// Register schema first
+	err := db.RegisterSchema(modelName, userSchema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to register schema: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+
+	err = db.CreateModel(userSchema)
+	if err != nil {
+		t.Errorf("Failed to create model: %v", err)
+	}
+	defer db.DropModel(modelName)
 
 	testData := []map[string]interface{}{
 		{"name": "Alice", "age": 25},
@@ -314,7 +376,7 @@ func TestMySQLQueryBuilder(t *testing.T) {
 	}
 
 	for _, data := range testData {
-		_, err := db.Insert(schema.TableName, data)
+		_, err := db.Insert(modelName, data)
 		if err != nil {
 			t.Errorf("Failed to insert test data: %v", err)
 		}
@@ -322,7 +384,7 @@ func TestMySQLQueryBuilder(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	qb := db.Select(schema.TableName, []string{"name", "age"})
+	qb := db.Select(modelName, []string{"name", "age"})
 	results, err := qb.Where("age", ">", 25).OrderBy("age", "ASC").Execute()
 	if err != nil {
 		t.Errorf("Failed to execute query: %v", err)

@@ -8,11 +8,14 @@ import (
 )
 
 func setupTestDB(t *testing.T) (*SQLiteDB, func()) {
-	db := &SQLiteDB{
-		config: types.Config{
-			Type:     "sqlite",
-			FilePath: ":memory:",
-		},
+	config := types.Config{
+		Type:     "sqlite",
+		FilePath: ":memory:",
+	}
+
+	db, err := NewSQLiteDB(config)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
 	}
 
 	if err := db.Connect(); err != nil {
@@ -36,7 +39,7 @@ func TestSQLiteConnect(t *testing.T) {
 	}
 }
 
-func TestSQLiteCreateTable(t *testing.T) {
+func TestSQLiteCreateModel(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -53,9 +56,9 @@ func TestSQLiteCreateTable(t *testing.T) {
 		},
 	}
 
-	err := db.CreateTable(testSchema)
+	err := db.CreateModel(testSchema)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		t.Fatalf("Failed to create model: %v", err)
 	}
 
 	// Verify table exists
@@ -307,16 +310,36 @@ func TestSQLiteTransaction(t *testing.T) {
 	})
 }
 
-func TestSQLiteDropTable(t *testing.T) {
+func TestSQLiteDropModel(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	createTestTable(t, db)
+	// Create test schema and register it
+	testSchema := &schema.Schema{
+		Name:      "User",
+		TableName: "users",
+		Fields: []schema.Field{
+			{Name: "id", Type: schema.FieldTypeInt, PrimaryKey: true, AutoIncrement: true},
+			{Name: "name", Type: schema.FieldTypeString},
+			{Name: "email", Type: schema.FieldTypeString},
+			{Name: "age", Type: schema.FieldTypeInt},
+		},
+	}
 
-	// Drop table
-	err := db.DropTable("users")
+	// Register schema first
+	err := db.RegisterSchema("User", testSchema)
 	if err != nil {
-		t.Fatalf("Failed to drop table: %v", err)
+		t.Fatalf("Failed to register schema: %v", err)
+	}
+
+	if err := db.CreateModel(testSchema); err != nil {
+		t.Fatalf("Failed to create test model: %v", err)
+	}
+
+	// Drop model
+	err = db.DropModel("User")
+	if err != nil {
+		t.Fatalf("Failed to drop model: %v", err)
 	}
 
 	// Verify table doesn't exist
@@ -340,7 +363,7 @@ func createTestTable(t *testing.T, db *SQLiteDB) {
 		},
 	}
 
-	if err := db.CreateTable(testSchema); err != nil {
-		t.Fatalf("Failed to create test table: %v", err)
+	if err := db.CreateModel(testSchema); err != nil {
+		t.Fatalf("Failed to create test model: %v", err)
 	}
 }

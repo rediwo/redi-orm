@@ -92,12 +92,56 @@ graph TD
 | Change Type | Status | Description |
 |-------------|--------|-------------|
 | 🆕 **New Tables** | ✅ Supported | Creates tables for new schemas |
-| ➕ **Add Columns** | 🚧 In Progress | Adds new fields to existing tables |
-| 🔧 **Modify Columns** | 🚧 In Progress | Changes field types, constraints |
-| ➖ **Drop Columns** | 🚧 In Progress | Removes unused fields (opt-in) |
+| ➕ **Add Columns** | ✅ Supported | Adds new fields to existing tables |
+| 🔧 **Modify Columns** | ✅ Supported* | Changes field types, constraints |
+| ➖ **Drop Columns** | ✅ Supported* | Removes unused fields (opt-in) |
 | 🔗 **Add Indexes** | 🚧 In Progress | Creates new database indexes |
 | ❌ **Drop Indexes** | 🚧 In Progress | Removes unused indexes |
 | 🔑 **Foreign Keys** | 🚧 In Progress | Manages relationships |
+
+*_Note: For SQLite, MODIFY and DROP COLUMN operations are detected but require table recreation (SQLite limitation). Other databases support these operations directly._
+
+#### **Column Migration Examples**
+
+**Adding New Columns:**
+```go
+// Version 1: Basic user schema
+userSchema := schema.New("User").
+    AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
+    AddField(schema.NewField("name").String().Build())
+
+eng.RegisterSchema(userSchema)
+eng.EnsureSchema() // Creates table with id, name
+
+// Version 2: Add email column
+userSchemaV2 := schema.New("User").
+    AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
+    AddField(schema.NewField("name").String().Build()).
+    AddField(schema.NewField("email").String().Nullable().Build()) // New column
+
+eng.RegisterSchema(userSchemaV2)
+eng.EnsureSchema() // Automatically adds email column to existing table
+```
+
+**Adding Columns with Defaults:**
+```go
+userSchemaV3 := schema.New("User").
+    AddField(schema.NewField("id").Int64().PrimaryKey().AutoIncrement().Build()).
+    AddField(schema.NewField("name").String().Build()).
+    AddField(schema.NewField("email").String().Nullable().Build()).
+    AddField(schema.NewField("active").Bool().Default(true).Build()).  // Default value
+    AddField(schema.NewField("score").Float().Default(0.0).Build())    // Default value
+
+eng.RegisterSchema(userSchemaV3)
+eng.EnsureSchema() // Adds active and score columns with defaults
+```
+
+**Schema Evolution Benefits:**
+- 🛡️ **Data Preservation**: Existing data is never lost during column additions
+- 🔄 **Backward Compatibility**: Old code continues to work with new schemas
+- ⚡ **Automatic Detection**: Only necessary changes are applied
+- 🎯 **Safe Defaults**: New columns with defaults don't break existing queries
+- 🔧 **Production Ready**: Migrations can be applied to live databases safely
 
 ### Using Native Go API
 

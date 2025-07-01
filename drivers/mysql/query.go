@@ -138,7 +138,12 @@ func (qb *MySQLQueryBuilder) scanRows(rows *sql.Rows) ([]map[string]interface{},
 
 		result := make(map[string]interface{})
 		for i, col := range cols {
-			result[col] = values[i]
+			// Convert MySQL byte slices to strings for better usability
+			if b, ok := values[i].([]byte); ok {
+				result[col] = string(b)
+			} else {
+				result[col] = values[i]
+			}
 		}
 		results = append(results, result)
 	}

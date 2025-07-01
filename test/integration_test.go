@@ -86,17 +86,39 @@ func testDatabaseWithJavaScript(t *testing.T, config types.Config) {
 
 	jsEngine := engine.New(db)
 
+	// Register schemas with database and create tables
+	err = db.RegisterSchema("User", userSchema)
+	if err != nil {
+		t.Fatalf("Failed to register User schema with database: %v", err)
+	}
+	
+	err = db.CreateModel(userSchema)
+	if err != nil {
+		t.Fatalf("Failed to create User table: %v", err)
+	}
+	defer db.DropModel("User")
+
+	err = db.RegisterSchema("Post", postSchema)
+	if err != nil {
+		t.Fatalf("Failed to register Post schema with database: %v", err)
+	}
+	
+	err = db.CreateModel(postSchema)
+	if err != nil {
+		t.Fatalf("Failed to create Post table: %v", err)
+	}
+	defer db.DropModel("Post")
+
+	// Register schemas with JavaScript engine
 	err = jsEngine.RegisterSchema(userSchema)
 	if err != nil {
-		t.Fatalf("Failed to register User schema: %v", err)
+		t.Fatalf("Failed to register User schema with JS engine: %v", err)
 	}
-	defer db.DropTable(userSchema.TableName)
 
 	err = jsEngine.RegisterSchema(postSchema)
 	if err != nil {
-		t.Fatalf("Failed to register Post schema: %v", err)
+		t.Fatalf("Failed to register Post schema with JS engine: %v", err)
 	}
-	defer db.DropTable(postSchema.TableName)
 
 	testScript := `
 		// Test User operations
@@ -250,11 +272,17 @@ func testTransactions(t *testing.T, config types.Config) {
 		AddField(schema.NewField("name").String().Build()).
 		AddField(schema.NewField("email").String().Unique().Build())
 
-	err = db.CreateTable(userSchema)
+	// Register schema with database
+	err = db.RegisterSchema("User", userSchema)
+	if err != nil {
+		t.Fatalf("Failed to register User schema: %v", err)
+	}
+
+	err = db.CreateModel(userSchema)
 	if err != nil {
 		t.Fatalf("Failed to create User table: %v", err)
 	}
-	defer db.DropTable(userSchema.TableName)
+	defer db.DropModel("User")
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -283,7 +311,7 @@ func testTransactions(t *testing.T, config types.Config) {
 		t.Fatalf("Failed to commit transaction: %v", err)
 	}
 
-	user1, err := db.FindByID(userSchema.TableName, user1ID)
+	user1, err := db.FindByID("User", user1ID)
 	if err != nil {
 		t.Fatalf("Failed to find committed user1: %v", err)
 	}
@@ -291,7 +319,7 @@ func testTransactions(t *testing.T, config types.Config) {
 		t.Errorf("Expected user1 name 'John Doe', got %v", user1["name"])
 	}
 
-	user2, err := db.FindByID(userSchema.TableName, user2ID)
+	user2, err := db.FindByID("User", user2ID)
 	if err != nil {
 		t.Fatalf("Failed to find committed user2: %v", err)
 	}
@@ -317,7 +345,7 @@ func testTransactions(t *testing.T, config types.Config) {
 		t.Fatalf("Failed to rollback transaction: %v", err)
 	}
 
-	users, err := db.Find(userSchema.TableName, map[string]interface{}{}, 0, 0)
+	users, err := db.Find("User", map[string]interface{}{}, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to find all users: %v", err)
 	}

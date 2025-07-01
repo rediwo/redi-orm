@@ -272,10 +272,15 @@ func (e *Engine) LoadPrismaSchema(schemaContent string) error {
 		return fmt.Errorf("failed to convert Prisma schema: %v", err)
 	}
 
-	// Register all schemas
+	// Register all schemas and create tables
 	for _, schema := range schemas {
 		if err := e.RegisterSchema(schema); err != nil {
 			return fmt.Errorf("failed to register schema %s: %v", schema.Name, err)
+		}
+		
+		// Create table in database
+		if err := e.db.CreateModel(schema); err != nil {
+			return fmt.Errorf("failed to create table for schema %s: %v", schema.Name, err)
 		}
 	}
 

@@ -1,8 +1,6 @@
 package test
 
 import (
-	"database/sql"
-	"os"
 	"testing"
 
 	"github.com/rediwo/redi-orm/database"
@@ -19,14 +17,9 @@ type TestDB struct {
 	t        *testing.T
 }
 
-// SetupTestDB creates a temporary SQLite database for testing
+// SetupTestDB creates an in-memory SQLite database for testing
 func SetupTestDB(t *testing.T) *TestDB {
-	tempFile := "test_" + t.Name() + ".db"
-
-	db, err := database.New(database.Config{
-		Type:     "sqlite",
-		FilePath: tempFile,
-	})
+	db, err := database.NewFromURI("sqlite://:memory:")
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
@@ -40,18 +33,15 @@ func SetupTestDB(t *testing.T) *TestDB {
 	return &TestDB{
 		DB:       db,
 		Engine:   eng,
-		FilePath: tempFile,
+		FilePath: "",
 		t:        t,
 	}
 }
 
-// Cleanup removes the temporary database file
+// Cleanup closes the database connection
 func (tdb *TestDB) Cleanup() {
 	if tdb.DB != nil {
 		tdb.DB.Close()
-	}
-	if tdb.FilePath != "" {
-		os.Remove(tdb.FilePath)
 	}
 }
 
@@ -166,263 +156,6 @@ func (tdb *TestDB) CountRecords(tableName string) int64 {
 	return int64(len(results))
 }
 
-// MockDatabase provides a mock database implementation for unit tests
-type MockDatabase struct {
-	data   map[string][]map[string]interface{}
-	nextID int64
-	tables map[string]*schema.Schema
-}
-
-func NewMockDatabase() *MockDatabase {
-	return &MockDatabase{
-		data:   make(map[string][]map[string]interface{}),
-		nextID: 1,
-		tables: make(map[string]*schema.Schema),
-	}
-}
-
-func (m *MockDatabase) Connect() error { return nil }
-func (m *MockDatabase) Close() error   { return nil }
-
-func (m *MockDatabase) CreateTable(schema *schema.Schema) error {
-	m.tables[schema.TableName] = schema
-	return nil
-}
-
-func (m *MockDatabase) DropTable(tableName string) error {
-	delete(m.data, tableName)
-	delete(m.tables, tableName)
-	return nil
-}
-
-func (m *MockDatabase) Insert(tableName string, data map[string]interface{}) (int64, error) {
-	if m.data[tableName] == nil {
-		m.data[tableName] = []map[string]interface{}{}
-	}
-
-	newData := make(map[string]interface{})
-	for k, v := range data {
-		newData[k] = v
-	}
-	newData["id"] = m.nextID
-
-	m.data[tableName] = append(m.data[tableName], newData)
-	currentID := m.nextID
-	m.nextID++
-
-	return currentID, nil
-}
-
-func (m *MockDatabase) FindByID(tableName string, id interface{}) (map[string]interface{}, error) {
-	records, exists := m.data[tableName]
-	if !exists {
-		return nil, nil
-	}
-
-	for _, record := range records {
-		if record["id"] == id {
-			return record, nil
-		}
-	}
-
-	return nil, nil
-}
-
-func (m *MockDatabase) Find(tableName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
-	records, exists := m.data[tableName]
-	if !exists {
-		return []map[string]interface{}{}, nil
-	}
-
-	var filtered []map[string]interface{}
-	for _, record := range records {
-		match := true
-		for key, value := range conditions {
-			if record[key] != value {
-				match = false
-				break
-			}
-		}
-		if match {
-			filtered = append(filtered, record)
-		}
-	}
-
-	start := offset
-	if start >= len(filtered) {
-		return []map[string]interface{}{}, nil
-	}
-
-	end := len(filtered)
-	if limit > 0 && start+limit < end {
-		end = start + limit
-	}
-
-	return filtered[start:end], nil
-}
-
-func (m *MockDatabase) Update(tableName string, id interface{}, data map[string]interface{}) error {
-	records, exists := m.data[tableName]
-	if !exists {
-		return nil
-	}
-
-	for i, record := range records {
-		if record["id"] == id {
-			for key, value := range data {
-				m.data[tableName][i][key] = value
-			}
-			break
-		}
-	}
-
-	return nil
-}
-
-func (m *MockDatabase) Delete(tableName string, id interface{}) error {
-	records, exists := m.data[tableName]
-	if !exists {
-		return nil
-	}
-
-	for i, record := range records {
-		if record["id"] == id {
-			m.data[tableName] = append(records[:i], records[i+1:]...)
-			break
-		}
-	}
-
-	return nil
-}
-
-func (m *MockDatabase) Select(tableName string, columns []string) types.QueryBuilder {
-	return &MockQueryBuilder{
-		db:        m,
-		tableName: tableName,
-		columns:   columns,
-	}
-}
-
-func (m *MockDatabase) Begin() (types.Transaction, error) {
-	return nil, nil
-}
-
-func (m *MockDatabase) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return nil, nil
-}
-
-func (m *MockDatabase) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return nil, nil
-}
-
-func (m *MockDatabase) QueryRow(query string, args ...interface{}) *sql.Row {
-	return nil
-}
-
-func (m *MockDatabase) GetMigrator() types.DatabaseMigrator {
-	return nil
-}
-
-func (m *MockDatabase) EnsureSchema() error {
-	return nil
-}
-
-// RegisterSchema registers a schema for model name resolution
-func (m *MockDatabase) RegisterSchema(modelName string, schema interface{}) error {
-	return nil
-}
-
-// GetRegisteredSchemas returns all registered schemas
-func (m *MockDatabase) GetRegisteredSchemas() map[string]interface{} {
-	return make(map[string]interface{})
-}
-
-// Raw operations (mock implementations)
-func (m *MockDatabase) RawInsert(tableName string, data map[string]interface{}) (int64, error) {
-	return m.Insert(tableName, data)
-}
-
-func (m *MockDatabase) RawFindByID(tableName string, id interface{}) (map[string]interface{}, error) {
-	return m.FindByID(tableName, id)
-}
-
-func (m *MockDatabase) RawFind(tableName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
-	return m.Find(tableName, conditions, limit, offset)
-}
-
-func (m *MockDatabase) RawUpdate(tableName string, id interface{}, data map[string]interface{}) error {
-	return m.Update(tableName, id, data)
-}
-
-func (m *MockDatabase) RawDelete(tableName string, id interface{}) error {
-	return m.Delete(tableName, id)
-}
-
-func (m *MockDatabase) RawSelect(tableName string, columns []string) types.QueryBuilder {
-	return m.Select(tableName, columns)
-}
-
-// MockQueryBuilder provides a mock query builder for testing
-type MockQueryBuilder struct {
-	db         *MockDatabase
-	tableName  string
-	columns    []string
-	conditions map[string]interface{}
-	limit      int
-	offset     int
-}
-
-func (q *MockQueryBuilder) Where(field string, operator string, value interface{}) types.QueryBuilder {
-	if q.conditions == nil {
-		q.conditions = make(map[string]interface{})
-	}
-	q.conditions[field] = value
-	return q
-}
-
-func (q *MockQueryBuilder) WhereIn(field string, values []interface{}) types.QueryBuilder {
-	if len(values) > 0 {
-		q.Where(field, "=", values[0])
-	}
-	return q
-}
-
-func (q *MockQueryBuilder) OrderBy(field string, direction string) types.QueryBuilder {
-	return q
-}
-
-func (q *MockQueryBuilder) Limit(limit int) types.QueryBuilder {
-	q.limit = limit
-	return q
-}
-
-func (q *MockQueryBuilder) Offset(offset int) types.QueryBuilder {
-	q.offset = offset
-	return q
-}
-
-func (q *MockQueryBuilder) Execute() ([]map[string]interface{}, error) {
-	return q.db.Find(q.tableName, q.conditions, q.limit, q.offset)
-}
-
-func (q *MockQueryBuilder) First() (map[string]interface{}, error) {
-	results, err := q.db.Find(q.tableName, q.conditions, 1, q.offset)
-	if err != nil {
-		return nil, err
-	}
-	if len(results) == 0 {
-		return nil, nil
-	}
-	return results[0], nil
-}
-
-func (q *MockQueryBuilder) Count() (int64, error) {
-	results, err := q.db.Find(q.tableName, q.conditions, 0, 0)
-	if err != nil {
-		return 0, err
-	}
-	return int64(len(results)), nil
-}
 
 // AssertNoError is a helper to assert no error occurred
 func AssertNoError(t *testing.T, err error) {

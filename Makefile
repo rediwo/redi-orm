@@ -27,23 +27,19 @@ help:
 
 # Test targets
 test:
-	go test -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
-	go test -v ./drivers/sqlite
+	go test ./...
 
 test-verbose:
-	go test -v -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
-	go test -v ./drivers/sqlite
+	go test -v ./...
 
 test-short:
-	go test -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
+	go test -short ./...
 
 test-cover:
-	go test -cover -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
-	go test -cover ./drivers/sqlite
+	go test -cover -short ./...
 
 test-race:
-	go test -race -short ./database ./types ./registry ./schema ./models ./engine ./orm ./prisma ./migration
-	go test -race ./drivers/sqlite
+	go test -race -short ./...
 
 test-integration:
 	go test -v -run Integration ./test

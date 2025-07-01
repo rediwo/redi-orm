@@ -1,270 +1,23 @@
 package models
 
 import (
-	"database/sql"
-	"fmt"
 	"testing"
 
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
 
-// Mock database for testing
-type mockDB struct {
-	data           map[string][]map[string]interface{}
-	nextID         int64
-	lastInsertedID int64
-}
-
-func newMockDB() *mockDB {
-	return &mockDB{
-		data:   make(map[string][]map[string]interface{}),
-		nextID: 1,
-	}
-}
-
-func (m *mockDB) Connect() error { return nil }
-func (m *mockDB) Close() error   { return nil }
-
-func (m *mockDB) CreateTable(schema *schema.Schema) error {
-	return nil
-}
-
-func (m *mockDB) DropTable(tableName string) error {
-	delete(m.data, tableName)
-	return nil
-}
-
-func (m *mockDB) Begin() (types.Transaction, error) {
-	return nil, nil
-}
-
-func (m *mockDB) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return nil, nil
-}
-
-func (m *mockDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return nil, nil
-}
-
-func (m *mockDB) QueryRow(query string, args ...interface{}) *sql.Row {
-	return nil
-}
-
-func (m *mockDB) GetMigrator() types.DatabaseMigrator {
-	return nil
-}
-
-func (m *mockDB) EnsureSchema() error {
-	return nil
-}
-
-// RegisterSchema registers a schema for model name resolution
-func (m *mockDB) RegisterSchema(modelName string, schema interface{}) error {
-	return nil
-}
-
-// GetRegisteredSchemas returns all registered schemas
-func (m *mockDB) GetRegisteredSchemas() map[string]interface{} {
-	return make(map[string]interface{})
-}
-
-// Schema-aware CRUD operations (pass through to raw operations for mock)
-func (m *mockDB) Insert(modelName string, data map[string]interface{}) (int64, error) {
-	return m.RawInsert(modelName, data)
-}
-
-func (m *mockDB) FindByID(modelName string, id interface{}) (map[string]interface{}, error) {
-	return m.RawFindByID(modelName, id)
-}
-
-func (m *mockDB) Find(modelName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
-	return m.RawFind(modelName, conditions, limit, offset)
-}
-
-func (m *mockDB) Update(modelName string, id interface{}, data map[string]interface{}) error {
-	return m.RawUpdate(modelName, id, data)
-}
-
-func (m *mockDB) Delete(modelName string, id interface{}) error {
-	return m.RawDelete(modelName, id)
-}
-
-func (m *mockDB) Select(modelName string, columns []string) types.QueryBuilder {
-	return m.RawSelect(modelName, columns)
-}
-
-// Raw operations (renamed from existing methods)
-func (m *mockDB) RawInsert(tableName string, data map[string]interface{}) (int64, error) {
-	if m.data[tableName] == nil {
-		m.data[tableName] = []map[string]interface{}{}
-	}
-
-	// Add ID to data
-	newData := make(map[string]interface{})
-	for k, v := range data {
-		newData[k] = v
-	}
-	newData["id"] = m.nextID
-
-	m.data[tableName] = append(m.data[tableName], newData)
-	m.lastInsertedID = m.nextID
-	id := m.nextID
-	m.nextID++
-
-	return id, nil
-}
-
-func (m *mockDB) RawFindByID(tableName string, id interface{}) (map[string]interface{}, error) {
-	records, exists := m.data[tableName]
-	if !exists {
-		return nil, sql.ErrNoRows
-	}
-
-	for _, record := range records {
-		if record["id"] == id {
-			return record, nil
-		}
-	}
-	return nil, sql.ErrNoRows
-}
-
-func (m *mockDB) RawFind(tableName string, conditions map[string]interface{}, limit, offset int) ([]map[string]interface{}, error) {
-	records, exists := m.data[tableName]
-	if !exists {
-		return []map[string]interface{}{}, nil
-	}
-
-	var filtered []map[string]interface{}
-	for _, record := range records {
-		match := true
-		for k, v := range conditions {
-			if record[k] != v {
-				match = false
-				break
-			}
-		}
-		if match {
-			filtered = append(filtered, record)
-		}
-	}
-
-	// Apply offset
-	if offset > 0 && offset < len(filtered) {
-		filtered = filtered[offset:]
-	} else if offset >= len(filtered) {
-		filtered = []map[string]interface{}{}
-	}
-
-	// Apply limit
-	if limit > 0 && limit < len(filtered) {
-		filtered = filtered[:limit]
-	}
-
-	return filtered, nil
-}
-
-func (m *mockDB) RawUpdate(tableName string, id interface{}, data map[string]interface{}) error {
-	records, exists := m.data[tableName]
-	if !exists {
-		return fmt.Errorf("table %s not found", tableName)
-	}
-
-	for i, record := range records {
-		if record["id"] == id {
-			for k, v := range data {
-				records[i][k] = v
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("record with id %v not found", id)
-}
-
-func (m *mockDB) RawDelete(tableName string, id interface{}) error {
-	records, exists := m.data[tableName]
-	if !exists {
-		return fmt.Errorf("table %s not found", tableName)
-	}
-
-	for i, record := range records {
-		if record["id"] == id {
-			m.data[tableName] = append(records[:i], records[i+1:]...)
-			return nil
-		}
-	}
-	return fmt.Errorf("record with id %v not found", id)
-}
-
-func (m *mockDB) RawSelect(tableName string, columns []string) types.QueryBuilder {
-	return &mockQueryBuilder{
-		db:        m,
-		tableName: tableName,
-		columns:   columns,
-	}
-}
-
-// Mock query builder
-type mockQueryBuilder struct {
-	db         *mockDB
-	tableName  string
-	columns    []string
-	conditions map[string]interface{}
-	limit      int
-	offset     int
-}
-
-func (q *mockQueryBuilder) Where(field string, operator string, value interface{}) types.QueryBuilder {
-	if q.conditions == nil {
-		q.conditions = make(map[string]interface{})
-	}
-	q.conditions[field] = value
-	return q
-}
-
-func (q *mockQueryBuilder) WhereIn(field string, values []interface{}) types.QueryBuilder {
-	// Simplified implementation
-	if len(values) > 0 {
-		q.Where(field, "=", values[0])
-	}
-	return q
-}
-
-func (q *mockQueryBuilder) OrderBy(field string, direction string) types.QueryBuilder {
-	return q
-}
-
-func (q *mockQueryBuilder) Limit(limit int) types.QueryBuilder {
-	q.limit = limit
-	return q
-}
-
-func (q *mockQueryBuilder) Offset(offset int) types.QueryBuilder {
-	q.offset = offset
-	return q
-}
-
-func (q *mockQueryBuilder) Execute() ([]map[string]interface{}, error) {
-	return q.db.Find(q.tableName, q.conditions, q.limit, q.offset)
-}
-
-func (q *mockQueryBuilder) First() (map[string]interface{}, error) {
-	results, err := q.db.Find(q.tableName, q.conditions, 1, q.offset)
+// Create SQLite in-memory database for testing
+func newTestDB() types.Database {
+	db, err := database.NewFromURI("sqlite://:memory:")
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	if len(results) == 0 {
-		return nil, nil
+	if err := db.Connect(); err != nil {
+		panic(err)
 	}
-	return results[0], nil
-}
-
-func (q *mockQueryBuilder) Count() (int64, error) {
-	results, err := q.db.Find(q.tableName, q.conditions, 0, 0)
-	if err != nil {
-		return 0, err
-	}
-	return int64(len(results)), nil
+	return db
 }
 
 func createTestSchema() *schema.Schema {
@@ -277,8 +30,23 @@ func createTestSchema() *schema.Schema {
 }
 
 func TestModelGet(t *testing.T) {
-	db := newMockDB()
+	db := newTestDB()
+	defer db.Close()
+	
 	testSchema := createTestSchema()
+	
+	// Register schema and create table
+	err := db.RegisterSchema("User", testSchema)
+	if err != nil {
+		t.Fatalf("Failed to register schema: %v", err)
+	}
+	
+	err = db.CreateModel(testSchema)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	defer db.DropModel("User")
+	
 	model := New(testSchema, db)
 
 	// Insert test data
@@ -287,7 +55,10 @@ func TestModelGet(t *testing.T) {
 		"email": "john@example.com",
 		"age":   30,
 	}
-	id, _ := db.Insert("users", testData)
+	id, err := db.Insert("User", testData)
+	if err != nil {
+		t.Fatalf("Failed to insert data: %v", err)
+	}
 
 	// Test Get
 	result, err := model.Get(id)
@@ -301,236 +72,312 @@ func TestModelGet(t *testing.T) {
 }
 
 func TestModelAdd(t *testing.T) {
-	db := newMockDB()
+	db := newTestDB()
+	defer db.Close()
+	
 	testSchema := createTestSchema()
+	
+	// Register schema and create table
+	err := db.RegisterSchema("User", testSchema)
+	if err != nil {
+		t.Fatalf("Failed to register schema: %v", err)
+	}
+	
+	err = db.CreateModel(testSchema)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	defer db.DropModel("User")
+	
 	model := New(testSchema, db)
 
-	// Test valid data
-	testData := map[string]interface{}{
+	// Test Add
+	data := map[string]interface{}{
 		"name":  "Jane Doe",
 		"email": "jane@example.com",
 		"age":   25,
 	}
 
-	id, err := model.Add(testData)
+	id, err := model.Add(data)
 	if err != nil {
 		t.Fatalf("Failed to add record: %v", err)
 	}
 
-	if id != 1 {
-		t.Errorf("Expected ID 1, got %d", id)
+	if id <= 0 {
+		t.Errorf("Expected positive ID, got %v", id)
 	}
 
-	// Verify data was added
-	result, _ := model.Get(id)
+	// Verify the record was added
+	result, err := model.Get(id)
+	if err != nil {
+		t.Fatalf("Failed to get added record: %v", err)
+	}
+
 	if result["name"] != "Jane Doe" {
 		t.Errorf("Expected name 'Jane Doe', got '%v'", result["name"])
 	}
 }
 
 func TestModelAddValidation(t *testing.T) {
-	db := newMockDB()
+	db := newTestDB()
+	defer db.Close()
+	
 	testSchema := createTestSchema()
+	
+	// Register schema and create table
+	err := db.RegisterSchema("User", testSchema)
+	if err != nil {
+		t.Fatalf("Failed to register schema: %v", err)
+	}
+	
+	err = db.CreateModel(testSchema)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	defer db.DropModel("User")
+	
 	model := New(testSchema, db)
 
-	// Test missing required field
-	invalidData := map[string]interface{}{
-		"age": 25,
+	// Test validation - missing required field
+	data := map[string]interface{}{
+		"email": "test@example.com",
+		// Missing required "name" field
 	}
 
-	_, err := model.Add(invalidData)
+	_, err = model.Add(data)
 	if err == nil {
 		t.Error("Expected validation error for missing required field")
 	}
 
-	// Test unknown field
-	invalidData2 := map[string]interface{}{
-		"name":    "John",
-		"email":   "john@example.com",
-		"unknown": "value",
+	// Test validation - invalid field type
+	data = map[string]interface{}{
+		"name":  "Test User",
+		"email": "test@example.com",
+		"age":   "invalid_age", // Should be int
 	}
 
-	_, err = model.Add(invalidData2)
+	_, err = model.Add(data)
 	if err == nil {
-		t.Error("Expected validation error for unknown field")
+		t.Error("Expected validation error for invalid field type")
 	}
 }
 
 func TestModelSet(t *testing.T) {
-	db := newMockDB()
+	db := newTestDB()
+	defer db.Close()
+	
 	testSchema := createTestSchema()
+	
+	// Register schema and create table
+	err := db.RegisterSchema("User", testSchema)
+	if err != nil {
+		t.Fatalf("Failed to register schema: %v", err)
+	}
+	
+	err = db.CreateModel(testSchema)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	defer db.DropModel("User")
+	
 	model := New(testSchema, db)
 
-	// Add initial data
-	testData := map[string]interface{}{
+	// Insert initial data
+	data := map[string]interface{}{
 		"name":  "Original Name",
 		"email": "original@example.com",
-		"age":   20,
+		"age":   30,
 	}
-	id, _ := model.Add(testData)
+	id, _ := model.Add(data)
 
-	// Update data
+	// Test Set
 	updateData := map[string]interface{}{
 		"name": "Updated Name",
-		"age":  21,
+		"age":  35,
 	}
 
-	err := model.Set(id, updateData)
+	err = model.Set(id, updateData)
 	if err != nil {
 		t.Fatalf("Failed to update record: %v", err)
 	}
 
-	// Verify update
-	result, _ := model.Get(id)
-	if result["name"] != "Updated Name" {
-		t.Errorf("Expected name 'Updated Name', got '%v'", result["name"])
+	// Verify the update
+	result, err := model.Get(id)
+	if err != nil {
+		t.Fatalf("Failed to get updated record: %v", err)
 	}
-	if result["email"] != "original@example.com" {
-		t.Errorf("Email should not have changed, got '%v'", result["email"])
+
+	if result["name"] != "Updated Name" {
+		t.Errorf("Expected updated name 'Updated Name', got '%v'", result["name"])
+	}
+
+	if result["age"] != int64(35) {
+		t.Errorf("Expected updated age 35, got '%v'", result["age"])
 	}
 }
 
 func TestModelRemove(t *testing.T) {
-	db := newMockDB()
+	db := newTestDB()
+	defer db.Close()
+	
 	testSchema := createTestSchema()
+	
+	// Register schema and create table
+	err := db.RegisterSchema("User", testSchema)
+	if err != nil {
+		t.Fatalf("Failed to register schema: %v", err)
+	}
+	
+	err = db.CreateModel(testSchema)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	defer db.DropModel("User")
+	
 	model := New(testSchema, db)
 
-	// Add test data
-	testData := map[string]interface{}{
-		"name":  "To Delete",
+	// Insert test data
+	data := map[string]interface{}{
+		"name":  "To Be Deleted",
 		"email": "delete@example.com",
-		"age":   30,
+		"age":   25,
 	}
-	id, _ := model.Add(testData)
+	id, _ := model.Add(data)
 
-	// Remove record
-	err := model.Remove(id)
+	// Test Remove
+	err = model.Remove(id)
 	if err != nil {
 		t.Fatalf("Failed to remove record: %v", err)
 	}
 
-	// Verify removal
-	result, _ := model.Get(id)
-	if result != nil {
-		t.Error("Expected nil result after removal")
+	// Verify the record was removed
+	_, err = model.Get(id)
+	if err == nil {
+		t.Error("Expected error when getting removed record")
 	}
 }
 
 func TestModelSelect(t *testing.T) {
-	db := newMockDB()
+	db := newTestDB()
+	defer db.Close()
+	
 	testSchema := createTestSchema()
+	
+	// Register schema and create table
+	err := db.RegisterSchema("User", testSchema)
+	if err != nil {
+		t.Fatalf("Failed to register schema: %v", err)
+	}
+	
+	err = db.CreateModel(testSchema)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	defer db.DropModel("User")
+	
 	model := New(testSchema, db)
 
-	// Add test data
+	// Insert test data
 	users := []map[string]interface{}{
-		{"name": "User1", "email": "user1@example.com", "age": 20},
-		{"name": "User2", "email": "user2@example.com", "age": 25},
-		{"name": "User3", "email": "user3@example.com", "age": 30},
+		{"name": "User1", "email": "user1@example.com", "age": 25},
+		{"name": "User2", "email": "user2@example.com", "age": 30},
+		{"name": "User3", "email": "user3@example.com", "age": 35},
 	}
 
 	for _, user := range users {
-		model.Add(user)
+		_, err := model.Add(user)
+		if err != nil {
+			t.Fatalf("Failed to add test user: %v", err)
+		}
 	}
 
-	// Test select all
-	qb := model.Select()
-	results, err := qb.Execute()
+	// Test Select
+	qb := model.Select("name", "age")
+	results, err := qb.Where("age", ">", 25).OrderBy("age", "ASC").Execute()
 	if err != nil {
-		t.Fatalf("Failed to execute select: %v", err)
-	}
-	if len(results) != 3 {
-		t.Errorf("Expected 3 results, got %d", len(results))
+		t.Fatalf("Failed to execute query: %v", err)
 	}
 
-	// Test select with columns
-	qb2 := model.Select("name", "email")
-	results2, err := qb2.Execute()
-	if err != nil {
-		t.Fatalf("Failed to execute select with columns: %v", err)
-	}
-	if len(results2) != 3 {
-		t.Errorf("Expected 3 results, got %d", len(results2))
+	if len(results) != 2 {
+		t.Errorf("Expected 2 results, got %d", len(results))
 	}
 
-	// Test with where clause
-	qb3 := model.Select().Where("age", "=", 25)
-	results3, err := qb3.Execute()
-	if err != nil {
-		t.Fatalf("Failed to execute select with where: %v", err)
-	}
-	if len(results3) != 1 {
-		t.Errorf("Expected 1 result, got %d", len(results3))
+	if results[0]["name"] != "User2" {
+		t.Errorf("Expected first result name 'User2', got '%v'", results[0]["name"])
 	}
 }
 
 func TestValidateFieldType(t *testing.T) {
-	tests := []struct {
-		name    string
-		field   *schema.Field
-		value   interface{}
-		wantErr bool
+	testCases := []struct {
+		name        string
+		field       *schema.Field
+		value       interface{}
+		expectError bool
 	}{
 		{
-			name:    "Valid string",
-			field:   &schema.Field{Type: schema.FieldTypeString, Nullable: false},
-			value:   "test",
-			wantErr: false,
+			name:        "Valid string",
+			field:       &schema.Field{Name: "name", Type: schema.FieldTypeString},
+			value:       "test",
+			expectError: false,
 		},
 		{
-			name:    "Invalid string type",
-			field:   &schema.Field{Type: schema.FieldTypeString, Nullable: false},
-			value:   123,
-			wantErr: true,
+			name:        "Invalid string type",
+			field:       &schema.Field{Name: "name", Type: schema.FieldTypeString},
+			value:       123,
+			expectError: true,
 		},
 		{
-			name:    "Null value for nullable field",
-			field:   &schema.Field{Type: schema.FieldTypeString, Nullable: true},
-			value:   nil,
-			wantErr: false,
+			name:        "Null value for nullable field",
+			field:       &schema.Field{Name: "name", Type: schema.FieldTypeString, Nullable: true},
+			value:       nil,
+			expectError: false,
 		},
 		{
-			name:    "Null value for non-nullable field",
-			field:   &schema.Field{Type: schema.FieldTypeString, Nullable: false},
-			value:   nil,
-			wantErr: true,
+			name:        "Null value for non-nullable field",
+			field:       &schema.Field{Name: "name", Type: schema.FieldTypeString},
+			value:       nil,
+			expectError: true,
 		},
 		{
-			name:    "Valid int",
-			field:   &schema.Field{Type: schema.FieldTypeInt, Nullable: false},
-			value:   123,
-			wantErr: false,
+			name:        "Valid int",
+			field:       &schema.Field{Name: "age", Type: schema.FieldTypeInt},
+			value:       25,
+			expectError: false,
 		},
 		{
-			name:    "Valid int64",
-			field:   &schema.Field{Type: schema.FieldTypeInt, Nullable: false},
-			value:   int64(123),
-			wantErr: false,
+			name:        "Valid int64",
+			field:       &schema.Field{Name: "age", Type: schema.FieldTypeInt64},
+			value:       int64(25),
+			expectError: false,
 		},
 		{
-			name:    "Valid float as int",
-			field:   &schema.Field{Type: schema.FieldTypeInt, Nullable: false},
-			value:   123.0,
-			wantErr: false,
+			name:        "Valid float as int",
+			field:       &schema.Field{Name: "age", Type: schema.FieldTypeInt},
+			value:       25.0,
+			expectError: false,
 		},
 		{
-			name:    "Valid bool",
-			field:   &schema.Field{Type: schema.FieldTypeBool, Nullable: false},
-			value:   true,
-			wantErr: false,
+			name:        "Valid bool",
+			field:       &schema.Field{Name: "active", Type: schema.FieldTypeBool},
+			value:       true,
+			expectError: false,
 		},
 		{
-			name:    "Invalid bool type",
-			field:   &schema.Field{Type: schema.FieldTypeBool, Nullable: false},
-			value:   "true",
-			wantErr: true,
+			name:        "Invalid bool type",
+			field:       &schema.Field{Name: "active", Type: schema.FieldTypeBool},
+			value:       "true",
+			expectError: true,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateFieldType(tt.field, tt.value)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateFieldType() error = %v, wantErr %v", err, tt.wantErr)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateFieldType(tc.field, tc.value)
+			if tc.expectError && err == nil {
+				t.Error("Expected validation error but got none")
+			}
+			if !tc.expectError && err != nil {
+				t.Errorf("Expected no validation error but got: %v", err)
 			}
 		})
 	}

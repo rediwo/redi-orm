@@ -106,9 +106,17 @@ func (p *PostgreSQLDB) CreateTable(schema *schema.Schema) error {
 	return err
 }
 
-func (p *PostgreSQLDB) DropTable(tableName string) error {
+func (p *PostgreSQLDB) CreateModel(schema *schema.Schema) error {
+	return p.CreateTable(schema)
+}
+
+func (p *PostgreSQLDB) DropModel(modelName string) error {
+	tableName, err := p.resolveTableName(modelName)
+	if err != nil {
+		return err
+	}
 	query := fmt.Sprintf("DROP TABLE IF EXISTS \"%s\"", tableName)
-	_, err := p.db.Exec(query)
+	_, err = p.db.Exec(query)
 	return err
 }
 
@@ -243,49 +251,24 @@ func (p *PostgreSQLDB) QueryRow(query string, args ...interface{}) *sql.Row {
 	return p.db.QueryRow(query, args...)
 }
 
-// GetMigrator returns nil for PostgreSQL (migration not implemented yet)
+// GetMigrator returns a PostgreSQL migrator for schema migrations
 func (p *PostgreSQLDB) GetMigrator() types.DatabaseMigrator {
-	return nil
+	return NewPostgreSQLMigrator(p.db)
 }
 
-// EnsureSchema performs auto-migration for all registered schemas
+// EnsureSchema performs auto-migration for all registered schemas using the base migrator
 func (p *PostgreSQLDB) EnsureSchema() error {
-	// For now, just create all tables that don't exist
-	// TODO: Implement proper schema migration with PostgreSQL migrator
-	
-	// Get list of existing tables
-	rows, err := p.db.Query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-	if err != nil {
-		return fmt.Errorf("failed to get existing tables: %w", err)
-	}
-	defer rows.Close()
-
-	existingTables := make(map[string]bool)
-	for rows.Next() {
-		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return fmt.Errorf("failed to scan table name: %w", err)
-		}
-		existingTables[tableName] = true
+	migrator := p.GetMigrator()
+	if migrator == nil {
+		return fmt.Errorf("migrator not available")
 	}
 
-	// Process each registered schema
-	for _, schemaInterface := range p.schemas {
-		schema, ok := schemaInterface.(*schema.Schema)
-		if !ok {
-			continue
-		}
-
-		tableName := schema.TableName
-		if !existingTables[tableName] {
-			// Table doesn't exist, create it
-			if err := p.CreateTable(schema); err != nil {
-				return fmt.Errorf("failed to create table %s: %w", tableName, err)
-			}
-		}
+	// Use the base migrator's shared logic
+	if baseMigrator, ok := migrator.(*PostgreSQLMigrator); ok {
+		return baseMigrator.base.EnsureSchemaForRegisteredSchemas(p.schemas, p.CreateModel)
 	}
 
-	return nil
+	return fmt.Errorf("invalid migrator type")
 }
 
 // RegisterSchema registers a schema for model name resolution

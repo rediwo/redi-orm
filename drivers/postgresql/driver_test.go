@@ -33,7 +33,7 @@ func TestPostgreSQLConnect(t *testing.T) {
 	defer db.Close()
 }
 
-func TestPostgreSQLCreateTable(t *testing.T) {
+func TestPostgreSQLCreateModel(t *testing.T) {
 	db := setupPostgreSQLDB(t)
 	defer db.Close()
 
@@ -46,13 +46,13 @@ func TestPostgreSQLCreateTable(t *testing.T) {
 		AddField(schema.NewField("data").JSON().Nullable().Build()).
 		AddField(schema.NewField("created_at").DateTime().Build())
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(schema)
 	if err != nil {
-		t.Errorf("Failed to create table: %v", err)
+		t.Errorf("Failed to create model: %v", err)
 	}
 
 	// Clean up
-	db.DropTable(schema.TableName)
+	db.DropModel("test_table")
 }
 
 func TestPostgreSQLInsert(t *testing.T) {
@@ -67,11 +67,11 @@ func TestPostgreSQLInsert(t *testing.T) {
 	// Register schema for name conversion
 	db.RegisterSchema(schema.TableName, schema)
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(schema)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		t.Fatalf("Failed to create model: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+	defer db.DropModel("test_users")
 
 	data := map[string]interface{}{
 		"name":  "John Doe",
@@ -100,11 +100,11 @@ func TestPostgreSQLFindByID(t *testing.T) {
 	// Register schema for name conversion
 	db.RegisterSchema(schema.TableName, schema)
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(schema)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		t.Fatalf("Failed to create model: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+	defer db.DropModel("test_users")
 
 	data := map[string]interface{}{
 		"name":  "Jane Doe",
@@ -138,11 +138,11 @@ func TestPostgreSQLFind(t *testing.T) {
 	// Register schema for name conversion
 	db.RegisterSchema(schema.TableName, schema)
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(schema)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		t.Fatalf("Failed to create model: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+	defer db.DropModel("test_users")
 
 	// Insert test data
 	testData := []map[string]interface{}{
@@ -194,11 +194,11 @@ func TestPostgreSQLUpdate(t *testing.T) {
 	// Register schema for name conversion
 	db.RegisterSchema(schema.TableName, schema)
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(schema)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		t.Fatalf("Failed to create model: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+	defer db.DropModel("test_users")
 
 	data := map[string]interface{}{
 		"name": "UpdateTest",
@@ -253,11 +253,11 @@ func TestPostgreSQLDelete(t *testing.T) {
 	// Register schema for name conversion
 	db.RegisterSchema(schema.TableName, schema)
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(schema)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		t.Fatalf("Failed to create model: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+	defer db.DropModel("test_users")
 
 	data := map[string]interface{}{
 		"name": "DeleteTest",
@@ -292,11 +292,11 @@ func TestPostgreSQLTransaction(t *testing.T) {
 	// Register schema for name conversion
 	db.RegisterSchema(schema.TableName, schema)
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(schema)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		t.Fatalf("Failed to create model: %v", err)
 	}
-	defer db.DropTable(schema.TableName)
+	defer db.DropModel("test_users")
 
 	t.Run("Successful transaction", func(t *testing.T) {
 		tx, err := db.Begin()
@@ -367,29 +367,29 @@ func TestPostgreSQLTransaction(t *testing.T) {
 	})
 }
 
-func TestPostgreSQLDropTable(t *testing.T) {
+func TestPostgreSQLDropModel(t *testing.T) {
 	db := setupPostgreSQLDB(t)
 	defer db.Close()
 
 	schema := schema.New("test_drop").
 		AddField(schema.NewField("id").Int().PrimaryKey().Build())
 
-	err := db.CreateTable(schema)
+	err := db.CreateModel(schema)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		t.Fatalf("Failed to create model: %v", err)
 	}
 
-	err = db.DropTable(schema.TableName)
+	err = db.DropModel("test_drop")
 	if err != nil {
-		t.Errorf("Failed to drop table: %v", err)
+		t.Errorf("Failed to drop model: %v", err)
 	}
 
-	// Try to create the same table again - should succeed if dropped
-	err = db.CreateTable(schema)
+	// Try to create the same model again - should succeed if dropped
+	err = db.CreateModel(schema)
 	if err != nil {
-		t.Errorf("Failed to recreate table after drop: %v", err)
+		t.Errorf("Failed to recreate model after drop: %v", err)
 	}
 
 	// Clean up
-	db.DropTable(schema.TableName)
+	db.DropModel("test_drop")
 }

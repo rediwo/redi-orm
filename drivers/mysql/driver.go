@@ -96,9 +96,17 @@ func (m *MySQLDB) CreateTable(schema *schema.Schema) error {
 	return err
 }
 
-func (m *MySQLDB) DropTable(tableName string) error {
+func (m *MySQLDB) CreateModel(schema *schema.Schema) error {
+	return m.CreateTable(schema)
+}
+
+func (m *MySQLDB) DropModel(modelName string) error {
+	tableName, err := m.resolveTableName(modelName)
+	if err != nil {
+		return err
+	}
 	query := fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName)
-	_, err := m.db.Exec(query)
+	_, err = m.db.Exec(query)
 	return err
 }
 
@@ -229,49 +237,24 @@ func (m *MySQLDB) QueryRow(query string, args ...interface{}) *sql.Row {
 	return m.db.QueryRow(query, args...)
 }
 
-// GetMigrator returns nil for MySQL (migration not implemented yet)
+// GetMigrator returns a MySQL migrator for schema migrations
 func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {
-	return nil
+	return NewMySQLMigrator(m.db)
 }
 
-// EnsureSchema performs auto-migration for all registered schemas
+// EnsureSchema performs auto-migration for all registered schemas using the base migrator
 func (m *MySQLDB) EnsureSchema() error {
-	// For now, just create all tables that don't exist
-	// TODO: Implement proper schema migration with MySQL migrator
-	
-	// Get list of existing tables
-	rows, err := m.db.Query("SHOW TABLES")
-	if err != nil {
-		return fmt.Errorf("failed to get existing tables: %w", err)
-	}
-	defer rows.Close()
-
-	existingTables := make(map[string]bool)
-	for rows.Next() {
-		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return fmt.Errorf("failed to scan table name: %w", err)
-		}
-		existingTables[tableName] = true
+	migrator := m.GetMigrator()
+	if migrator == nil {
+		return fmt.Errorf("migrator not available")
 	}
 
-	// Process each registered schema
-	for _, schemaInterface := range m.schemas {
-		schema, ok := schemaInterface.(*schema.Schema)
-		if !ok {
-			continue
-		}
-
-		tableName := schema.TableName
-		if !existingTables[tableName] {
-			// Table doesn't exist, create it
-			if err := m.CreateTable(schema); err != nil {
-				return fmt.Errorf("failed to create table %s: %w", tableName, err)
-			}
-		}
+	// Use the base migrator's shared logic
+	if baseMigrator, ok := migrator.(*MySQLMigrator); ok {
+		return baseMigrator.base.EnsureSchemaForRegisteredSchemas(m.schemas, m.CreateModel)
 	}
 
-	return nil
+	return fmt.Errorf("invalid migrator type")
 }
 
 // RegisterSchema registers a schema for model name resolution

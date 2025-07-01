@@ -1,14 +1,33 @@
 package drivers
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
 
+func setupSQLiteTestDB(t *testing.T) *SQLiteDB {
+	config := types.Config{
+		Type:     "sqlite",
+		FilePath: ":memory:",
+	}
+
+	db, err := NewSQLiteDB(config)
+	if err != nil {
+		t.Fatalf("Failed to create SQLite database: %v", err)
+	}
+
+	if err := db.Connect(); err != nil {
+		t.Fatalf("Failed to connect to SQLite database: %v", err)
+	}
+
+	return db
+}
+
 func TestSQLiteMigratorGetTables(t *testing.T) {
-	db := setupSQLiteDB(t)
+	db := setupSQLiteTestDB(t)
 	defer db.Close()
 
 	migrator := db.GetMigrator()
@@ -40,21 +59,21 @@ func TestSQLiteMigratorGetTables(t *testing.T) {
 
 	found := false
 	for _, table := range tables {
-		if table == "test_tables" { // Schema conversion
+		if table == "testtables" { // Schema conversion: TestTable -> testtables
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		t.Errorf("Expected to find 'test_tables' in tables list: %v", tables)
+		t.Errorf("Expected to find 'testtables' in tables list: %v", tables)
 	}
 
 	t.Log("✅ SQLite migrator GetTables works correctly")
 }
 
 func TestSQLiteMigratorGetTableInfo(t *testing.T) {
-	db := setupSQLiteDB(t)
+	db := setupSQLiteTestDB(t)
 	defer db.Close()
 
 	migrator := db.GetMigrator()
@@ -76,13 +95,13 @@ func TestSQLiteMigratorGetTableInfo(t *testing.T) {
 	}
 
 	// Get table information
-	tableInfo, err := migrator.GetTableInfo("detailed_tables")
+	tableInfo, err := migrator.GetTableInfo("detailedtables")
 	if err != nil {
 		t.Fatalf("Failed to get table info: %v", err)
 	}
 
-	if tableInfo.Name != "detailed_tables" {
-		t.Errorf("Expected table name 'detailed_tables', got '%s'", tableInfo.Name)
+	if tableInfo.Name != "detailedtables" {
+		t.Errorf("Expected table name 'detailedtables', got '%s'", tableInfo.Name)
 	}
 
 	if len(tableInfo.Columns) != 5 {
@@ -120,7 +139,7 @@ func TestSQLiteMigratorGetTableInfo(t *testing.T) {
 }
 
 func TestSQLiteMigratorGenerateCreateTableSQL(t *testing.T) {
-	db := setupSQLiteDB(t)
+	db := setupSQLiteTestDB(t)
 	defer db.Close()
 
 	migrator := db.GetMigrator()
@@ -150,7 +169,7 @@ func TestSQLiteMigratorGenerateCreateTableSQL(t *testing.T) {
 	// Check that SQL contains expected elements
 	expectedElements := []string{
 		"CREATE TABLE",
-		"sql_gen_tests", // Table name conversion
+		"sqlgentests", // Table name conversion: SQLGenTest -> sqlgentests
 		"id",
 		"name",
 		"email",
@@ -164,7 +183,7 @@ func TestSQLiteMigratorGenerateCreateTableSQL(t *testing.T) {
 	}
 
 	for _, element := range expectedElements {
-		if !contains(sql, element) {
+		if !containsString(sql, element) {
 			t.Errorf("Expected SQL to contain '%s', but it doesn't. SQL: %s", element, sql)
 		}
 	}
@@ -174,7 +193,7 @@ func TestSQLiteMigratorGenerateCreateTableSQL(t *testing.T) {
 }
 
 func TestSQLiteMigratorCompareSchema(t *testing.T) {
-	db := setupSQLiteDB(t)
+	db := setupSQLiteTestDB(t)
 	defer db.Close()
 
 	migrator := db.GetMigrator()
@@ -193,7 +212,7 @@ func TestSQLiteMigratorCompareSchema(t *testing.T) {
 	}
 
 	// Get table info
-	tableInfo, err := migrator.GetTableInfo("compare_tests")
+	tableInfo, err := migrator.GetTableInfo("comparetests")
 	if err != nil {
 		t.Fatalf("Failed to get table info: %v", err)
 	}
@@ -221,7 +240,7 @@ func TestSQLiteMigratorCompareSchema(t *testing.T) {
 }
 
 func TestSQLiteMigratorGenerateMigrationSQL(t *testing.T) {
-	db := setupSQLiteDB(t)
+	db := setupSQLiteTestDB(t)
 	defer db.Close()
 
 	migrator := db.GetMigrator()
@@ -266,7 +285,7 @@ func TestSQLiteMigratorGenerateMigrationSQL(t *testing.T) {
 }
 
 func TestSQLiteMigratorApplyMigration(t *testing.T) {
-	db := setupSQLiteDB(t)
+	db := setupSQLiteTestDB(t)
 	defer db.Close()
 
 	migrator := db.GetMigrator()
@@ -304,7 +323,7 @@ func TestSQLiteMigratorApplyMigration(t *testing.T) {
 }
 
 func TestSQLiteMigratorGetDatabaseType(t *testing.T) {
-	db := setupSQLiteDB(t)
+	db := setupSQLiteTestDB(t)
 	defer db.Close()
 
 	migrator := db.GetMigrator()
@@ -321,7 +340,7 @@ func TestSQLiteMigratorGetDatabaseType(t *testing.T) {
 }
 
 func TestSQLiteMigratorIntegrationFlow(t *testing.T) {
-	db := setupSQLiteDB(t)
+	db := setupSQLiteTestDB(t)
 	defer db.Close()
 
 	migrator := db.GetMigrator()
@@ -407,6 +426,11 @@ func TestSQLiteMigratorIntegrationFlow(t *testing.T) {
 	}
 
 	t.Log("✅ SQLite migrator integration flow works correctly")
+}
+
+// Helper function to check if a string contains a substring
+func containsString(text, substr string) bool {
+	return strings.Contains(text, substr)
 }
 
 // Helper function to check if a slice contains a string

@@ -48,4 +48,5 @@ build/
 *.log
 *.log.pid
 *.db
+test_*.db
 bin/

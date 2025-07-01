@@ -84,9 +84,17 @@ func (s *SQLiteDB) CreateTable(schema *schema.Schema) error {
 	return err
 }
 
-func (s *SQLiteDB) DropTable(tableName string) error {
+func (s *SQLiteDB) CreateModel(schema *schema.Schema) error {
+	return s.CreateTable(schema)
+}
+
+func (s *SQLiteDB) DropModel(modelName string) error {
+	tableName, err := s.resolveTableName(modelName)
+	if err != nil {
+		return err
+	}
 	query := fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName)
-	_, err := s.db.Exec(query)
+	_, err = s.db.Exec(query)
 	return err
 }
 
@@ -229,48 +237,19 @@ func (s *SQLiteDB) GetMigrator() types.DatabaseMigrator {
 	return s.migrator
 }
 
-// EnsureSchema performs auto-migration for all registered schemas
+// EnsureSchema performs auto-migration for all registered schemas using the base migrator
 func (s *SQLiteDB) EnsureSchema() error {
 	migrator := s.GetMigrator()
 	if migrator == nil {
 		return fmt.Errorf("migrator not available")
 	}
 
-	// Get existing tables
-	existingTables, err := migrator.GetTables()
-	if err != nil {
-		return fmt.Errorf("failed to get existing tables: %w", err)
+	// Use the base migrator's shared logic
+	if baseMigrator, ok := migrator.(*SQLiteMigrator); ok {
+		return baseMigrator.base.EnsureSchemaForRegisteredSchemas(s.schemas, s.CreateModel)
 	}
 
-	// Create a map for quick lookup
-	existingTableMap := make(map[string]bool)
-	for _, table := range existingTables {
-		existingTableMap[table] = true
-	}
-
-	// Process each registered schema
-	for _, schemaInterface := range s.schemas {
-		schema, ok := schemaInterface.(*schema.Schema)
-		if !ok {
-			continue
-		}
-
-		tableName := schema.TableName
-		
-		if !existingTableMap[tableName] {
-			// Table doesn't exist, create it
-			if err := s.CreateTable(schema); err != nil {
-				return fmt.Errorf("failed to create table %s: %w", tableName, err)
-			}
-		} else {
-			// Table exists, check for schema changes
-			// For now, we'll just skip existing tables
-			// In the future, we can implement column additions/modifications
-			continue
-		}
-	}
-
-	return nil
+	return fmt.Errorf("invalid migrator type")
 }
 
 // RegisterSchema registers a schema for model name resolution
