@@ -32,7 +32,7 @@ type DatabaseSpecificMigrator interface {
 	FormatDefaultValue(value any) string
 	GenerateColumnDefinitionFromColumnInfo(col types.ColumnInfo) string
 	ConvertFieldToColumnInfo(field schema.Field) *types.ColumnInfo
-	
+
 	// Index management
 	IsSystemIndex(indexName string) bool
 }
@@ -394,7 +394,7 @@ func (b *BaseMigrator) compareIndexes(existingTable *types.TableInfo, desiredSch
 			// Generate index name for field-level index
 			indexName := b.generateFieldIndexName(existingTable.Name, field.GetColumnName())
 			normalizedName := b.normalizeIndexName(indexName)
-			
+
 			// Skip if already processed (e.g., part of composite index)
 			if !processedIndexNames[normalizedName] {
 				idx := &schema.Index{
@@ -512,13 +512,13 @@ func (b *BaseMigrator) generateIndexName(tableName string, idx *schema.Index) st
 	if idx.Name != "" {
 		return idx.Name
 	}
-	
+
 	// Generate name based on columns
 	prefix := "idx"
 	if idx.Unique {
 		prefix = "uniq"
 	}
-	
+
 	columnPart := strings.Join(idx.Fields, "_")
 	return fmt.Sprintf("%s_%s_%s", prefix, tableName, columnPart)
 }
@@ -527,7 +527,6 @@ func (b *BaseMigrator) generateIndexName(tableName string, idx *schema.Index) st
 func (b *BaseMigrator) generateFieldIndexName(tableName, columnName string) string {
 	return fmt.Sprintf("idx_%s_%s", tableName, columnName)
 }
-
 
 // indexNeedsModification checks if an index needs to be modified
 func (b *BaseMigrator) indexNeedsModification(existing *types.IndexInfo, desiredColumns []string, desiredUnique bool) bool {

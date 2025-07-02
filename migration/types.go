@@ -18,11 +18,21 @@ type Migration struct {
 	Checksum  string
 }
 
+// MigrationMode represents the migration execution mode
+type MigrationMode string
+
+const (
+	MigrationModeAuto MigrationMode = "auto" // Auto-migrate (development)
+	MigrationModeFile MigrationMode = "file" // File-based migrations (production)
+)
+
 // MigrationOptions contains options for migration operations
 type MigrationOptions struct {
-	AutoMigrate bool
-	DryRun      bool
-	Force       bool // Force destructive changes without confirmation
+	AutoMigrate   bool
+	DryRun        bool
+	Force         bool          // Force destructive changes without confirmation
+	Mode          MigrationMode // Migration mode (auto or file)
+	MigrationsDir string        // Directory containing migration files
 }
 
 // ChangeType represents the type of schema change
@@ -55,4 +65,24 @@ type MigrationPlan struct {
 	Changes   []SchemaChange
 	Checksum  string
 	Timestamp time.Time
+}
+
+// MigrationFile represents a migration file on disk
+type MigrationFile struct {
+	Version  string
+	Name     string
+	UpSQL    string
+	DownSQL  string
+	Metadata MigrationMetadata
+}
+
+// MigrationMetadata contains metadata for a migration file
+type MigrationMetadata struct {
+	Version     string            `json:"version"`
+	Name        string            `json:"name"`
+	Checksum    string            `json:"checksum"`
+	CreatedAt   time.Time         `json:"created_at"`
+	Description string            `json:"description"`
+	Changes     []SchemaChange    `json:"changes"`
+	Schemas     map[string]string `json:"schemas"` // Model name -> schema hash
 }

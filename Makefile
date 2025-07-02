@@ -1,6 +1,6 @@
 # RediORM Makefile
 
-.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-orm test-docker docker-up docker-down docker-wait clean fmt lint vet deps
+.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-orm test-docker docker-up docker-down docker-wait clean fmt lint vet deps build install cli-build cli-install
 
 # Default target
 help:
@@ -25,6 +25,8 @@ help:
 	@echo "  vet           - Run go vet"
 	@echo "  deps          - Download and tidy module dependencies"
 	@echo "  clean         - Clean build artifacts"
+	@echo "  cli-build     - Build the CLI tool"
+	@echo "  cli-install   - Install the CLI tool globally"
 
 # Test targets
 test:
@@ -85,6 +87,14 @@ deps:
 clean:
 	rm -f *.db
 	rm -f test_*.db
+	rm -f ./redi-orm
+
+# CLI targets
+cli-build:
+	go build -o redi-orm ./cmd/redi-orm
+
+cli-install:
+	go install ./cmd/redi-orm
 
 # Development workflow
 dev: fmt vet test

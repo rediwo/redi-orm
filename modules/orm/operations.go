@@ -173,8 +173,13 @@ func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQ
 	}
 
 	query := model.Select()
-	if err := m.applyWhereConditions(query, where); err != nil {
-		return nil, err
+	
+	// Apply where conditions properly by building and applying them
+	if whereMap, ok := where.(map[string]any); ok {
+		for field, value := range whereMap {
+			condition := query.Where(field).Equals(value)
+			query = query.WhereCondition(condition)
+		}
 	}
 
 	// Handle select fields
@@ -433,8 +438,13 @@ func (m *ModelsModule) executeUpdate(ctx context.Context, model types.ModelQuery
 	processedData := m.processUpdateData(data)
 
 	query := model.Update(processedData)
-	if err := m.applyWhereConditions(query, where); err != nil {
-		return nil, err
+	
+	// Apply where conditions properly by building and applying them
+	if whereMap, ok := where.(map[string]any); ok {
+		for field, value := range whereMap {
+			condition := query.Where(field).Equals(value)
+			query = query.WhereCondition(condition)
+		}
 	}
 
 	// Handle returning specific fields
@@ -614,28 +624,13 @@ func (m *ModelsModule) processNestedWrites(data any, operation string) any {
 func (m *ModelsModule) processUpdateData(data any) any {
 	dataMap, ok := data.(map[string]any)
 	if !ok {
+		// Not a map, return as-is
 		return data
 	}
 
-	processed := make(map[string]any)
-	for key, value := range dataMap {
-		// Check for atomic operations
-		if valueMap, ok := value.(map[string]any); ok {
-			if inc, ok := valueMap["increment"]; ok {
-				// This would need special handling in the query builder
-				processed[key] = inc
-			} else if dec, ok := valueMap["decrement"]; ok {
-				// This would need special handling in the query builder
-				processed[key] = dec
-			} else {
-				processed[key] = value
-			}
-		} else {
-			processed[key] = value
-		}
-	}
-
-	return processed
+	// For now, just return the data as-is since we don't have complex atomic operations
+	// This ensures the data is passed through correctly
+	return dataMap
 }
 
 func (m *ModelsModule) extractFieldNames(selectFields any) []string {

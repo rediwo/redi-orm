@@ -87,6 +87,40 @@ func ScanRow(rows *sql.Rows, dest any) error {
 		return rows.Scan(dest)
 	}
 
+	// Handle map types
+	if destType.Elem().Kind() == reflect.Map &&
+		destType.Elem().Key().Kind() == reflect.String &&
+		destType.Elem().Elem().Kind() == reflect.Interface {
+		
+		// Scan into a single map
+		values := make([]any, len(columns))
+		valuePtrs := make([]any, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Create the result map
+		rowMap := make(map[string]any)
+		for i, col := range columns {
+			val := values[i]
+			// Handle byte arrays (convert to string)
+			if b, ok := val.([]byte); ok {
+				rowMap[col] = string(b)
+			} else {
+				rowMap[col] = val
+			}
+		}
+
+		// Set the map to the destination
+		destValue := reflect.ValueOf(dest).Elem()
+		destValue.Set(reflect.ValueOf(rowMap))
+		return nil
+	}
+
 	// Handle struct types
 	destValue := reflect.ValueOf(dest).Elem()
 	destType = destValue.Type()

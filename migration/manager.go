@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -12,11 +13,14 @@ import (
 
 // Manager coordinates the migration process
 type Manager struct {
-	db       *sql.DB
-	migrator types.DatabaseMigrator
-	history  *HistoryManager
-	differ   *Differ
-	options  MigrationOptions
+	db          *sql.DB
+	migrator    types.DatabaseMigrator
+	history     *HistoryManager
+	differ      *Differ
+	options     MigrationOptions
+	fileManager *FileManager
+	generator   *Generator
+	runner      *Runner
 }
 
 // NewManager creates a new migration manager
@@ -35,18 +39,43 @@ func NewManager(db types.Database, options MigrationOptions) (*Manager, error) {
 	history := NewHistoryManager(sqlDB.GetDB())
 	differ := NewDiffer(migrator)
 
-	return &Manager{
+	manager := &Manager{
 		db:       sqlDB.GetDB(),
 		migrator: migrator,
 		history:  history,
 		differ:   differ,
 		options:  options,
-	}, nil
+	}
+
+	// Initialize file-based migration components if in file mode
+	if options.Mode == MigrationModeFile && options.MigrationsDir != "" {
+		manager.fileManager = NewFileManager(options.MigrationsDir)
+		manager.generator = NewGenerator(migrator, manager.fileManager)
+
+		runner, err := NewRunner(db, manager.fileManager)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create migration runner: %w", err)
+		}
+		manager.runner = runner
+	}
+
+	return manager, nil
 }
 
-// Migrate performs automatic migration based on schemas
+// Migrate performs migration based on schemas and configured mode
 func (m *Manager) Migrate(schemas map[string]*schema.Schema) error {
-	log.Printf("Starting migration process...")
+	// Handle file-based migrations
+	if m.options.Mode == MigrationModeFile {
+		return m.runFileMigrations()
+	}
+
+	// Default to auto-migration mode
+	return m.autoMigrate(schemas)
+}
+
+// autoMigrate performs automatic migration based on schemas
+func (m *Manager) autoMigrate(schemas map[string]*schema.Schema) error {
+	log.Printf("Starting auto-migration process...")
 
 	// Ensure migration history table exists
 	if err := m.history.EnsureMigrationTable(); err != nil {
@@ -97,6 +126,49 @@ func (m *Manager) Migrate(schemas map[string]*schema.Schema) error {
 
 	log.Printf("Migration completed successfully (version: %s)", version)
 	return nil
+}
+
+// runFileMigrations runs file-based migrations from the configured directory
+func (m *Manager) runFileMigrations() error {
+	if m.runner == nil {
+		return fmt.Errorf("file-based migrations not configured")
+	}
+
+	ctx := context.Background()
+	return m.runner.RunMigrations(ctx)
+}
+
+// GenerateMigration generates a new migration file
+func (m *Manager) GenerateMigration(name string, schemas map[string]*schema.Schema) error {
+	if m.generator == nil {
+		return fmt.Errorf("file-based migrations not configured")
+	}
+
+	migration, err := m.generator.GenerateMigration(name, schemas)
+	if err != nil {
+		return fmt.Errorf("failed to generate migration: %w", err)
+	}
+
+	// Write migration to disk
+	if err := m.fileManager.WriteMigration(migration); err != nil {
+		return fmt.Errorf("failed to write migration: %w", err)
+	}
+
+	log.Printf("Generated migration: %s_%s", migration.Version, migration.Name)
+	log.Printf("  Up SQL: %s/up.sql", migration.Version+"_"+migration.Name)
+	log.Printf("  Down SQL: %s/down.sql", migration.Version+"_"+migration.Name)
+
+	return nil
+}
+
+// RollbackMigration rolls back the last applied migration
+func (m *Manager) RollbackMigration() error {
+	if m.runner == nil {
+		return fmt.Errorf("file-based migrations not configured")
+	}
+
+	ctx := context.Background()
+	return m.runner.RollbackMigration(ctx)
 }
 
 // executeMigration executes a migration plan

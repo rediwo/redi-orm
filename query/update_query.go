@@ -34,7 +34,22 @@ func NewUpdateQuery(baseQuery *ModelQueryImpl, data any) *UpdateQueryImpl {
 	}
 
 	if data != nil {
-		updateQuery.Set(data)
+		// Set doesn't modify the original query, it returns a new one
+		// So we need to copy the data directly instead of using Set
+		switch v := data.(type) {
+		case map[string]any:
+			for field, value := range v {
+				updateQuery.setData[field] = value
+			}
+		default:
+			// Handle struct by extracting fields and values
+			fields, values, err := updateQuery.extractFieldsAndValues(data)
+			if err == nil {
+				for i, field := range fields {
+					updateQuery.setData[field] = values[i]
+				}
+			}
+		}
 	}
 
 	return updateQuery

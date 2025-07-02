@@ -34,11 +34,8 @@ go.work.sum
 .DS_Store
 fixtures/routes/tests/
 
-/redi
-/redi-embedded
-/rejs
-/cmd/redi/redi
-/cmd/rejs/rejs
+/redi-orm
+/cmd/redi-orm/redi-orm
 
 # Wails build output
 redi-app/

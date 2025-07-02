@@ -92,20 +92,68 @@ func (d *Differ) computeTableDiff(s *schema.Schema) ([]SchemaChange, error) {
 		return nil, err
 	}
 
-	// Create maps for easier comparison
-	currentColumns := make(map[string]types.ColumnInfo)
-	for _, col := range tableInfo.Columns {
-		currentColumns[col.Name] = col
+	// Use the migrator's CompareSchema method to get detailed changes
+	plan, err := d.migrator.CompareSchema(tableInfo, s)
+	if err != nil {
+		return nil, err
 	}
 
-	desiredColumns := make(map[string]schema.Field)
-	for _, field := range s.Fields {
-		desiredColumns[field.Name] = field
+	// Generate SQL for the migration plan
+	sqlStatements, err := d.migrator.GenerateMigrationSQL(plan)
+	if err != nil {
+		return nil, err
 	}
 
-	// For now, we'll implement a simplified diff that only handles table creation/deletion
-	// More complex column and index changes can be implemented in the database drivers
-	// TODO: Implement detailed column and index diffing in database drivers
+	// Convert MigrationPlan to SchemaChange array
+	// Process columns
+	for i, change := range plan.AddColumns {
+		if i < len(sqlStatements) {
+			changes = append(changes, SchemaChange{
+				Type:       ChangeTypeAddColumn,
+				TableName:  change.TableName,
+				ColumnName: change.ColumnName,
+				SQL:        sqlStatements[i],
+			})
+		}
+	}
+
+	for _, change := range plan.ModifyColumns {
+		// Modify columns may generate multiple SQL statements
+		changes = append(changes, SchemaChange{
+			Type:       ChangeTypeAlterColumn,
+			TableName:  change.TableName,
+			ColumnName: change.ColumnName,
+			SQL:        fmt.Sprintf("-- Modify column %s.%s", change.TableName, change.ColumnName),
+		})
+	}
+
+	for _, change := range plan.DropColumns {
+		changes = append(changes, SchemaChange{
+			Type:       ChangeTypeDropColumn,
+			TableName:  change.TableName,
+			ColumnName: change.ColumnName,
+			SQL:        fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", change.TableName, change.ColumnName),
+		})
+	}
+
+	// Process indexes
+	for _, change := range plan.AddIndexes {
+		changes = append(changes, SchemaChange{
+			Type:      ChangeTypeAddIndex,
+			TableName: change.TableName,
+			IndexName: change.IndexName,
+			SQL:       d.migrator.GenerateCreateIndexSQL(change.TableName, change.IndexName, change.NewIndex.Columns, change.NewIndex.Unique),
+		})
+	}
+
+	for _, change := range plan.DropIndexes {
+		changes = append(changes, SchemaChange{
+			Type:      ChangeTypeDropIndex,
+			TableName: change.TableName,
+			IndexName: change.IndexName,
+			SQL:       d.migrator.GenerateDropIndexSQL(change.IndexName),
+		})
+	}
 
 	return changes, nil
 }

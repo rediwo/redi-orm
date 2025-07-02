@@ -270,6 +270,9 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 		dbObj.Set("queryRaw", m.createQueryRawMethod(vm, db))
 		dbObj.Set("executeRaw", m.createExecuteRawMethod(vm, db))
 
+		// Add transaction method
+		dbObj.Set("transaction", m.createDatabaseTransactionMethod(vm, db))
+
 		// Create models object that will be populated after syncSchemas
 		modelsObj := vm.NewObject()
 		dbObj.Set("models", modelsObj)

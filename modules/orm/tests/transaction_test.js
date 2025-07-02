@@ -27,25 +27,26 @@ model Transaction {
     return db;
 }
 
-async function createTestAccounts() {
-    const alice = await models.Account.create({
+async function createTestAccounts(db) {
+    const alice = await db.models.Account.create({
         data: { name: 'Alice', balance: 1000 }
     });
     
-    const bob = await models.Account.create({
+    const bob = await db.models.Account.create({
         data: { name: 'Bob', balance: 500 }
     });
     
     return { alice, bob };
 }
 
-async function testSuccessfulTransaction() {
+async function testSuccessfulTransaction(db) {
     console.log('Testing successful transaction...');
     
-    const { alice, bob } = await createTestAccounts();
-    const transferAmount = 100;
-    
-    await $transaction(async (tx) => {
+    try {
+        const { alice, bob } = await createTestAccounts(db);
+        const transferAmount = 100;
+        
+        await db.transaction(async (tx) => {
         // Deduct from Alice
         await tx.models.Account.update({
             where: { id: alice.id },
@@ -68,26 +69,33 @@ async function testSuccessfulTransaction() {
         });
     });
     
-    // Verify balances
-    const aliceAfter = await models.Account.findUnique({ where: { id: alice.id } });
-    const bobAfter = await models.Account.findUnique({ where: { id: bob.id } });
-    
-    strictEqual(aliceAfter.balance, 900, 'Alice should have 900');
-    strictEqual(bobAfter.balance, 600, 'Bob should have 600');
-    
-    console.log('  ✓ Transaction completed successfully');
-    console.log('  ✓ Balances updated correctly');
+        // Verify balances
+        const aliceAfter = await db.models.Account.findUnique({ where: { id: alice.id } });
+        const bobAfter = await db.models.Account.findUnique({ where: { id: bob.id } });
+        
+        strictEqual(aliceAfter.balance, 900, 'Alice should have 900');
+        strictEqual(bobAfter.balance, 600, 'Bob should have 600');
+        
+        console.log('  ✓ Transaction completed successfully');
+        console.log('  ✓ Balances updated correctly');
+    } catch (error) {
+        console.error('  ❌ Error in testSuccessfulTransaction:', error.message || error);
+        if (error.stack) {
+            console.error('  Stack:', error.stack);
+        }
+        throw error;
+    }
 }
 
-async function testFailedTransaction() {
+async function testFailedTransaction(db) {
     console.log('\nTesting failed transaction (rollback)...');
     
-    const { alice, bob } = await createTestAccounts();
+    const { alice, bob } = await createTestAccounts(db);
     const initialAliceBalance = alice.balance;
     const initialBobBalance = bob.balance;
     
     try {
-        await $transaction(async (tx) => {
+        await db.transaction(async (tx) => {
             // Deduct from Alice
             await tx.models.Account.update({
                 where: { id: alice.id },
@@ -111,13 +119,18 @@ async function testFailedTransaction() {
         fail('Transaction should have failed');
         
     } catch (error) {
-        strictEqual(error.message, 'Insufficient funds');
-        console.log('  ✓ Transaction failed as expected');
+        // The error message might be wrapped, so check if it contains the expected message
+        const errorMessage = error.message || error.toString();
+        if (errorMessage.includes('Insufficient funds')) {
+            console.log('  ✓ Transaction failed as expected');
+        } else {
+            throw new Error(`Expected error to contain 'Insufficient funds', got: ${errorMessage}`);
+        }
     }
     
     // Verify balances unchanged
-    const aliceAfter = await models.Account.findUnique({ where: { id: alice.id } });
-    const bobAfter = await models.Account.findUnique({ where: { id: bob.id } });
+    const aliceAfter = await db.models.Account.findUnique({ where: { id: alice.id } });
+    const bobAfter = await db.models.Account.findUnique({ where: { id: bob.id } });
     
     strictEqual(aliceAfter.balance, initialAliceBalance, 'Alice balance should be unchanged');
     strictEqual(bobAfter.balance, initialBobBalance, 'Bob balance should be unchanged');
@@ -125,13 +138,13 @@ async function testFailedTransaction() {
     console.log('  ✓ Rollback successful - balances unchanged');
 }
 
-async function testNestedOperations() {
+async function testNestedOperations(db) {
     console.log('\nTesting transaction with multiple operations...');
     
     const accounts = [];
     
     // Create multiple accounts in a transaction
-    await $transaction(async (tx) => {
+    await db.transaction(async (tx) => {
         for (let i = 0; i < 5; i++) {
             const account = await tx.models.Account.create({
                 data: {
@@ -155,11 +168,11 @@ async function testNestedOperations() {
     });
     
     // Verify all accounts were created
-    const accountCount = await models.Account.count();
+    const accountCount = await db.models.Account.count();
     assert(accountCount >= 5, 'Should have created at least 5 accounts');
     
     // Verify transactions were created
-    const transactionCount = await models.Transaction.count();
+    const transactionCount = await db.models.Transaction.count();
     assert(transactionCount >= 4, 'Should have created at least 4 transactions');
     
     console.log('  ✓ Multiple operations in transaction completed');
@@ -188,13 +201,22 @@ async function runTests() {
         }
         console.log('  ✓ All required methods exist');
         
-        // Note: Actual transaction operations require global $transaction function
-        console.log('\n  ⚠ Transaction operation tests skipped - requires global $transaction');
-        console.log('\n✅ All transaction structure tests passed!');
+        // Verify transaction method exists
+        assert(typeof db.transaction === 'function', 'db.transaction should exist');
+        console.log('  ✓ Transaction method exists\n');
+        
+        // Run transaction tests
+        await testSuccessfulTransaction(db);
+        await testFailedTransaction(db);
+        await testNestedOperations(db);
+        
+        console.log('\n✅ All transaction tests passed!');
         
     } catch (error) {
-        console.error('\n❌ Test failed:', error.message);
-        console.error(error.stack);
+        console.error('\n❌ Test failed:', error.message || error);
+        if (error.stack) {
+            console.error(error.stack);
+        }
         process.exit(1);
     } finally {
         if (db) {

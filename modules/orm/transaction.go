@@ -8,30 +8,30 @@ import (
 	"github.com/rediwo/redi-orm/types"
 )
 
-// createTransactionFunction creates the $transaction function
-func (m *ModelsModule) createTransactionFunction(vm *js.Runtime) func(call js.FunctionCall) js.Value {
+// createDatabaseTransactionMethod creates the db.transaction method
+func (m *ModelsModule) createDatabaseTransactionMethod(vm *js.Runtime, db types.Database) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		if len(call.Arguments) == 0 {
-			panic(vm.NewTypeError("$transaction requires a callback function"))
+			panic(vm.NewTypeError("transaction requires a callback function"))
 		}
 
 		// Validate that the first argument is a function
 		callbackValue := call.Arguments[0]
 		if js.IsUndefined(callbackValue) || js.IsNull(callbackValue) {
-			panic(vm.NewTypeError("$transaction requires a function as first argument"))
+			panic(vm.NewTypeError("transaction requires a function as first argument"))
 		}
 
 		// Check if it's callable
 		callbackObj, ok := callbackValue.(*js.Object)
 		if !ok || callbackObj.Get("call") == nil {
-			panic(vm.NewTypeError("$transaction requires a function as first argument"))
+			panic(vm.NewTypeError("transaction requires a function as first argument"))
 		}
 
 		promise, resolve, reject := vm.NewPromise()
 
 		go func() {
 			ctx := context.Background()
-			err := m.db.Transaction(ctx, func(tx types.Transaction) error {
+			err := db.Transaction(ctx, func(tx types.Transaction) error {
 				// Create a channel to communicate with event loop
 				resultChan := make(chan error, 1)
 
@@ -55,7 +55,7 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime) func(call js.Fu
 					}
 
 					// Register all models for transaction
-					for _, modelName := range m.db.GetModels() {
+					for _, modelName := range db.GetModels() {
 						txModule.registerTransactionModel(txModelsObj, modelName)
 					}
 
