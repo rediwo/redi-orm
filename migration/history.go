@@ -99,5 +99,6 @@ func (h *HistoryManager) RemoveMigration(version string) error {
 
 // GenerateVersion generates a new migration version based on timestamp
 func GenerateVersion() string {
-	return fmt.Sprintf("%d", time.Now().Unix())
+	// Use Unix timestamp in nanoseconds to avoid collisions
+	return fmt.Sprintf("%d", time.Now().UnixNano())
 }

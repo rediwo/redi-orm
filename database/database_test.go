@@ -347,7 +347,7 @@ func TestURIParsingExamples(t *testing.T) {
 			shouldError: false,
 			checkConfig: func(t *testing.T, config types.Config) {
 				assert.Equal(t, "sqlite", config.Type)
-				assert.Equal(t, "path/to/db.sqlite", config.FilePath)
+				assert.Equal(t, "/path/to/db.sqlite", config.FilePath)
 			},
 		},
 		{

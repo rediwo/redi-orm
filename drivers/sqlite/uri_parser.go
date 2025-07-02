@@ -36,7 +36,7 @@ func (p *SQLiteURIParser) ParseURI(uri string) (types.Config, error) {
 	}
 
 	config := types.Config{
-		Type: "sqlite",
+		Type:    "sqlite",
 		Options: make(map[string]string),
 	}
 
@@ -55,16 +55,26 @@ func (p *SQLiteURIParser) ParseURI(uri string) (types.Config, error) {
 	// Handle regular file paths
 	path := parsedURI.Path
 
-	// Remove leading slashes for absolute paths
-	if strings.HasPrefix(path, "///") {
-		// sqlite:///absolute/path -> /absolute/path
-		path = path[2:]
-	} else if strings.HasPrefix(path, "//") {
-		// sqlite://relative/path -> relative/path
-		path = path[2:]
-	} else if strings.HasPrefix(path, "/") && parsedURI.Host == "" {
-		// sqlite:/path -> path (relative)
-		path = path[1:]
+	// For SQLite URIs:
+	// - sqlite:///absolute/path -> /absolute/path (absolute)
+	// - sqlite://relative/path -> relative/path (relative) 
+	// - sqlite:/path -> path (relative)
+	
+	// When using sqlite:/// (three slashes), url.Parse returns path as "/absolute/path"
+	// We want to keep this as an absolute path
+	// When using sqlite:// with a host, we get the host separately
+	// When using sqlite:/ (one slash), we want relative paths
+	
+	if parsedURI.Host == "" && strings.HasPrefix(path, "/") {
+		// Check if original URI had three slashes (indicating absolute path)
+		// by looking at the original URI string
+		if strings.HasPrefix(uri, "sqlite:///") || strings.HasPrefix(uri, "sqlite3:///") {
+			// Keep the path as-is (absolute)
+			// path already has leading slash from url.Parse
+		} else {
+			// sqlite:/path -> path (relative)
+			path = path[1:]
+		}
 	}
 
 	// Handle host part if present (for relative paths)

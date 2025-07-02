@@ -152,3 +152,11 @@ await db.transaction(async (tx) => {
 - **Migrations**: Automatic schema synchronization in development
 - **Multiple databases**: Support for SQLite, MySQL, and PostgreSQL
 - **Raw SQL**: Execute raw SQL when needed with `queryRaw` and `executeRaw`
+
+## Migration Examples
+
+For comprehensive migration examples and production workflows, see the [migration](./migration/) subdirectory:
+- Production migration guide
+- Test scripts for complete workflow
+- Real-world deployment examples
+- Best practices and safety guidelines
