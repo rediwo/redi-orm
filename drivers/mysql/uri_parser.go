@@ -74,7 +74,7 @@ func (p *MySQLURIParser) ParseURI(uri string) (types.Config, error) {
 
 	// Parse query parameters for additional options
 	query := parsedURI.Query()
-	
+
 	// Handle charset
 	if charset := query.Get("charset"); charset != "" {
 		// Store in a generic Options map if needed

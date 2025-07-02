@@ -34,8 +34,8 @@ func (ps *PrismaSchema) String() string {
 
 // ModelStatement represents a model definition
 type ModelStatement struct {
-	Name   string
-	Fields []*Field
+	Name            string
+	Fields          []*Field
 	BlockAttributes []*BlockAttribute
 }
 
@@ -112,11 +112,11 @@ func (gs *GeneratorStatement) String() string {
 
 // Field represents a field in a model
 type Field struct {
-	Name        string
-	Type        *FieldType
-	Optional    bool
-	List        bool
-	Attributes  []*Attribute
+	Name       string
+	Type       *FieldType
+	Optional   bool
+	List       bool
+	Attributes []*Attribute
 }
 
 func (f *Field) String() string {
@@ -200,7 +200,7 @@ type Identifier struct {
 }
 
 func (i *Identifier) expressionNode() {}
-func (i *Identifier) String() string { return i.Value }
+func (i *Identifier) String() string  { return i.Value }
 
 // StringLiteral represents a string literal expression
 type StringLiteral struct {
@@ -208,7 +208,7 @@ type StringLiteral struct {
 }
 
 func (sl *StringLiteral) expressionNode() {}
-func (sl *StringLiteral) String() string { return fmt.Sprintf(`"%s"`, sl.Value) }
+func (sl *StringLiteral) String() string  { return fmt.Sprintf(`"%s"`, sl.Value) }
 
 // NumberLiteral represents a number literal expression
 type NumberLiteral struct {
@@ -216,7 +216,7 @@ type NumberLiteral struct {
 }
 
 func (nl *NumberLiteral) expressionNode() {}
-func (nl *NumberLiteral) String() string { return nl.Value }
+func (nl *NumberLiteral) String() string  { return nl.Value }
 
 // FunctionCall represents a function call expression
 type FunctionCall struct {

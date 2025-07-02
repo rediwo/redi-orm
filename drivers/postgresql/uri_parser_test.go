@@ -11,9 +11,9 @@ func TestPostgreSQLURIParser_ParseURI(t *testing.T) {
 	parser := NewPostgreSQLURIParser()
 
 	testCases := []struct {
-		name        string
-		uri         string
-		expected    struct {
+		name     string
+		uri      string
+		expected struct {
 			host     string
 			port     int
 			user     string
@@ -197,7 +197,7 @@ func TestPostgreSQLURIParser_ParseURI(t *testing.T) {
 func TestPostgreSQLURIParser_GetSupportedSchemes(t *testing.T) {
 	parser := NewPostgreSQLURIParser()
 	schemes := parser.GetSupportedSchemes()
-	
+
 	assert.Contains(t, schemes, "postgresql")
 	assert.Contains(t, schemes, "postgres")
 }
@@ -205,6 +205,6 @@ func TestPostgreSQLURIParser_GetSupportedSchemes(t *testing.T) {
 func TestPostgreSQLURIParser_GetDriverType(t *testing.T) {
 	parser := NewPostgreSQLURIParser()
 	driverType := parser.GetDriverType()
-	
+
 	assert.Equal(t, "postgresql", driverType)
 }

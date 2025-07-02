@@ -12,23 +12,23 @@ import (
 // InsertQueryImpl implements the InsertQuery interface
 type InsertQueryImpl struct {
 	*ModelQueryImpl
-	data            []interface{}
+	data            []any
 	conflictAction  types.ConflictAction
 	returningFields []string
 }
 
 // NewInsertQuery creates a new insert query
-func NewInsertQuery(baseQuery *ModelQueryImpl, data interface{}) *InsertQueryImpl {
+func NewInsertQuery(baseQuery *ModelQueryImpl, data any) *InsertQueryImpl {
 	return &InsertQueryImpl{
 		ModelQueryImpl:  baseQuery,
-		data:            []interface{}{data},
+		data:            []any{data},
 		conflictAction:  types.ConflictIgnore,
 		returningFields: []string{},
 	}
 }
 
 // Values adds more data to insert
-func (q *InsertQueryImpl) Values(data ...interface{}) types.InsertQuery {
+func (q *InsertQueryImpl) Values(data ...any) types.InsertQuery {
 	newQuery := q.clone()
 	newQuery.data = append(newQuery.data, data...)
 	return newQuery
@@ -65,7 +65,7 @@ func (q *InsertQueryImpl) Exec(ctx context.Context) (types.Result, error) {
 }
 
 // ExecAndReturn executes the insert and returns the inserted data
-func (q *InsertQueryImpl) ExecAndReturn(ctx context.Context, dest interface{}) error {
+func (q *InsertQueryImpl) ExecAndReturn(ctx context.Context, dest any) error {
 	if len(q.returningFields) == 0 {
 		return fmt.Errorf("no returning fields specified")
 	}
@@ -80,7 +80,7 @@ func (q *InsertQueryImpl) ExecAndReturn(ctx context.Context, dest interface{}) e
 }
 
 // BuildSQL builds the insert SQL query
-func (q *InsertQueryImpl) BuildSQL() (string, []interface{}, error) {
+func (q *InsertQueryImpl) BuildSQL() (string, []any, error) {
 	if len(q.data) == 0 {
 		return "", nil, fmt.Errorf("no data to insert")
 	}
@@ -106,7 +106,7 @@ func (q *InsertQueryImpl) BuildSQL() (string, []interface{}, error) {
 
 	// Build the basic INSERT statement
 	var sql strings.Builder
-	var args []interface{}
+	var args []any
 
 	sql.WriteString(fmt.Sprintf("INSERT INTO %s", tableName))
 
@@ -163,9 +163,9 @@ func (q *InsertQueryImpl) BuildSQL() (string, []interface{}, error) {
 }
 
 // extractFieldsAndValues extracts field names and values from data
-func (q *InsertQueryImpl) extractFieldsAndValues(data interface{}) ([]string, []interface{}, error) {
+func (q *InsertQueryImpl) extractFieldsAndValues(data any) ([]string, []any, error) {
 	switch v := data.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return q.extractFromMap(v)
 	default:
 		return q.extractFromStruct(data)
@@ -173,9 +173,9 @@ func (q *InsertQueryImpl) extractFieldsAndValues(data interface{}) ([]string, []
 }
 
 // extractFromMap extracts fields and values from a map
-func (q *InsertQueryImpl) extractFromMap(data map[string]interface{}) ([]string, []interface{}, error) {
+func (q *InsertQueryImpl) extractFromMap(data map[string]any) ([]string, []any, error) {
 	fields := make([]string, 0, len(data))
-	values := make([]interface{}, 0, len(data))
+	values := make([]any, 0, len(data))
 
 	for field, value := range data {
 		fields = append(fields, field)
@@ -186,7 +186,7 @@ func (q *InsertQueryImpl) extractFromMap(data map[string]interface{}) ([]string,
 }
 
 // extractFromStruct extracts fields and values from a struct
-func (q *InsertQueryImpl) extractFromStruct(data interface{}) ([]string, []interface{}, error) {
+func (q *InsertQueryImpl) extractFromStruct(data any) ([]string, []any, error) {
 	v := reflect.ValueOf(data)
 	t := reflect.TypeOf(data)
 
@@ -201,7 +201,7 @@ func (q *InsertQueryImpl) extractFromStruct(data interface{}) ([]string, []inter
 	}
 
 	var fields []string
-	var values []interface{}
+	var values []any
 
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
@@ -234,7 +234,7 @@ func (q *InsertQueryImpl) extractFromStruct(data interface{}) ([]string, []inter
 func (q *InsertQueryImpl) clone() *InsertQueryImpl {
 	return &InsertQueryImpl{
 		ModelQueryImpl:  q.ModelQueryImpl.clone(),
-		data:            append([]interface{}{}, q.data...),
+		data:            append([]any{}, q.data...),
 		conflictAction:  q.conflictAction,
 		returningFields: append([]string{}, q.returningFields...),
 	}

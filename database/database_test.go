@@ -56,7 +56,7 @@ func (m *mockDatabase) Model(modelName string) types.ModelQuery {
 	return nil
 }
 
-func (m *mockDatabase) Raw(sql string, args ...interface{}) types.RawQuery {
+func (m *mockDatabase) Raw(sql string, args ...any) types.RawQuery {
 	return nil
 }
 
@@ -96,15 +96,15 @@ func (m *mockDatabase) GetFieldMapper() types.FieldMapper {
 	return nil
 }
 
-func (m *mockDatabase) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (m *mockDatabase) Exec(query string, args ...any) (sql.Result, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (m *mockDatabase) Query(query string, args ...interface{}) (*sql.Rows, error) {
+func (m *mockDatabase) Query(query string, args ...any) (*sql.Rows, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (m *mockDatabase) QueryRow(query string, args ...interface{}) *sql.Row {
+func (m *mockDatabase) QueryRow(query string, args ...any) *sql.Row {
 	return nil
 }
 
@@ -163,7 +163,7 @@ func TestNew(t *testing.T) {
 		db, err := New(config)
 		assert.NoError(t, err)
 		assert.NotNil(t, db)
-		
+
 		// Verify it's our mock database
 		mockDB, ok := db.(*mockDatabase)
 		assert.True(t, ok)
@@ -186,7 +186,7 @@ func TestNew(t *testing.T) {
 		db, err := New(config)
 		assert.NoError(t, err)
 		assert.NotNil(t, db)
-		
+
 		// Test that we can connect
 		ctx := context.Background()
 		err = db.Connect(ctx)
@@ -241,7 +241,7 @@ func TestNewFromURI(t *testing.T) {
 		db, err := NewFromURI("mock://test")
 		assert.NoError(t, err)
 		assert.NotNil(t, db)
-		
+
 		// Verify it's our mock database
 		mockDB, ok := db.(*mockDatabase)
 		assert.True(t, ok)
@@ -259,7 +259,7 @@ func TestNewFromURI(t *testing.T) {
 		db, err := NewFromURI("sqlite://:memory:")
 		assert.NoError(t, err)
 		assert.NotNil(t, db)
-		
+
 		// Test that we can connect
 		ctx := context.Background()
 		err = db.Connect(ctx)
@@ -305,7 +305,7 @@ func TestNewFromURI(t *testing.T) {
 func TestDefaultDriversLoaded(t *testing.T) {
 	// This test verifies that default drivers are automatically loaded
 	// We'll try to create instances to verify they're registered
-	
+
 	t.Run("SQLite driver is registered", func(t *testing.T) {
 		factory, err := registry.Get("sqlite")
 		assert.NoError(t, err)
@@ -389,7 +389,7 @@ func TestURIParsingExamples(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			config, err := registry.ParseURI(tc.uri)
-			
+
 			if tc.shouldError {
 				assert.Error(t, err)
 			} else {
@@ -410,7 +410,7 @@ func TestIntegrationWithRealDatabase(t *testing.T) {
 		require.NotNil(t, db)
 
 		ctx := context.Background()
-		
+
 		// Connect
 		err = db.Connect(ctx)
 		require.NoError(t, err)

@@ -23,7 +23,7 @@ func init() {
 	registry.Register("postgres", func(config types.Config) (types.Database, error) {
 		return NewPostgreSQLDB(config)
 	})
-	
+
 	// Register PostgreSQL URI parser
 	registry.RegisterURIParser("postgresql", NewPostgreSQLURIParser())
 	registry.RegisterURIParser("postgres", NewPostgreSQLURIParser())
@@ -86,7 +86,7 @@ func (p *PostgreSQLDB) buildDSN() string {
 	if p.Config.Database != "" {
 		parts = append(parts, fmt.Sprintf("dbname=%s", p.Config.Database))
 	}
-	
+
 	// Add sslmode if not specified
 	hasSSLMode := false
 	for _, part := range parts {
@@ -106,7 +106,6 @@ func (p *PostgreSQLDB) buildDSN() string {
 func (p *PostgreSQLDB) SyncSchemas(ctx context.Context) error {
 	return p.Driver.SyncSchemas(ctx, p)
 }
-
 
 // CreateModel creates a table from the registered schema
 func (p *PostgreSQLDB) CreateModel(ctx context.Context, modelName string) error {
@@ -142,7 +141,7 @@ func (p *PostgreSQLDB) Model(modelName string) types.ModelQuery {
 }
 
 // Raw creates a raw query
-func (p *PostgreSQLDB) Raw(query string, args ...interface{}) types.RawQuery {
+func (p *PostgreSQLDB) Raw(query string, args ...any) types.RawQuery {
 	return &PostgreSQLRawQuery{
 		db:   p.DB,
 		sql:  query,
@@ -190,17 +189,17 @@ func (p *PostgreSQLDB) Begin(ctx context.Context) (types.Transaction, error) {
 }
 
 // Exec executes a raw SQL query
-func (p *PostgreSQLDB) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (p *PostgreSQLDB) Exec(query string, args ...any) (sql.Result, error) {
 	return p.DB.Exec(query, args...)
 }
 
 // Query executes a raw SQL query and returns rows
-func (p *PostgreSQLDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+func (p *PostgreSQLDB) Query(query string, args ...any) (*sql.Rows, error) {
 	return p.DB.Query(query, args...)
 }
 
 // QueryRow executes a raw SQL query and returns a single row
-func (p *PostgreSQLDB) QueryRow(query string, args ...interface{}) *sql.Row {
+func (p *PostgreSQLDB) QueryRow(query string, args ...any) *sql.Row {
 	return p.DB.QueryRow(query, args...)
 }
 
@@ -213,37 +212,37 @@ func (p *PostgreSQLDB) GetMigrator() types.DatabaseMigrator {
 func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) {
 	var columns []string
 	var primaryKeys []string
-	
+
 	for _, field := range schema.Fields {
 		column, err := p.generateColumnSQL(field)
 		if err != nil {
 			return "", fmt.Errorf("failed to generate column SQL for field %s: %w", field.Name, err)
 		}
 		columns = append(columns, column)
-		
+
 		if field.PrimaryKey {
 			primaryKeys = append(primaryKeys, p.quoteIdentifier(field.GetColumnName()))
 		}
 	}
-	
+
 	if len(primaryKeys) > 0 {
 		columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
-	
+
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n  %s\n)",
 		p.quoteIdentifier(schema.GetTableName()),
 		strings.Join(columns, ",\n  "))
-	
+
 	return sql, nil
 }
 
 // generateColumnSQL generates column definition SQL
 func (p *PostgreSQLDB) generateColumnSQL(field schema.Field) (string, error) {
 	var parts []string
-	
+
 	columnName := p.quoteIdentifier(field.GetColumnName())
 	columnType := p.mapFieldTypeToSQL(field.Type)
-	
+
 	// Handle SERIAL for auto increment primary keys
 	if field.PrimaryKey && field.AutoIncrement {
 		if field.Type == schema.FieldTypeInt {
@@ -252,25 +251,25 @@ func (p *PostgreSQLDB) generateColumnSQL(field schema.Field) (string, error) {
 			columnType = "BIGSERIAL"
 		}
 	}
-	
+
 	parts = append(parts, columnName, columnType)
-	
+
 	// Add NOT NULL constraint
 	if !field.Nullable && !field.AutoIncrement {
 		parts = append(parts, "NOT NULL")
 	}
-	
+
 	// Add UNIQUE constraint
 	if field.Unique && !field.PrimaryKey {
 		parts = append(parts, "UNIQUE")
 	}
-	
+
 	// Add DEFAULT value
 	if field.Default != nil && !field.AutoIncrement {
 		defaultValue := p.formatDefaultValue(field.Default, field.Type)
 		parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultValue))
 	}
-	
+
 	return strings.Join(parts, " "), nil
 }
 
@@ -299,7 +298,7 @@ func (p *PostgreSQLDB) mapFieldTypeToSQL(fieldType schema.FieldType) string {
 }
 
 // formatDefaultValue formats a default value for SQL
-func (p *PostgreSQLDB) formatDefaultValue(value interface{}, fieldType schema.FieldType) string {
+func (p *PostgreSQLDB) formatDefaultValue(value any, fieldType schema.FieldType) string {
 	switch v := value.(type) {
 	case string:
 		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))

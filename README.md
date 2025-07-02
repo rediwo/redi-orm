@@ -92,7 +92,7 @@ func main() {
     
     // Insert data
     result, err := db.Model("User").
-        Insert(map[string]interface{}{
+        Insert(map[string]any{
             "email": "alice@example.com",
             "name": "Alice",
         }).
@@ -104,7 +104,7 @@ func main() {
     
     // Insert with relations
     _, err = db.Model("Post").
-        Insert(map[string]interface{}{
+        Insert(map[string]any{
             "title": "Hello World",
             "content": "My first post",
             "userId": userID,
@@ -112,7 +112,7 @@ func main() {
         Exec(ctx)
     
     // Query data
-    var users []map[string]interface{}
+    var users []map[string]any
     err = db.Model("User").
         Select("id", "email", "name").
         Where("email").Like("%example.com%").
@@ -126,7 +126,7 @@ func main() {
     
     // Update
     _, err = db.Model("User").
-        Update(map[string]interface{}{"name": "Alice Smith"}).
+        Update(map[string]any{"name": "Alice Smith"}).
         Where("id").Equals(userID).
         Exec(ctx)
     
@@ -391,7 +391,7 @@ var users []User
 err := db.Model("User").FindMany(ctx, &users)
 
 // Scan into maps (automatic)
-var results []map[string]interface{}
+var results []map[string]any
 err := db.Model("User").FindMany(ctx, &results)
 
 // Raw query scanning

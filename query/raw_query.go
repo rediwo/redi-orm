@@ -11,11 +11,11 @@ import (
 type RawQueryImpl struct {
 	database types.Database
 	sql      string
-	args     []interface{}
+	args     []any
 }
 
 // NewRawQuery creates a new raw query
-func NewRawQuery(database types.Database, sql string, args ...interface{}) *RawQueryImpl {
+func NewRawQuery(database types.Database, sql string, args ...any) *RawQueryImpl {
 	return &RawQueryImpl{
 		database: database,
 		sql:      sql,
@@ -40,7 +40,7 @@ func (q *RawQueryImpl) Exec(ctx context.Context) (types.Result, error) {
 }
 
 // Find executes the raw query and returns multiple results
-func (q *RawQueryImpl) Find(ctx context.Context, dest interface{}) error {
+func (q *RawQueryImpl) Find(ctx context.Context, dest any) error {
 	rows, err := q.database.Query(q.sql, q.args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute raw query: %w", err)
@@ -54,7 +54,7 @@ func (q *RawQueryImpl) Find(ctx context.Context, dest interface{}) error {
 }
 
 // FindOne executes the raw query and returns a single result
-func (q *RawQueryImpl) FindOne(ctx context.Context, dest interface{}) error {
+func (q *RawQueryImpl) FindOne(ctx context.Context, dest any) error {
 	_ = q.database.QueryRow(q.sql, q.args...)
 
 	// This is a simplified implementation
@@ -64,6 +64,6 @@ func (q *RawQueryImpl) FindOne(ctx context.Context, dest interface{}) error {
 }
 
 // GetSQL returns the SQL and arguments
-func (q *RawQueryImpl) GetSQL() (string, []interface{}) {
+func (q *RawQueryImpl) GetSQL() (string, []any) {
 	return q.sql, q.args
 }

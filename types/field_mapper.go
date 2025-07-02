@@ -75,7 +75,7 @@ func (m *DefaultFieldMapper) ColumnFieldsToSchema(modelName string, columnNames 
 }
 
 // MapSchemaToColumnData converts data map from schema field names to column names
-func (m *DefaultFieldMapper) MapSchemaToColumnData(modelName string, data map[string]interface{}) (map[string]interface{}, error) {
+func (m *DefaultFieldMapper) MapSchemaToColumnData(modelName string, data map[string]any) (map[string]any, error) {
 	s, err := m.GetSchema(modelName)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func (m *DefaultFieldMapper) MapSchemaToColumnData(modelName string, data map[st
 }
 
 // MapColumnToSchemaData converts data map from column names to schema field names
-func (m *DefaultFieldMapper) MapColumnToSchemaData(modelName string, data map[string]interface{}) (map[string]interface{}, error) {
+func (m *DefaultFieldMapper) MapColumnToSchemaData(modelName string, data map[string]any) (map[string]any, error) {
 	s, err := m.GetSchema(modelName)
 	if err != nil {
 		return nil, err
@@ -111,7 +111,6 @@ func ModelNameToTableName(modelName string) string {
 	snakeCase := utils.ToSnakeCase(modelName)
 	return utils.Pluralize(snakeCase)
 }
-
 
 // ValidateFieldName checks if a field name is valid
 func ValidateFieldName(fieldName string) error {

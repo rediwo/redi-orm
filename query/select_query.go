@@ -42,12 +42,12 @@ func (q *SelectQueryImpl) WhereCondition(condition types.Condition) types.Select
 func (q *SelectQueryImpl) Include(relations ...string) types.SelectQuery {
 	newQuery := q.clone()
 	newQuery.includes = append(newQuery.includes, relations...)
-	
+
 	// Add joins for each included relation
 	for _, relation := range relations {
 		// Parse nested relations (e.g., "posts.comments")
 		relationPath := strings.Split(relation, ".")
-		
+
 		// Add join for this relation path
 		err := newQuery.joinBuilder.AddNestedRelationJoin(
 			newQuery.tableAlias, // Use the main table alias
@@ -60,7 +60,7 @@ func (q *SelectQueryImpl) Include(relations ...string) types.SelectQuery {
 			fmt.Printf("Warning: failed to add join for relation %s: %v\n", relation, err)
 		}
 	}
-	
+
 	return newQuery
 }
 
@@ -110,7 +110,7 @@ func (q *SelectQueryImpl) Distinct() types.SelectQuery {
 }
 
 // FindMany executes the query and returns multiple results
-func (q *SelectQueryImpl) FindMany(ctx context.Context, dest interface{}) error {
+func (q *SelectQueryImpl) FindMany(ctx context.Context, dest any) error {
 	sql, args, err := q.BuildSQL()
 	if err != nil {
 		return fmt.Errorf("failed to build SQL: %w", err)
@@ -122,7 +122,7 @@ func (q *SelectQueryImpl) FindMany(ctx context.Context, dest interface{}) error 
 }
 
 // FindFirst executes the query and returns the first result
-func (q *SelectQueryImpl) FindFirst(ctx context.Context, dest interface{}) error {
+func (q *SelectQueryImpl) FindFirst(ctx context.Context, dest any) error {
 	// Ensure limit is 1 for FindFirst
 	limitedQuery := q.Limit(1)
 	sql, args, err := limitedQuery.BuildSQL()
@@ -155,7 +155,7 @@ func (q *SelectQueryImpl) Count(ctx context.Context) (int64, error) {
 }
 
 // BuildSQL builds the SQL query
-func (q *SelectQueryImpl) BuildSQL() (string, []interface{}, error) {
+func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 	// Get table name from model
 	tableName, err := q.fieldMapper.ModelToTable(q.modelName)
 	if err != nil {
@@ -167,7 +167,7 @@ func (q *SelectQueryImpl) BuildSQL() (string, []interface{}, error) {
 
 	// Build FROM clause with alias
 	fromClause := fmt.Sprintf("FROM %s AS %s", tableName, q.tableAlias)
-	
+
 	// Add JOINs if any
 	if q.joinBuilder != nil {
 		joinSQL := q.joinBuilder.BuildSQL()
@@ -241,7 +241,7 @@ func (q *SelectQueryImpl) buildSelectClause(tableName string) string {
 	// If no specific fields selected, select all from main table and joined tables
 	if len(q.selectedFields) == 0 {
 		selectParts := []string{fmt.Sprintf("%s.*", q.tableAlias)}
-		
+
 		// Add fields from joined tables if includes are specified
 		if q.joinBuilder != nil {
 			for _, join := range q.joinBuilder.GetJoinedTables() {
@@ -250,7 +250,7 @@ func (q *SelectQueryImpl) buildSelectClause(tableName string) string {
 				}
 			}
 		}
-		
+
 		return fmt.Sprintf("SELECT %s%s", distinctStr, strings.Join(selectParts, ", "))
 	}
 
@@ -275,14 +275,14 @@ func (q *SelectQueryImpl) buildSelectClause(tableName string) string {
 }
 
 // buildWhereClause builds the WHERE part of the query
-func (q *SelectQueryImpl) buildWhereClause() (string, []interface{}, error) {
+func (q *SelectQueryImpl) buildWhereClause() (string, []any, error) {
 	if len(q.conditions) == 0 {
 		return "", nil, nil
 	}
 
 	// Combine all conditions with AND
 	var conditionSQLs []string
-	var args []interface{}
+	var args []any
 
 	for _, condition := range q.conditions {
 		sql, condArgs := condition.ToSQL()
@@ -344,7 +344,7 @@ func (q *SelectQueryImpl) buildGroupByClause() (string, error) {
 }
 
 // buildHavingClause builds the HAVING part of the query
-func (q *SelectQueryImpl) buildHavingClause() (string, []interface{}, error) {
+func (q *SelectQueryImpl) buildHavingClause() (string, []any, error) {
 	if q.having == nil {
 		return "", nil, nil
 	}
@@ -379,7 +379,7 @@ func (q *SelectQueryImpl) buildOffsetClause() string {
 }
 
 // buildCountSQL builds a count query
-func (q *SelectQueryImpl) buildCountSQL() (string, []interface{}, error) {
+func (q *SelectQueryImpl) buildCountSQL() (string, []any, error) {
 	// Get table name from model
 	tableName, err := q.fieldMapper.ModelToTable(q.modelName)
 	if err != nil {
@@ -429,13 +429,13 @@ func (q *SelectQueryImpl) mapFieldNamesInSQL(sql string) (string, error) {
 		// If we can't get the schema, return SQL as-is
 		return sql, nil
 	}
-	
+
 	// Replace field names with column names
 	result := sql
 	for _, field := range schema.Fields {
 		fieldName := field.Name
 		columnName := field.GetColumnName()
-		
+
 		// Only replace if they're different
 		if fieldName != columnName {
 			// Replace field name with column name
@@ -453,7 +453,7 @@ func (q *SelectQueryImpl) mapFieldNamesInSQL(sql string) (string, error) {
 			result = strings.ReplaceAll(result, fieldName+" IS", columnName+" IS")
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -465,13 +465,13 @@ func (q *SelectQueryImpl) clone() *SelectQueryImpl {
 		distinct:       q.distinct,
 		joinBuilder:    NewJoinBuilder(q.database),
 	}
-	
+
 	// Copy existing joins if any
 	if q.joinBuilder != nil && len(q.joinBuilder.joins) > 0 {
 		// For now, create a new joinBuilder
 		// In production, we'd want to properly clone the joins
 		newQuery.joinBuilder = q.joinBuilder
 	}
-	
+
 	return newQuery
 }

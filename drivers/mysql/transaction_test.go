@@ -10,7 +10,7 @@ import (
 
 func TestMySQLTransaction_Basic(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -23,7 +23,7 @@ func TestMySQLTransaction_Basic(t *testing.T) {
 	// Create test table
 	_, err = db.Exec("DROP TABLE IF EXISTS test_transaction")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_transaction (
 			id INT PRIMARY KEY AUTO_INCREMENT,
@@ -75,7 +75,7 @@ func TestMySQLTransaction_Basic(t *testing.T) {
 
 func TestMySQLTransaction_Savepoint(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestMySQLTransaction_Savepoint(t *testing.T) {
 	// Create test table
 	_, err = db.Exec("DROP TABLE IF EXISTS test_savepoint")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_savepoint (
 			id INT PRIMARY KEY AUTO_INCREMENT,
@@ -135,7 +135,7 @@ func TestMySQLTransaction_Savepoint(t *testing.T) {
 
 func TestMySQLTransaction_QueryInTransaction(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestMySQLTransaction_QueryInTransaction(t *testing.T) {
 	// Create test table
 	_, err = db.Exec("DROP TABLE IF EXISTS test_query_tx")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_query_tx (
 			id INT PRIMARY KEY AUTO_INCREMENT,

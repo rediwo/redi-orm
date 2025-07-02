@@ -9,7 +9,7 @@ import (
 )
 
 // executeOperation executes a database operation based on the method name
-func (m *ModelsModule) executeOperation(db types.Database, modelName, methodName string, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeOperation(db types.Database, modelName, methodName string, options map[string]any) (any, error) {
 	ctx := context.Background()
 	model := db.Model(modelName)
 
@@ -59,7 +59,7 @@ func (m *ModelsModule) executeOperation(db types.Database, modelName, methodName
 
 // Create operations
 
-func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	data, ok := options["data"]
 	if !ok {
 		return nil, fmt.Errorf("create requires 'data' field")
@@ -83,7 +83,7 @@ func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery
 
 	// For now, return the created data with ID
 	// In a real implementation, we'd fetch the created record
-	if dataMap, ok := processedData.(map[string]interface{}); ok {
+	if dataMap, ok := processedData.(map[string]any); ok {
 		dataMap["id"] = result.LastInsertID
 		return dataMap, nil
 	}
@@ -91,13 +91,13 @@ func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery
 	return processedData, nil
 }
 
-func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
 	data, ok := options["data"]
 	if !ok {
 		return nil, fmt.Errorf("createMany requires 'data' field")
 	}
 
-	dataSlice, ok := data.([]interface{})
+	dataSlice, ok := data.([]any)
 	if !ok {
 		return nil, fmt.Errorf("createMany 'data' must be an array")
 	}
@@ -108,7 +108,7 @@ func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQ
 	}
 
 	// Process each item
-	var processedData []interface{}
+	var processedData []any
 	for _, item := range dataSlice {
 		processedData = append(processedData, m.processNestedWrites(item, "create"))
 	}
@@ -127,12 +127,12 @@ func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQ
 		created++
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"count": created,
 	}, nil
 }
 
-func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model types.ModelQuery, modelName string, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
 	// Similar to createMany but returns created records
 	// This is a simplified implementation
 	data, ok := options["data"]
@@ -140,12 +140,12 @@ func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model typ
 		return nil, fmt.Errorf("createManyAndReturn requires 'data' field")
 	}
 
-	dataSlice, ok := data.([]interface{})
+	dataSlice, ok := data.([]any)
 	if !ok {
 		return nil, fmt.Errorf("createManyAndReturn 'data' must be an array")
 	}
 
-	var created []interface{}
+	var created []any
 	for _, item := range dataSlice {
 		processedItem := m.processNestedWrites(item, "create")
 		query := model.Insert(processedItem)
@@ -155,7 +155,7 @@ func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model typ
 		}
 
 		// Add ID to the created item
-		if itemMap, ok := processedItem.(map[string]interface{}); ok {
+		if itemMap, ok := processedItem.(map[string]any); ok {
 			itemMap["id"] = result.LastInsertID
 			created = append(created, itemMap)
 		}
@@ -166,7 +166,7 @@ func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model typ
 
 // Read operations
 
-func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	where, ok := options["where"]
 	if !ok {
 		return nil, fmt.Errorf("findUnique requires 'where' field")
@@ -188,7 +188,7 @@ func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQ
 		m.applyInclude(query, include)
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	err := query.FindFirst(ctx, &result)
 	if err != nil {
 		return nil, err
@@ -197,7 +197,7 @@ func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQ
 	return result, nil
 }
 
-func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	query := model.Select()
 
 	// Apply where conditions if provided
@@ -223,7 +223,7 @@ func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQu
 		m.applyInclude(query, include)
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	err := query.FindFirst(ctx, &result)
 	if err != nil {
 		return nil, err
@@ -232,7 +232,7 @@ func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQu
 	return result, nil
 }
 
-func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	query := model.Select()
 
 	// Apply where conditions if provided
@@ -267,12 +267,12 @@ func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQue
 	}
 
 	// Handle distinct
-	if distinct, ok := options["distinct"].([]interface{}); ok && len(distinct) > 0 {
+	if distinct, ok := options["distinct"].([]any); ok && len(distinct) > 0 {
 		// Note: Distinct support would need to be added to the query builder
 		// For now, this is a placeholder
 	}
 
-	results := []map[string]interface{}{}
+	results := []map[string]any{}
 	err := query.FindMany(ctx, &results)
 	if err != nil {
 		return nil, err
@@ -281,21 +281,21 @@ func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQue
 	return results, nil
 }
 
-func (m *ModelsModule) executeCount(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeCount(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	// Apply where conditions if provided
 	if where, ok := options["where"]; ok {
 		// For simple field equality, use the model's Where method which handles field resolution
-		if whereMap, ok := where.(map[string]interface{}); ok {
+		if whereMap, ok := where.(map[string]any); ok {
 			var conditions []types.Condition
 			for field, value := range whereMap {
 				// Check if it's a simple field equality (not an operator object)
-				if _, isOperator := value.(map[string]interface{}); !isOperator {
+				if _, isOperator := value.(map[string]any); !isOperator {
 					// Use the model's Where method which will handle field name resolution
 					condition := model.Where(field).Equals(value)
 					conditions = append(conditions, condition)
 				} else {
 					// For complex conditions, use the existing buildCondition
-					condition := m.buildCondition(map[string]interface{}{field: value})
+					condition := m.buildCondition(map[string]any{field: value})
 					conditions = append(conditions, condition)
 				}
 			}
@@ -322,17 +322,17 @@ func (m *ModelsModule) executeCount(ctx context.Context, model types.ModelQuery,
 	return count, nil
 }
 
-func (m *ModelsModule) executeAggregate(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeAggregate(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	// Apply where conditions if provided
 	if where, ok := options["where"]; ok {
 		model = model.WhereCondition(m.buildCondition(where))
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 
 	// Handle different aggregation types
 	if count, ok := options["_count"]; ok {
-		if countMap, ok := count.(map[string]interface{}); ok {
+		if countMap, ok := count.(map[string]any); ok {
 			for field := range countMap {
 				// For simplicity, just count all records
 				c, err := model.Count(ctx)
@@ -340,69 +340,69 @@ func (m *ModelsModule) executeAggregate(ctx context.Context, model types.ModelQu
 					return nil, err
 				}
 				if _, ok := result["_count"]; !ok {
-					result["_count"] = make(map[string]interface{})
+					result["_count"] = make(map[string]any)
 				}
-				result["_count"].(map[string]interface{})[field] = c
+				result["_count"].(map[string]any)[field] = c
 			}
 		}
 	}
 
 	if avg, ok := options["_avg"]; ok {
-		if avgMap, ok := avg.(map[string]interface{}); ok {
+		if avgMap, ok := avg.(map[string]any); ok {
 			for field := range avgMap {
 				a, err := model.Avg(ctx, field)
 				if err != nil {
 					return nil, err
 				}
 				if _, ok := result["_avg"]; !ok {
-					result["_avg"] = make(map[string]interface{})
+					result["_avg"] = make(map[string]any)
 				}
-				result["_avg"].(map[string]interface{})[field] = a
+				result["_avg"].(map[string]any)[field] = a
 			}
 		}
 	}
 
 	if sum, ok := options["_sum"]; ok {
-		if sumMap, ok := sum.(map[string]interface{}); ok {
+		if sumMap, ok := sum.(map[string]any); ok {
 			for field := range sumMap {
 				s, err := model.Sum(ctx, field)
 				if err != nil {
 					return nil, err
 				}
 				if _, ok := result["_sum"]; !ok {
-					result["_sum"] = make(map[string]interface{})
+					result["_sum"] = make(map[string]any)
 				}
-				result["_sum"].(map[string]interface{})[field] = s
+				result["_sum"].(map[string]any)[field] = s
 			}
 		}
 	}
 
 	if min, ok := options["_min"]; ok {
-		if minMap, ok := min.(map[string]interface{}); ok {
+		if minMap, ok := min.(map[string]any); ok {
 			for field := range minMap {
 				m, err := model.Min(ctx, field)
 				if err != nil {
 					return nil, err
 				}
 				if _, ok := result["_min"]; !ok {
-					result["_min"] = make(map[string]interface{})
+					result["_min"] = make(map[string]any)
 				}
-				result["_min"].(map[string]interface{})[field] = m
+				result["_min"].(map[string]any)[field] = m
 			}
 		}
 	}
 
 	if max, ok := options["_max"]; ok {
-		if maxMap, ok := max.(map[string]interface{}); ok {
+		if maxMap, ok := max.(map[string]any); ok {
 			for field := range maxMap {
 				m, err := model.Max(ctx, field)
 				if err != nil {
 					return nil, err
 				}
 				if _, ok := result["_max"]; !ok {
-					result["_max"] = make(map[string]interface{})
+					result["_max"] = make(map[string]any)
 				}
-				result["_max"].(map[string]interface{})[field] = m
+				result["_max"].(map[string]any)[field] = m
 			}
 		}
 	}
@@ -410,7 +410,7 @@ func (m *ModelsModule) executeAggregate(ctx context.Context, model types.ModelQu
 	return result, nil
 }
 
-func (m *ModelsModule) executeGroupBy(ctx context.Context, model types.ModelQuery, modelName string, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeGroupBy(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
 	// GroupBy is complex and would require significant query builder changes
 	// For now, return a placeholder
 	return nil, fmt.Errorf("groupBy not yet implemented")
@@ -418,7 +418,7 @@ func (m *ModelsModule) executeGroupBy(ctx context.Context, model types.ModelQuer
 
 // Update operations
 
-func (m *ModelsModule) executeUpdate(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeUpdate(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	where, ok := options["where"]
 	if !ok {
 		return nil, fmt.Errorf("update requires 'where' field")
@@ -451,13 +451,13 @@ func (m *ModelsModule) executeUpdate(ctx context.Context, model types.ModelQuery
 	}
 
 	// Return updated data (simplified - should fetch from DB)
-	return map[string]interface{}{
+	return map[string]any{
 		"id":           result.LastInsertID,
 		"rowsAffected": result.RowsAffected,
 	}, nil
 }
 
-func (m *ModelsModule) executeUpdateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeUpdateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
 	data, ok := options["data"]
 	if !ok {
 		return nil, fmt.Errorf("updateMany requires 'data' field")
@@ -480,18 +480,18 @@ func (m *ModelsModule) executeUpdateMany(ctx context.Context, model types.ModelQ
 		return nil, err
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"count": result.RowsAffected,
 	}, nil
 }
 
-func (m *ModelsModule) executeUpdateManyAndReturn(ctx context.Context, model types.ModelQuery, modelName string, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeUpdateManyAndReturn(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
 	// Similar to updateMany but returns updated records
 	// This would require fetching the updated records
 	return nil, fmt.Errorf("updateManyAndReturn not yet implemented")
 }
 
-func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	where, ok := options["where"]
 	if !ok {
 		return nil, fmt.Errorf("upsert requires 'where' field")
@@ -513,7 +513,7 @@ func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery
 		return nil, err
 	}
 
-	var existing map[string]interface{}
+	var existing map[string]any
 	err := selectQuery.FindFirst(ctx, &existing)
 
 	if err == nil && existing != nil {
@@ -528,7 +528,7 @@ func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery
 			return nil, err
 		}
 		// Merge update data with existing
-		for k, v := range updateData.(map[string]interface{}) {
+		for k, v := range updateData.(map[string]any) {
 			existing[k] = v
 		}
 		return existing, nil
@@ -541,7 +541,7 @@ func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery
 			return nil, err
 		}
 		// Add ID to created data
-		if createMap, ok := createData.(map[string]interface{}); ok {
+		if createMap, ok := createData.(map[string]any); ok {
 			createMap["id"] = result.LastInsertID
 			return createMap, nil
 		}
@@ -551,7 +551,7 @@ func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery
 
 // Delete operations
 
-func (m *ModelsModule) executeDelete(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeDelete(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	where, ok := options["where"]
 	if !ok {
 		return nil, fmt.Errorf("delete requires 'where' field")
@@ -563,7 +563,7 @@ func (m *ModelsModule) executeDelete(ctx context.Context, model types.ModelQuery
 		return nil, err
 	}
 
-	var existing map[string]interface{}
+	var existing map[string]any
 	err := selectQuery.FindFirst(ctx, &existing)
 	if err != nil {
 		return nil, err
@@ -583,7 +583,7 @@ func (m *ModelsModule) executeDelete(ctx context.Context, model types.ModelQuery
 	return existing, nil
 }
 
-func (m *ModelsModule) executeDeleteMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]interface{}) (interface{}, error) {
+func (m *ModelsModule) executeDeleteMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
 	deleteQuery := model.Delete()
 
 	// Apply where conditions if provided
@@ -598,29 +598,29 @@ func (m *ModelsModule) executeDeleteMany(ctx context.Context, model types.ModelQ
 		return nil, err
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"count": result.RowsAffected,
 	}, nil
 }
 
 // Helper functions
 
-func (m *ModelsModule) processNestedWrites(data interface{}, operation string) interface{} {
+func (m *ModelsModule) processNestedWrites(data any, operation string) any {
 	// Process nested create/connect/disconnect operations
 	// For now, just return the data as-is
 	return data
 }
 
-func (m *ModelsModule) processUpdateData(data interface{}) interface{} {
-	dataMap, ok := data.(map[string]interface{})
+func (m *ModelsModule) processUpdateData(data any) any {
+	dataMap, ok := data.(map[string]any)
 	if !ok {
 		return data
 	}
 
-	processed := make(map[string]interface{})
+	processed := make(map[string]any)
 	for key, value := range dataMap {
 		// Check for atomic operations
-		if valueMap, ok := value.(map[string]interface{}); ok {
+		if valueMap, ok := value.(map[string]any); ok {
 			if inc, ok := valueMap["increment"]; ok {
 				// This would need special handling in the query builder
 				processed[key] = inc
@@ -638,9 +638,9 @@ func (m *ModelsModule) processUpdateData(data interface{}) interface{} {
 	return processed
 }
 
-func (m *ModelsModule) extractFieldNames(selectFields interface{}) []string {
+func (m *ModelsModule) extractFieldNames(selectFields any) []string {
 	var fields []string
-	if selectMap, ok := selectFields.(map[string]interface{}); ok {
+	if selectMap, ok := selectFields.(map[string]any); ok {
 		for field, value := range selectMap {
 			if include, ok := value.(bool); ok && include {
 				fields = append(fields, field)
@@ -650,14 +650,14 @@ func (m *ModelsModule) extractFieldNames(selectFields interface{}) []string {
 	return fields
 }
 
-func (m *ModelsModule) applyInclude(query interface{}, include interface{}) {
+func (m *ModelsModule) applyInclude(query any, include any) {
 	// Handle relation loading
 	// This would require relation support in the query builder
 	// For now, this is a placeholder
 }
 
 // Helper to convert numeric types to int64
-func toInt64(v interface{}) int64 {
+func toInt64(v any) int64 {
 	switch val := v.(type) {
 	case int:
 		return int64(val)

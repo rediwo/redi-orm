@@ -12,7 +12,7 @@ import (
 // UpdateQueryImpl implements the UpdateQuery interface
 type UpdateQueryImpl struct {
 	*ModelQueryImpl
-	setData         map[string]interface{}
+	setData         map[string]any
 	atomicOps       map[string]AtomicOperation
 	whereConditions []types.Condition
 	returningFields []string
@@ -24,10 +24,10 @@ type AtomicOperation struct {
 }
 
 // NewUpdateQuery creates a new update query
-func NewUpdateQuery(baseQuery *ModelQueryImpl, data interface{}) *UpdateQueryImpl {
+func NewUpdateQuery(baseQuery *ModelQueryImpl, data any) *UpdateQueryImpl {
 	updateQuery := &UpdateQueryImpl{
 		ModelQueryImpl:  baseQuery,
-		setData:         make(map[string]interface{}),
+		setData:         make(map[string]any),
 		atomicOps:       make(map[string]AtomicOperation),
 		whereConditions: []types.Condition{},
 		returningFields: []string{},
@@ -41,12 +41,12 @@ func NewUpdateQuery(baseQuery *ModelQueryImpl, data interface{}) *UpdateQueryImp
 }
 
 // Set sets the data to update
-func (q *UpdateQueryImpl) Set(data interface{}) types.UpdateQuery {
+func (q *UpdateQueryImpl) Set(data any) types.UpdateQuery {
 	newQuery := q.clone()
 
 	// Extract fields and values from data
 	switch v := data.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		for field, value := range v {
 			newQuery.setData[field] = value
 		}
@@ -119,7 +119,7 @@ func (q *UpdateQueryImpl) Exec(ctx context.Context) (types.Result, error) {
 }
 
 // ExecAndReturn executes the update and returns the updated data
-func (q *UpdateQueryImpl) ExecAndReturn(ctx context.Context, dest interface{}) error {
+func (q *UpdateQueryImpl) ExecAndReturn(ctx context.Context, dest any) error {
 	if len(q.returningFields) == 0 {
 		return fmt.Errorf("no returning fields specified")
 	}
@@ -134,7 +134,7 @@ func (q *UpdateQueryImpl) ExecAndReturn(ctx context.Context, dest interface{}) e
 }
 
 // BuildSQL builds the update SQL query
-func (q *UpdateQueryImpl) BuildSQL() (string, []interface{}, error) {
+func (q *UpdateQueryImpl) BuildSQL() (string, []any, error) {
 	if len(q.setData) == 0 && len(q.atomicOps) == 0 {
 		return "", nil, fmt.Errorf("no data to update")
 	}
@@ -146,7 +146,7 @@ func (q *UpdateQueryImpl) BuildSQL() (string, []interface{}, error) {
 	}
 
 	var sql strings.Builder
-	var args []interface{}
+	var args []any
 
 	sql.WriteString(fmt.Sprintf("UPDATE %s SET ", tableName))
 
@@ -205,13 +205,13 @@ func (q *UpdateQueryImpl) BuildSQL() (string, []interface{}, error) {
 }
 
 // buildWhereClause builds the WHERE part of the query for update
-func (q *UpdateQueryImpl) buildWhereClause(conditions []types.Condition) (string, []interface{}, error) {
+func (q *UpdateQueryImpl) buildWhereClause(conditions []types.Condition) (string, []any, error) {
 	if len(conditions) == 0 {
 		return "", nil, nil
 	}
 
 	var conditionSQLs []string
-	var args []interface{}
+	var args []any
 
 	for _, condition := range conditions {
 		sql, condArgs := condition.ToSQL()
@@ -242,9 +242,9 @@ func (q *UpdateQueryImpl) mapFieldNamesInSQL(sql string) (string, error) {
 }
 
 // extractFieldsAndValues extracts field names and values from data
-func (q *UpdateQueryImpl) extractFieldsAndValues(data interface{}) ([]string, []interface{}, error) {
+func (q *UpdateQueryImpl) extractFieldsAndValues(data any) ([]string, []any, error) {
 	switch v := data.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return q.extractFromMap(v)
 	default:
 		return q.extractFromStruct(data)
@@ -252,9 +252,9 @@ func (q *UpdateQueryImpl) extractFieldsAndValues(data interface{}) ([]string, []
 }
 
 // extractFromMap extracts fields and values from a map
-func (q *UpdateQueryImpl) extractFromMap(data map[string]interface{}) ([]string, []interface{}, error) {
+func (q *UpdateQueryImpl) extractFromMap(data map[string]any) ([]string, []any, error) {
 	fields := make([]string, 0, len(data))
-	values := make([]interface{}, 0, len(data))
+	values := make([]any, 0, len(data))
 
 	for field, value := range data {
 		fields = append(fields, field)
@@ -265,7 +265,7 @@ func (q *UpdateQueryImpl) extractFromMap(data map[string]interface{}) ([]string,
 }
 
 // extractFromStruct extracts fields and values from a struct
-func (q *UpdateQueryImpl) extractFromStruct(data interface{}) ([]string, []interface{}, error) {
+func (q *UpdateQueryImpl) extractFromStruct(data any) ([]string, []any, error) {
 	v := reflect.ValueOf(data)
 	t := reflect.TypeOf(data)
 
@@ -280,7 +280,7 @@ func (q *UpdateQueryImpl) extractFromStruct(data interface{}) ([]string, []inter
 	}
 
 	var fields []string
-	var values []interface{}
+	var values []any
 
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
@@ -310,7 +310,7 @@ func (q *UpdateQueryImpl) extractFromStruct(data interface{}) ([]string, []inter
 
 // clone creates a copy of the update query
 func (q *UpdateQueryImpl) clone() *UpdateQueryImpl {
-	newSetData := make(map[string]interface{})
+	newSetData := make(map[string]any)
 	for k, v := range q.setData {
 		newSetData[k] = v
 	}

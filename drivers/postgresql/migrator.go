@@ -49,13 +49,13 @@ func (m *PostgreSQLMigrator) GetTables() ([]string, error) {
 		AND table_type = 'BASE TABLE'
 		ORDER BY table_name
 	`
-	
+
 	rows, err := m.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tables: %w", err)
 	}
 	defer rows.Close()
-	
+
 	var tables []string
 	for rows.Next() {
 		var tableName string
@@ -64,7 +64,7 @@ func (m *PostgreSQLMigrator) GetTables() ([]string, error) {
 		}
 		tables = append(tables, tableName)
 	}
-	
+
 	return tables, rows.Err()
 }
 
@@ -75,7 +75,7 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 		Columns: []types.ColumnInfo{},
 		Indexes: []types.IndexInfo{},
 	}
-	
+
 	// Get column information
 	columnQuery := `
 		SELECT 
@@ -94,13 +94,13 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 		WHERE table_schema = 'public' AND table_name = $1
 		ORDER BY ordinal_position
 	`
-	
+
 	rows, err := m.db.Query(columnQuery, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query columns: %w", err)
 	}
 	defer rows.Close()
-	
+
 	for rows.Next() {
 		var colInfo types.ColumnInfo
 		var dataType string
@@ -108,7 +108,7 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 		var isNullable string
 		var columnDefault sql.NullString
 		var isAutoIncrement bool
-		
+
 		err := rows.Scan(
 			&colInfo.Name,
 			&dataType,
@@ -122,19 +122,19 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan column info: %w", err)
 		}
-		
+
 		// Build full type string
 		colInfo.Type = m.buildColumnType(dataType, charMaxLength, numericPrecision, numericScale)
 		colInfo.Nullable = isNullable == "YES"
 		colInfo.AutoIncrement = isAutoIncrement
-		
+
 		if columnDefault.Valid {
 			// Clean up PostgreSQL default values
 			defaultValue := columnDefault.String
 			defaultValue = strings.TrimPrefix(defaultValue, "'")
 			defaultValue = strings.TrimSuffix(defaultValue, "'::character varying")
 			defaultValue = strings.TrimSuffix(defaultValue, "'::text")
-			
+
 			// Handle boolean defaults
 			if dataType == "boolean" {
 				if defaultValue == "true" {
@@ -143,17 +143,17 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 					defaultValue = "FALSE"
 				}
 			}
-			
+
 			colInfo.Default = defaultValue
 		}
-		
+
 		tableInfo.Columns = append(tableInfo.Columns, colInfo)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate columns: %w", err)
 	}
-	
+
 	// Get primary key information
 	pkQuery := `
 		SELECT kcu.column_name
@@ -166,13 +166,13 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 			AND tc.table_name = $1
 		ORDER BY kcu.ordinal_position
 	`
-	
+
 	pkRows, err := m.db.Query(pkQuery, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query primary keys: %w", err)
 	}
 	defer pkRows.Close()
-	
+
 	primaryKeys := make(map[string]bool)
 	for pkRows.Next() {
 		var columnName string
@@ -181,14 +181,14 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 		}
 		primaryKeys[columnName] = true
 	}
-	
+
 	// Update column info with primary key status
 	for i := range tableInfo.Columns {
 		if primaryKeys[tableInfo.Columns[i].Name] {
 			tableInfo.Columns[i].PrimaryKey = true
 		}
 	}
-	
+
 	// Get unique constraint information
 	uniqueQuery := `
 		SELECT kcu.column_name
@@ -200,13 +200,13 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 			AND tc.table_schema = 'public'
 			AND tc.table_name = $1
 	`
-	
+
 	uniqueRows, err := m.db.Query(uniqueQuery, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query unique constraints: %w", err)
 	}
 	defer uniqueRows.Close()
-	
+
 	uniqueColumns := make(map[string]bool)
 	for uniqueRows.Next() {
 		var columnName string
@@ -215,14 +215,14 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 		}
 		uniqueColumns[columnName] = true
 	}
-	
+
 	// Update column info with unique status
 	for i := range tableInfo.Columns {
 		if uniqueColumns[tableInfo.Columns[i].Name] {
 			tableInfo.Columns[i].Unique = true
 		}
 	}
-	
+
 	// Get index information
 	indexQuery := `
 		SELECT 
@@ -238,30 +238,30 @@ func (m *PostgreSQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, e
 			AND NOT idx.indisprimary
 		GROUP BY i.relname, idx.indisunique
 	`
-	
+
 	indexRows, err := m.db.Query(indexQuery, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query indexes: %w", err)
 	}
 	defer indexRows.Close()
-	
+
 	for indexRows.Next() {
 		var indexInfo types.IndexInfo
 		var columnNames string
-		
+
 		err := indexRows.Scan(&indexInfo.Name, &indexInfo.Unique, &columnNames)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan index info: %w", err)
 		}
-		
+
 		// Parse column names from PostgreSQL array format
 		columnNames = strings.TrimPrefix(columnNames, "{")
 		columnNames = strings.TrimSuffix(columnNames, "}")
 		indexInfo.Columns = strings.Split(columnNames, ",")
-		
+
 		tableInfo.Indexes = append(tableInfo.Indexes, indexInfo)
 	}
-	
+
 	return tableInfo, nil
 }
 
@@ -329,7 +329,7 @@ func (m *PostgreSQLMigrator) GenerateDropTableSQL(tableName string) string {
 }
 
 // GenerateAddColumnSQL generates ALTER TABLE ADD COLUMN SQL
-func (m *PostgreSQLMigrator) GenerateAddColumnSQL(tableName string, column interface{}) (string, error) {
+func (m *PostgreSQLMigrator) GenerateAddColumnSQL(tableName string, column any) (string, error) {
 	switch col := column.(type) {
 	case types.ColumnInfo:
 		columnDef := m.GenerateColumnDefinitionFromColumnInfo(col)
@@ -349,23 +349,23 @@ func (m *PostgreSQLMigrator) GenerateModifyColumnSQL(change types.ColumnChange) 
 	if change.NewColumn == nil {
 		return nil, fmt.Errorf("new column definition is required")
 	}
-	
+
 	var sqls []string
 	tableName := m.quote(change.TableName)
 	columnName := m.quote(change.NewColumn.Name)
-	
+
 	// Handle column rename
 	if change.OldColumn != nil && change.OldColumn.Name != change.NewColumn.Name {
-		sql := fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", 
+		sql := fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s",
 			tableName, m.quote(change.OldColumn.Name), columnName)
 		sqls = append(sqls, sql)
 	}
-	
+
 	// Change column type
 	newType := change.NewColumn.Type
 	sql := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s", tableName, columnName, newType)
 	sqls = append(sqls, sql)
-	
+
 	// Change NULL/NOT NULL
 	if change.NewColumn.Nullable {
 		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL", tableName, columnName)
@@ -373,22 +373,22 @@ func (m *PostgreSQLMigrator) GenerateModifyColumnSQL(change types.ColumnChange) 
 		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", tableName, columnName)
 	}
 	sqls = append(sqls, sql)
-	
+
 	// Change default value
 	if change.NewColumn.Default != "" {
-		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s", 
+		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s",
 			tableName, columnName, change.NewColumn.Default)
 	} else {
 		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT", tableName, columnName)
 	}
 	sqls = append(sqls, sql)
-	
+
 	// Handle UNIQUE constraint
 	if change.OldColumn != nil && change.OldColumn.Unique != change.NewColumn.Unique {
 		if change.NewColumn.Unique {
 			// Add unique constraint
 			constraintName := fmt.Sprintf("uk_%s_%s", change.TableName, change.NewColumn.Name)
-			sql = fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s UNIQUE (%s)", 
+			sql = fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s UNIQUE (%s)",
 				tableName, m.quote(constraintName), columnName)
 		} else {
 			// Drop unique constraint - need to find the constraint name
@@ -417,7 +417,7 @@ func (m *PostgreSQLMigrator) GenerateModifyColumnSQL(change types.ColumnChange) 
 		}
 		sqls = append(sqls, sql)
 	}
-	
+
 	return sqls, nil
 }
 
@@ -433,12 +433,12 @@ func (m *PostgreSQLMigrator) GenerateCreateIndexSQL(tableName, indexName string,
 	for i, col := range columns {
 		quotedColumns[i] = m.quote(col)
 	}
-	
+
 	indexType := "INDEX"
 	if unique {
 		indexType = "UNIQUE INDEX"
 	}
-	
+
 	return fmt.Sprintf("CREATE %s %s ON %s (%s)",
 		indexType, m.quote(indexName), m.quote(tableName), strings.Join(quotedColumns, ", "))
 }
@@ -451,23 +451,23 @@ func (m *PostgreSQLMigrator) GenerateDropIndexSQL(indexName string) string {
 // GenerateColumnDefinitionFromColumnInfo generates column definition from ColumnInfo
 func (m *PostgreSQLMigrator) GenerateColumnDefinitionFromColumnInfo(column types.ColumnInfo) string {
 	parts := []string{m.quote(column.Name), column.Type}
-	
+
 	if column.PrimaryKey {
 		parts = append(parts, "PRIMARY KEY")
 	}
-	
+
 	if !column.Nullable && !column.AutoIncrement {
 		parts = append(parts, "NOT NULL")
 	}
-	
+
 	if column.Unique && !column.PrimaryKey {
 		parts = append(parts, "UNIQUE")
 	}
-	
+
 	if column.Default != "" && !column.AutoIncrement {
 		parts = append(parts, fmt.Sprintf("DEFAULT %s", column.Default))
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
@@ -481,11 +481,11 @@ func (m *PostgreSQLMigrator) GenerateColumnDefinition(field schema.Field) string
 		Unique:        field.Unique,
 		AutoIncrement: field.AutoIncrement,
 	}
-	
+
 	if field.Default != nil {
 		column.Default = m.postgresqlDB.formatDefaultValue(field.Default, field.Type)
 	}
-	
+
 	// Handle SERIAL types for auto increment
 	if field.AutoIncrement && field.PrimaryKey {
 		if field.Type == schema.FieldTypeInt {
@@ -494,7 +494,7 @@ func (m *PostgreSQLMigrator) GenerateColumnDefinition(field schema.Field) string
 			column.Type = "BIGSERIAL"
 		}
 	}
-	
+
 	return m.GenerateColumnDefinitionFromColumnInfo(column)
 }
 
@@ -526,7 +526,7 @@ func (m *PostgreSQLMigrator) MapFieldType(field schema.Field) string {
 }
 
 // FormatDefaultValue formats a default value for PostgreSQL
-func (m *PostgreSQLMigrator) FormatDefaultValue(value interface{}) string {
+func (m *PostgreSQLMigrator) FormatDefaultValue(value any) string {
 	return m.postgresqlDB.formatDefaultValue(value, schema.FieldTypeString)
 }
 
@@ -545,7 +545,7 @@ func (m *PostgreSQLMigrator) ConvertFieldToColumnInfo(field schema.Field) *types
 
 // Additional wrapper methods to satisfy the types.DatabaseMigrator interface
 
-// GenerateCreateTableSQL wraps to match the DatabaseMigrator interface  
+// GenerateCreateTableSQL wraps to match the DatabaseMigrator interface
 func (w *PostgreSQLMigratorWrapper) GenerateCreateTableSQL(schemaInterface any) (string, error) {
 	s, ok := schemaInterface.(*schema.Schema)
 	if !ok {

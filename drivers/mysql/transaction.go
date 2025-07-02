@@ -36,7 +36,7 @@ func (t *MySQLTransaction) Model(modelName string) types.ModelQuery {
 }
 
 // Raw creates a new raw query within the transaction
-func (t *MySQLTransaction) Raw(sql string, args ...interface{}) types.RawQuery {
+func (t *MySQLTransaction) Raw(sql string, args ...any) types.RawQuery {
 	return &MySQLTransactionRawQuery{tx: t.tx, sql: sql, args: args}
 }
 
@@ -69,14 +69,14 @@ func (t *MySQLTransaction) RollbackTo(ctx context.Context, name string) error {
 }
 
 // CreateMany creates multiple records within the transaction
-func (t *MySQLTransaction) CreateMany(ctx context.Context, modelName string, data []interface{}) (types.Result, error) {
+func (t *MySQLTransaction) CreateMany(ctx context.Context, modelName string, data []any) (types.Result, error) {
 	// For now, return a simple implementation
 	// In production, this would build a bulk INSERT statement
 	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
 }
 
 // UpdateMany updates multiple records within the transaction
-func (t *MySQLTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data interface{}) (types.Result, error) {
+func (t *MySQLTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data any) (types.Result, error) {
 	// For now, return a simple implementation
 	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
 }
@@ -164,7 +164,7 @@ func (tdb *MySQLTransactionDB) Model(modelName string) types.ModelQuery {
 }
 
 // Raw creates a raw query that uses the transaction
-func (tdb *MySQLTransactionDB) Raw(sql string, args ...interface{}) types.RawQuery {
+func (tdb *MySQLTransactionDB) Raw(sql string, args ...any) types.RawQuery {
 	return tdb.tx.Raw(sql, args...)
 }
 
@@ -199,17 +199,17 @@ func (tdb *MySQLTransactionDB) SyncSchemas(ctx context.Context) error {
 }
 
 // Exec executes a query within the transaction
-func (tdb *MySQLTransactionDB) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (tdb *MySQLTransactionDB) Exec(query string, args ...any) (sql.Result, error) {
 	return tdb.tx.tx.Exec(query, args...)
 }
 
 // Query executes a query within the transaction
-func (tdb *MySQLTransactionDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+func (tdb *MySQLTransactionDB) Query(query string, args ...any) (*sql.Rows, error) {
 	return tdb.tx.tx.Query(query, args...)
 }
 
 // QueryRow executes a query within the transaction
-func (tdb *MySQLTransactionDB) QueryRow(query string, args ...interface{}) *sql.Row {
+func (tdb *MySQLTransactionDB) QueryRow(query string, args ...any) *sql.Row {
 	return tdb.tx.tx.QueryRow(query, args...)
 }
 
@@ -217,7 +217,7 @@ func (tdb *MySQLTransactionDB) QueryRow(query string, args ...interface{}) *sql.
 type MySQLTransactionRawQuery struct {
 	tx   *sql.Tx
 	sql  string
-	args []interface{}
+	args []any
 }
 
 // Exec executes the query within a transaction
@@ -244,7 +244,7 @@ func (q *MySQLTransactionRawQuery) Exec(ctx context.Context) (types.Result, erro
 }
 
 // Find executes the query and scans results into dest within a transaction
-func (q *MySQLTransactionRawQuery) Find(ctx context.Context, dest interface{}) error {
+func (q *MySQLTransactionRawQuery) Find(ctx context.Context, dest any) error {
 	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -255,6 +255,6 @@ func (q *MySQLTransactionRawQuery) Find(ctx context.Context, dest interface{}) e
 }
 
 // FindOne executes the query and scans a single result into dest within a transaction
-func (q *MySQLTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+func (q *MySQLTransactionRawQuery) FindOne(ctx context.Context, dest any) error {
 	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
 }

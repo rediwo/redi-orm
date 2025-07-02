@@ -196,16 +196,16 @@ func (b *Driver) Close() error {
 }
 
 // Exec executes a raw SQL statement
-func (b *Driver) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (b *Driver) Exec(query string, args ...any) (sql.Result, error) {
 	return b.DB.Exec(query, args...)
 }
 
 // Query executes a raw SQL query that returns rows
-func (b *Driver) Query(query string, args ...interface{}) (*sql.Rows, error) {
+func (b *Driver) Query(query string, args ...any) (*sql.Rows, error) {
 	return b.DB.Query(query, args...)
 }
 
 // QueryRow executes a raw SQL query that returns a single row
-func (b *Driver) QueryRow(query string, args ...interface{}) *sql.Row {
+func (b *Driver) QueryRow(query string, args ...any) *sql.Row {
 	return b.DB.QueryRow(query, args...)
 }

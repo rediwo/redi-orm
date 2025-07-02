@@ -19,7 +19,7 @@ func init() {
 	registry.Register("mysql", func(config types.Config) (types.Database, error) {
 		return NewMySQLDB(config)
 	})
-	
+
 	// Register MySQL URI parser
 	registry.RegisterURIParser("mysql", NewMySQLURIParser())
 }
@@ -106,7 +106,7 @@ func (m *MySQLDB) Model(modelName string) types.ModelQuery {
 }
 
 // Raw creates a new raw query
-func (m *MySQLDB) Raw(sql string, args ...interface{}) types.RawQuery {
+func (m *MySQLDB) Raw(sql string, args ...any) types.RawQuery {
 	return NewMySQLRawQuery(m.DB, sql, args...)
 }
 
@@ -149,17 +149,17 @@ func (m *MySQLDB) Transaction(ctx context.Context, fn func(tx types.Transaction)
 }
 
 // Exec executes a raw SQL statement
-func (m *MySQLDB) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (m *MySQLDB) Exec(query string, args ...any) (sql.Result, error) {
 	return m.DB.Exec(query, args...)
 }
 
 // Query executes a raw SQL query that returns rows
-func (m *MySQLDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+func (m *MySQLDB) Query(query string, args ...any) (*sql.Rows, error) {
 	return m.DB.Query(query, args...)
 }
 
 // QueryRow executes a raw SQL query that returns a single row
-func (m *MySQLDB) QueryRow(query string, args ...interface{}) *sql.Row {
+func (m *MySQLDB) QueryRow(query string, args ...any) *sql.Row {
 	return m.DB.QueryRow(query, args...)
 }
 
@@ -174,7 +174,7 @@ func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) 
 			return "", fmt.Errorf("failed to generate column SQL for field %s: %w", field.Name, err)
 		}
 		columns = append(columns, column)
-		
+
 		if field.PrimaryKey {
 			primaryKeys = append(primaryKeys, fmt.Sprintf("`%s`", field.GetColumnName()))
 		}
@@ -245,7 +245,7 @@ func (m *MySQLDB) mapFieldTypeToSQL(fieldType schema.FieldType) string {
 }
 
 // formatDefaultValue formats a default value for MySQL
-func (m *MySQLDB) formatDefaultValue(value interface{}) string {
+func (m *MySQLDB) formatDefaultValue(value any) string {
 	if value == nil {
 		return "NULL"
 	}
@@ -262,9 +262,6 @@ func (m *MySQLDB) formatDefaultValue(value interface{}) string {
 		return fmt.Sprintf("%v", value)
 	}
 }
-
-
-
 
 // GetMigrator returns a migrator for MySQL
 func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {

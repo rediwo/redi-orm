@@ -440,8 +440,8 @@ func TestSQLiteDB_FieldTypeMapping(t *testing.T) {
 
 	// Test field type to SQL type mapping
 	tests := []struct {
-		fieldType    schema.FieldType
-		expectedSQL  string
+		fieldType   schema.FieldType
+		expectedSQL string
 	}{
 		{schema.FieldTypeString, "TEXT"},
 		{schema.FieldTypeInt, "INTEGER"},
@@ -557,7 +557,7 @@ func TestSQLiteDB_IntegrationTest(t *testing.T) {
 	// 2. Create table
 	err = db.CreateModel(ctx, "User")
 	require.NoError(t, err)
-	
+
 	// Verify table was created
 	tableRows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
 	require.NoError(t, err)

@@ -8,8 +8,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/rediwo/redi/runtime"
 	_ "github.com/rediwo/redi-orm/modules/orm" // Import to register the module
+	"github.com/rediwo/redi/runtime"
 )
 
 // TestSuite runs all JavaScript test files
@@ -42,7 +42,7 @@ func TestSuite(t *testing.T) {
 	for _, testFile := range testFileNames {
 		t.Run(testFile, func(t *testing.T) {
 			scriptPath := filepath.Join(testDir, testFile)
-			
+
 			// Check if test file exists
 			if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 				t.Skipf("Test file %s not found", testFile)
@@ -71,7 +71,7 @@ func TestSuite(t *testing.T) {
 // TestFromUri specifically tests the fromUri functionality
 func TestFromUri(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Create a temporary directory for test databases
 	tempDir, err := os.MkdirTemp("", "orm-test-*")
 	if err != nil {
@@ -92,7 +92,7 @@ func TestFromUri(t *testing.T) {
 		t.Fatalf("Failed to get current dir: %v", err)
 	}
 	defer os.Chdir(oldDir)
-	
+
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatalf("Failed to change to temp dir: %v", err)
 	}
@@ -105,11 +105,11 @@ func TestFromUri(t *testing.T) {
 			t.Logf("Warning: Failed to glob %s: %v", pattern, err)
 			continue
 		}
-		
+
 		for _, srcPath := range files {
 			filename := filepath.Base(srcPath)
 			dstPath := filepath.Join(tempDir, filename)
-			
+
 			data, err := os.ReadFile(srcPath)
 			if err != nil {
 				t.Logf("Warning: Failed to read %s: %v", filename, err)
@@ -124,7 +124,7 @@ func TestFromUri(t *testing.T) {
 	// Run fromUri specific tests
 	t.Run("fromUri", func(t *testing.T) {
 		executor := runtime.NewExecutor()
-		
+
 		scriptPath := filepath.Join(tempDir, "schema_test.js")
 		if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 			// If test file doesn't exist, create a simple inline test

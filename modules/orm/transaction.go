@@ -20,7 +20,7 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime) func(call js.Fu
 		if js.IsUndefined(callbackValue) || js.IsNull(callbackValue) {
 			panic(vm.NewTypeError("$transaction requires a function as first argument"))
 		}
-		
+
 		// Check if it's callable
 		callbackObj, ok := callbackValue.(*js.Object)
 		if !ok || callbackObj.Get("call") == nil {
@@ -50,8 +50,8 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime) func(call js.Fu
 					// Create a transaction-aware models module
 					txModule := &TransactionModelsModule{
 						ModelsModule: m,
-						tx:          tx,
-						vm:          vm,
+						tx:           tx,
+						vm:           vm,
 					}
 
 					// Register all models for transaction
@@ -65,14 +65,14 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime) func(call js.Fu
 					// Store the callback and tx object in VM globals temporarily
 					vm.Set("__txCallback", callbackObj)
 					vm.Set("__txObject", txObj)
-					
+
 					// Execute the callback
 					result, err := vm.RunString("__txCallback(__txObject)")
 					if err != nil {
 						resultChan <- fmt.Errorf("callback execution error: %v", err)
 						return
 					}
-					
+
 					// Clean up
 					vm.Set("__txCallback", js.Undefined())
 					vm.Set("__txObject", js.Undefined())
@@ -111,12 +111,12 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime) func(call js.Fu
 								vm.Set("__promise", promiseObj)
 								vm.Set("__thenHandler", vm.ToValue(thenHandler))
 								vm.Set("__catchHandler", vm.ToValue(catchHandler))
-								
+
 								vm.RunString("__promise.then(__thenHandler)")
 								if catchObj != nil {
 									vm.RunString("__promise.catch(__catchHandler)")
 								}
-								
+
 								// Clean up
 								vm.Set("__promise", js.Undefined())
 								vm.Set("__thenHandler", js.Undefined())
@@ -197,10 +197,10 @@ func (t *TransactionModelsModule) createTransactionMethod(modelName, methodName 
 			}
 		}
 
-		var options map[string]interface{}
+		var options map[string]any
 		if len(call.Arguments) > 0 && !js.IsUndefined(call.Arguments[0]) && !js.IsNull(call.Arguments[0]) {
 			exported := call.Arguments[0].Export()
-			if optMap, ok := exported.(map[string]interface{}); ok {
+			if optMap, ok := exported.(map[string]any); ok {
 				options = optMap
 			}
 		}
@@ -225,7 +225,7 @@ func (t *TransactionModelsModule) createTransactionMethod(modelName, methodName 
 }
 
 // executeTransactionOperation executes an operation within a transaction
-func (t *TransactionModelsModule) executeTransactionOperation(modelName, methodName string, options map[string]interface{}) (interface{}, error) {
+func (t *TransactionModelsModule) executeTransactionOperation(modelName, methodName string, options map[string]any) (any, error) {
 	ctx := context.Background()
 	model := t.tx.Model(modelName)
 

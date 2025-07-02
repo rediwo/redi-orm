@@ -291,10 +291,10 @@ func TestSQLiteTransaction_CreateMany(t *testing.T) {
 	defer tx.Rollback(ctx)
 
 	// Test CreateMany
-	users := []interface{}{
-		map[string]interface{}{"name": "User1", "email": "user1@example.com"},
-		map[string]interface{}{"name": "User2", "email": "user2@example.com"},
-		map[string]interface{}{"name": "User3", "email": "user3@example.com"},
+	users := []any{
+		map[string]any{"name": "User1", "email": "user1@example.com"},
+		map[string]any{"name": "User2", "email": "user2@example.com"},
+		map[string]any{"name": "User3", "email": "user3@example.com"},
 	}
 
 	result, err := tx.CreateMany(ctx, "User", users)
@@ -302,7 +302,7 @@ func TestSQLiteTransaction_CreateMany(t *testing.T) {
 	assert.Equal(t, int64(3), result.RowsAffected)
 
 	// Test CreateMany with empty data
-	_, err = tx.CreateMany(ctx, "User", []interface{}{})
+	_, err = tx.CreateMany(ctx, "User", []any{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no data to insert")
 
@@ -363,10 +363,10 @@ func TestSQLiteTransaction_UpdateMany(t *testing.T) {
 	condition := db.Model("User").Where("active").Equals(true)
 
 	// Test UpdateMany
-	updateData := map[string]interface{}{"name": "UpdatedUser"}
+	updateData := map[string]any{"name": "UpdatedUser"}
 	result, updateErr := tx.UpdateMany(ctx, "User", condition, updateData)
 	updateSucceeded := updateErr == nil
-	
+
 	if updateErr != nil {
 		// UpdateMany implementation may have issues, skip this part of the test
 		t.Logf("UpdateMany failed (expected due to placeholder implementation): %v", updateErr)

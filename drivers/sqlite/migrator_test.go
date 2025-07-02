@@ -110,8 +110,7 @@ func TestSQLiteMigrator_GetTableInfo(t *testing.T) {
 	// Create an index
 	_, err = db.Exec("CREATE UNIQUE INDEX idx_email ON test_table (email)")
 	require.NoError(t, err)
-	
-	
+
 	migrator := db.GetMigrator()
 	tableInfo, err := migrator.GetTableInfo("test_table")
 	require.NoError(t, err)
@@ -164,7 +163,7 @@ func TestSQLiteMigrator_GetTableInfo(t *testing.T) {
 	for i, idx := range tableInfo.Indexes {
 		t.Logf("Index %d: %+v", i, idx)
 	}
-	
+
 	// Find our created index
 	var foundIdx *types.IndexInfo
 	for i := range tableInfo.Indexes {
@@ -173,7 +172,7 @@ func TestSQLiteMigrator_GetTableInfo(t *testing.T) {
 			break
 		}
 	}
-	
+
 	require.NotNil(t, foundIdx, "idx_email not found")
 	assert.True(t, foundIdx.Unique)
 	assert.Equal(t, []string{"email"}, foundIdx.Columns)
@@ -284,7 +283,7 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL(t *testing.T) {
 		)
 	`)
 	require.NoError(t, err)
-	
+
 	// Create an index that we'll need to recreate
 	_, err = db.Exec("CREATE INDEX idx_email ON users (email)")
 	require.NoError(t, err)
@@ -309,24 +308,24 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL(t *testing.T) {
 		sqls, err := migrator.GenerateModifyColumnSQL(change)
 		assert.NoError(t, err)
 		assert.Greater(t, len(sqls), 3) // Should have CREATE, INSERT, DROP, RENAME at minimum
-		
+
 		// Check that it creates a temporary table
 		assert.Contains(t, sqls[0], "CREATE TABLE")
 		assert.Contains(t, sqls[0], "_temp_")
 		assert.Contains(t, sqls[0], "email TEXT")
 		assert.Contains(t, sqls[0], "UNIQUE")
-		
+
 		// Check data copy
 		assert.Contains(t, sqls[1], "INSERT INTO")
 		assert.Contains(t, sqls[1], "SELECT")
-		
+
 		// Check drop old table
 		assert.Contains(t, sqls[2], "DROP TABLE users")
-		
+
 		// Check rename
 		assert.Contains(t, sqls[3], "ALTER TABLE")
 		assert.Contains(t, sqls[3], "RENAME TO users")
-		
+
 		// Check index recreation
 		hasIndexRecreation := false
 		for _, sql := range sqls {
@@ -337,7 +336,7 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL(t *testing.T) {
 		}
 		assert.True(t, hasIndexRecreation, "Should recreate indexes")
 	})
-	
+
 	t.Run("Change column type", func(t *testing.T) {
 		change := types.ColumnChange{
 			TableName:  "users",
@@ -355,11 +354,11 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL(t *testing.T) {
 		sqls, err := migrator.GenerateModifyColumnSQL(change)
 		assert.NoError(t, err)
 		assert.Greater(t, len(sqls), 3)
-		
+
 		// Check that the new column definition uses TEXT
 		assert.Contains(t, sqls[0], "age TEXT")
 	})
-	
+
 	t.Run("Rename column", func(t *testing.T) {
 		change := types.ColumnChange{
 			TableName:  "users",
@@ -377,10 +376,10 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL(t *testing.T) {
 		sqls, err := migrator.GenerateModifyColumnSQL(change)
 		assert.NoError(t, err)
 		assert.Greater(t, len(sqls), 3)
-		
+
 		// Check that the new table has full_name column
 		assert.Contains(t, sqls[0], "full_name TEXT")
-		
+
 		// Check that INSERT maps old name to new name
 		assert.Contains(t, sqls[1], "full_name")
 	})
@@ -408,7 +407,7 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 		)
 	`)
 	require.NoError(t, err)
-	
+
 	// Insert some test data
 	_, err = db.Exec("INSERT INTO products (name, price, description) VALUES ('Widget', 100, 'A nice widget')")
 	require.NoError(t, err)
@@ -435,7 +434,7 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 
 	sqls, err := migrator.GenerateModifyColumnSQL(change)
 	require.NoError(t, err)
-	
+
 	// Execute all the migration SQL
 	for _, sql := range sqls {
 		if strings.HasPrefix(sql, "--") {
@@ -444,32 +443,32 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 		_, err = db.Exec(sql)
 		require.NoError(t, err, "Failed to execute: %s", sql)
 	}
-	
+
 	// Verify the data is still there
 	var count int
 	err = db.QueryRow("SELECT COUNT(*) FROM products").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 2, count)
-	
+
 	// Verify the column type changed
 	tableInfo, err := migrator.GetTableInfo("products")
 	require.NoError(t, err)
-	
+
 	priceCol := findColumn(tableInfo.Columns, "price")
 	require.NotNil(t, priceCol)
 	assert.Equal(t, "DECIMAL", priceCol.Type)
 	assert.Equal(t, "0", priceCol.Default) // SQLite stores defaults as strings
-	
+
 	// Verify data integrity
 	rows, err := db.Query("SELECT name, price FROM products ORDER BY name")
 	require.NoError(t, err)
 	defer rows.Close()
-	
+
 	var results []struct {
 		name  string
 		price int
 	}
-	
+
 	for rows.Next() {
 		var r struct {
 			name  string
@@ -479,7 +478,7 @@ func TestSQLiteMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 		require.NoError(t, err)
 		results = append(results, r)
 	}
-	
+
 	assert.Len(t, results, 2)
 	assert.Equal(t, "Gadget", results[0].name)
 	assert.Equal(t, 200, results[0].price)
@@ -629,7 +628,7 @@ func TestSQLiteMigrator_CompareSchema(t *testing.T) {
 	// Check if there are any modifications detected
 	if len(plan.ModifyColumns) > 0 {
 		for _, mod := range plan.ModifyColumns {
-			t.Logf("Unexpected modification detected for column %s: old=%+v, new=%+v", 
+			t.Logf("Unexpected modification detected for column %s: old=%+v, new=%+v",
 				mod.ColumnName, mod.OldColumn, mod.NewColumn)
 		}
 		// For now, we'll accept modifications as SQLite might detect type differences

@@ -125,7 +125,7 @@ func (m *Manager) executeMigration(version string, changes []SchemaChange, check
 
 	// Record migration in history
 	_, err = tx.Exec(
-		"INSERT INTO " + MigrationsTableName + " (version, name, checksum) VALUES (?, ?, ?)",
+		"INSERT INTO "+MigrationsTableName+" (version, name, checksum) VALUES (?, ?, ?)",
 		version, "auto-migration", checksum,
 	)
 	if err != nil {

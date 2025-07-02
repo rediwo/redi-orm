@@ -13,11 +13,11 @@ import (
 type MySQLRawQuery struct {
 	db   *sql.DB
 	sql  string
-	args []interface{}
+	args []any
 }
 
 // NewMySQLRawQuery creates a new MySQL raw query
-func NewMySQLRawQuery(db *sql.DB, sql string, args ...interface{}) types.RawQuery {
+func NewMySQLRawQuery(db *sql.DB, sql string, args ...any) types.RawQuery {
 	return &MySQLRawQuery{
 		db:   db,
 		sql:  sql,
@@ -50,7 +50,7 @@ func (q *MySQLRawQuery) Exec(ctx context.Context) (types.Result, error) {
 }
 
 // Find executes the query and scans results into dest
-func (q *MySQLRawQuery) Find(ctx context.Context, dest interface{}) error {
+func (q *MySQLRawQuery) Find(ctx context.Context, dest any) error {
 	rows, err := q.db.QueryContext(ctx, q.sql, q.args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -61,6 +61,6 @@ func (q *MySQLRawQuery) Find(ctx context.Context, dest interface{}) error {
 }
 
 // FindOne executes the query and scans a single result into dest
-func (q *MySQLRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+func (q *MySQLRawQuery) FindOne(ctx context.Context, dest any) error {
 	return utils.ScanRowContext(q.db, ctx, q.sql, q.args, dest)
 }

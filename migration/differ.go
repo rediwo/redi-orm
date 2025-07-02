@@ -69,7 +69,7 @@ func (d *Differ) ComputeDiff(schemas map[string]*schema.Schema) ([]SchemaChange,
 		if table == MigrationsTableName {
 			continue
 		}
-		
+
 		if !desiredTableMap[table] {
 			changes = append(changes, SchemaChange{
 				Type:      ChangeTypeDropTable,

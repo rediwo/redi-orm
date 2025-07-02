@@ -8,10 +8,10 @@ import (
 // BaseCondition implements common condition functionality
 type BaseCondition struct {
 	SQL  string
-	Args []interface{}
+	Args []any
 }
 
-func (c BaseCondition) ToSQL() (string, []interface{}) {
+func (c BaseCondition) ToSQL() (string, []any) {
 	return c.SQL, c.Args
 }
 
@@ -36,13 +36,13 @@ func NewAndCondition(conditions ...Condition) *AndCondition {
 	return &AndCondition{Conditions: conditions}
 }
 
-func (c *AndCondition) ToSQL() (string, []interface{}) {
+func (c *AndCondition) ToSQL() (string, []any) {
 	if len(c.Conditions) == 0 {
 		return "", nil
 	}
 
 	var parts []string
-	var args []interface{}
+	var args []any
 
 	for _, condition := range c.Conditions {
 		sql, condArgs := condition.ToSQL()
@@ -80,13 +80,13 @@ func NewOrCondition(conditions ...Condition) *OrCondition {
 	return &OrCondition{Conditions: conditions}
 }
 
-func (c *OrCondition) ToSQL() (string, []interface{}) {
+func (c *OrCondition) ToSQL() (string, []any) {
 	if len(c.Conditions) == 0 {
 		return "", nil
 	}
 
 	var parts []string
-	var args []interface{}
+	var args []any
 
 	for _, condition := range c.Conditions {
 		sql, condArgs := condition.ToSQL()
@@ -124,7 +124,7 @@ func NewNotCondition(condition Condition) *NotCondition {
 	return &NotCondition{Condition: condition}
 }
 
-func (c *NotCondition) ToSQL() (string, []interface{}) {
+func (c *NotCondition) ToSQL() (string, []any) {
 	sql, args := c.Condition.ToSQL()
 	if sql == "" {
 		return "", nil
@@ -149,7 +149,7 @@ type RawCondition struct {
 	BaseCondition
 }
 
-func NewRawCondition(sql string, args ...interface{}) *RawCondition {
+func NewRawCondition(sql string, args ...any) *RawCondition {
 	return &RawCondition{
 		BaseCondition: BaseCondition{
 			SQL:  sql,
@@ -179,31 +179,31 @@ func (f *FieldConditionImpl) GetModelName() string {
 	return f.ModelName
 }
 
-func (f *FieldConditionImpl) Equals(value interface{}) Condition {
+func (f *FieldConditionImpl) Equals(value any) Condition {
 	return NewBaseCondition(f.FieldName+" = ?", value)
 }
 
-func (f *FieldConditionImpl) NotEquals(value interface{}) Condition {
+func (f *FieldConditionImpl) NotEquals(value any) Condition {
 	return NewBaseCondition(f.FieldName+" != ?", value)
 }
 
-func (f *FieldConditionImpl) GreaterThan(value interface{}) Condition {
+func (f *FieldConditionImpl) GreaterThan(value any) Condition {
 	return NewBaseCondition(f.FieldName+" > ?", value)
 }
 
-func (f *FieldConditionImpl) GreaterThanOrEqual(value interface{}) Condition {
+func (f *FieldConditionImpl) GreaterThanOrEqual(value any) Condition {
 	return NewBaseCondition(f.FieldName+" >= ?", value)
 }
 
-func (f *FieldConditionImpl) LessThan(value interface{}) Condition {
+func (f *FieldConditionImpl) LessThan(value any) Condition {
 	return NewBaseCondition(f.FieldName+" < ?", value)
 }
 
-func (f *FieldConditionImpl) LessThanOrEqual(value interface{}) Condition {
+func (f *FieldConditionImpl) LessThanOrEqual(value any) Condition {
 	return NewBaseCondition(f.FieldName+" <= ?", value)
 }
 
-func (f *FieldConditionImpl) In(values ...interface{}) Condition {
+func (f *FieldConditionImpl) In(values ...any) Condition {
 	if len(values) == 0 {
 		return NewBaseCondition("1 = 0") // Always false
 	}
@@ -215,7 +215,7 @@ func (f *FieldConditionImpl) In(values ...interface{}) Condition {
 	return NewBaseCondition(sql, values...)
 }
 
-func (f *FieldConditionImpl) NotIn(values ...interface{}) Condition {
+func (f *FieldConditionImpl) NotIn(values ...any) Condition {
 	if len(values) == 0 {
 		return NewBaseCondition("1 = 1") // Always true
 	}
@@ -251,12 +251,12 @@ func (f *FieldConditionImpl) IsNotNull() Condition {
 	return NewBaseCondition(f.FieldName + " IS NOT NULL")
 }
 
-func (f *FieldConditionImpl) Between(min, max interface{}) Condition {
+func (f *FieldConditionImpl) Between(min, max any) Condition {
 	return NewBaseCondition(f.FieldName+" BETWEEN ? AND ?", min, max)
 }
 
 // Helper function to create BaseCondition
-func NewBaseCondition(sql string, args ...interface{}) *BaseCondition {
+func NewBaseCondition(sql string, args ...any) *BaseCondition {
 	return &BaseCondition{
 		SQL:  sql,
 		Args: args,
@@ -276,6 +276,6 @@ func Not(condition Condition) Condition {
 	return NewNotCondition(condition)
 }
 
-func Raw(sql string, args ...interface{}) Condition {
+func Raw(sql string, args ...any) Condition {
 	return NewRawCondition(sql, args...)
 }

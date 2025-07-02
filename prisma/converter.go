@@ -221,7 +221,7 @@ func (c *Converter) convertType(typeName string, isList bool) (schema.FieldType,
 }
 
 // convertExpression converts a Prisma expression to a Go value
-func (c *Converter) convertExpression(expr Expression) (interface{}, error) {
+func (c *Converter) convertExpression(expr Expression) (any, error) {
 	switch e := expr.(type) {
 	case *StringLiteral:
 		return e.Value, nil
@@ -266,7 +266,7 @@ func (c *Converter) convertExpression(expr Expression) (interface{}, error) {
 			return e.String(), nil
 		}
 	case *ArrayExpression:
-		values := make([]interface{}, len(e.Elements))
+		values := make([]any, len(e.Elements))
 		for i, elem := range e.Elements {
 			val, err := c.convertExpression(elem)
 			if err != nil {
@@ -281,7 +281,7 @@ func (c *Converter) convertExpression(expr Expression) (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		return map[string]interface{}{e.Name: value}, nil
+		return map[string]any{e.Name: value}, nil
 	case *DotExpression:
 		// For dot expressions like db.VarChar, return as string
 		return e.String(), nil
@@ -491,7 +491,7 @@ func (c *Converter) GetDatabaseProvider() string {
 	if c.datasource == nil {
 		return ""
 	}
-	
+
 	for _, prop := range c.datasource.Properties {
 		if prop.Name == "provider" {
 			if str, ok := prop.Value.(*StringLiteral); ok {
@@ -507,7 +507,7 @@ func (c *Converter) GetDatabaseURL() string {
 	if c.datasource == nil {
 		return ""
 	}
-	
+
 	for _, prop := range c.datasource.Properties {
 		if prop.Name == "url" {
 			// Handle env() function calls
@@ -532,7 +532,7 @@ func (c *Converter) GetGeneratorProvider() string {
 	if c.generator == nil {
 		return ""
 	}
-	
+
 	for _, prop := range c.generator.Properties {
 		if prop.Name == "provider" {
 			if str, ok := prop.Value.(*StringLiteral); ok {

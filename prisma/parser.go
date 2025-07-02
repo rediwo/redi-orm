@@ -248,7 +248,7 @@ func (p *Parser) parseAttributes() []*Attribute {
 	for p.peekToken.Type == AT {
 		p.nextToken() // consume '@'
 		p.nextToken() // advance to attribute name
-		
+
 		// Handle both IDENT and keyword tokens as attribute names
 		if p.curToken.Type != IDENT && !p.isAttributeKeyword(p.curToken.Type) {
 			p.addError(fmt.Sprintf("expected attribute name, got %s at line %d", p.curToken.Type, p.curToken.Line))
@@ -293,7 +293,7 @@ func (p *Parser) parseBlockAttributes() []*BlockAttribute {
 
 	for p.curToken.Type == BLOCK_AT {
 		p.nextToken() // advance to attribute name
-		
+
 		if p.curToken.Type != IDENT && !p.isAttributeKeyword(p.curToken.Type) {
 			p.addError(fmt.Sprintf("expected block attribute name, got %s at line %d", p.curToken.Type, p.curToken.Line))
 			break
@@ -387,7 +387,7 @@ func (p *Parser) parseExpression() Expression {
 				p.addError(fmt.Sprintf("expected identifier after dot, got %s at line %d", p.curToken.Type, p.curToken.Line))
 				return nil
 			}
-			
+
 			// Check if the property is a function call
 			if p.peekToken.Type == LPAREN {
 				funcName := p.curToken.Literal
@@ -396,7 +396,7 @@ func (p *Parser) parseExpression() Expression {
 				fc.Args = p.parseArgumentList()
 				return &DotExpression{Left: left, Right: fc.String()}
 			}
-			
+
 			return &DotExpression{Left: left, Right: p.curToken.Literal}
 		}
 		return &Identifier{Value: p.curToken.Literal}
@@ -434,7 +434,7 @@ func (p *Parser) parseExpression() Expression {
 				p.addError(fmt.Sprintf("expected identifier after dot, got %s at line %d", p.curToken.Type, p.curToken.Line))
 				return nil
 			}
-			
+
 			// Check if the property is a function call
 			if p.peekToken.Type == LPAREN {
 				funcName := p.curToken.Literal
@@ -443,7 +443,7 @@ func (p *Parser) parseExpression() Expression {
 				fc.Args = p.parseArgumentList()
 				return &DotExpression{Left: left, Right: fc.String()}
 			}
-			
+
 			return &DotExpression{Left: left, Right: p.curToken.Literal}
 		}
 		return &Identifier{Value: p.curToken.Literal}
@@ -489,10 +489,10 @@ func (p *Parser) parseEnumValues() []*EnumValue {
 			enumValue := &EnumValue{
 				Name: p.curToken.Literal,
 			}
-			
+
 			// Parse attributes for this enum value
 			enumValue.Attributes = p.parseAttributes()
-			
+
 			values = append(values, enumValue)
 		}
 		p.nextToken() // Always advance token to avoid infinite loop
@@ -538,7 +538,7 @@ func (p *Parser) expectPeek(t TokenType) bool {
 
 // peekError adds an error for unexpected peek token
 func (p *Parser) peekError(t TokenType) {
-	msg := fmt.Sprintf("expected next token to be %s, got %s instead at line %d", 
+	msg := fmt.Sprintf("expected next token to be %s, got %s instead at line %d",
 		t, p.peekToken.Type, p.peekToken.Line)
 	p.errors = append(p.errors, msg)
 }

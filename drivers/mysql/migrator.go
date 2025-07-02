@@ -43,13 +43,13 @@ func (m *MySQLMigrator) GetTables() ([]string, error) {
 		WHERE TABLE_SCHEMA = DATABASE()
 		ORDER BY TABLE_NAME
 	`
-	
+
 	rows, err := m.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tables: %w", err)
 	}
 	defer rows.Close()
-	
+
 	var tables []string
 	for rows.Next() {
 		var tableName string
@@ -58,11 +58,11 @@ func (m *MySQLMigrator) GetTables() ([]string, error) {
 		}
 		tables = append(tables, tableName)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating tables: %w", err)
 	}
-	
+
 	return tables, nil
 }
 
@@ -74,7 +74,7 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 		Indexes:     []types.IndexInfo{},
 		ForeignKeys: []types.ForeignKeyInfo{},
 	}
-	
+
 	// Get column information
 	query := `
 		SELECT 
@@ -91,13 +91,13 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
 		ORDER BY ORDINAL_POSITION
 	`
-	
+
 	rows, err := m.db.Query(query, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get column info: %w", err)
 	}
 	defer rows.Close()
-	
+
 	for rows.Next() {
 		var columnName string
 		var dataType string
@@ -108,7 +108,7 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 		var charMaxLength sql.NullInt64
 		var numPrecision sql.NullInt64
 		var numScale sql.NullInt64
-		
+
 		if err := rows.Scan(
 			&columnName,
 			&dataType,
@@ -122,7 +122,7 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan column info: %w", err)
 		}
-		
+
 		column := types.ColumnInfo{
 			Name:          columnName,
 			Type:          m.formatColumnType(dataType, charMaxLength, numPrecision, numScale),
@@ -131,18 +131,18 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 			AutoIncrement: strings.Contains(extra, "auto_increment"),
 			Unique:        columnKey == "UNI",
 		}
-		
+
 		if columnDefault.Valid {
 			column.Default = columnDefault.String
 		}
-		
+
 		tableInfo.Columns = append(tableInfo.Columns, column)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating columns: %w", err)
 	}
-	
+
 	// Get index information
 	indexQuery := `
 		SELECT 
@@ -153,27 +153,27 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
 		GROUP BY INDEX_NAME, NON_UNIQUE
 	`
-	
+
 	indexRows, err := m.db.Query(indexQuery, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get index info: %w", err)
 	}
 	defer indexRows.Close()
-	
+
 	for indexRows.Next() {
 		var indexName string
 		var columnsStr string
 		var nonUnique int
-		
+
 		if err := indexRows.Scan(&indexName, &columnsStr, &nonUnique); err != nil {
 			return nil, fmt.Errorf("failed to scan index info: %w", err)
 		}
-		
+
 		// Skip primary key index
 		if indexName == "PRIMARY" {
 			continue
 		}
-		
+
 		index := types.IndexInfo{
 			Name:    indexName,
 			Columns: strings.Split(columnsStr, ","),
@@ -181,11 +181,11 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 		}
 		tableInfo.Indexes = append(tableInfo.Indexes, index)
 	}
-	
+
 	if err := indexRows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating indexes: %w", err)
 	}
-	
+
 	// Get foreign key information
 	fkQuery := `
 		SELECT 
@@ -199,23 +199,23 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 			AND REFERENCED_TABLE_NAME IS NOT NULL
 		ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
 	`
-	
+
 	fkRows, err := m.db.Query(fkQuery, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get foreign keys: %w", err)
 	}
 	defer fkRows.Close()
-	
+
 	for fkRows.Next() {
 		var constraintName string
 		var columnName string
 		var referencedTable string
 		var referencedColumn string
-		
+
 		if err := fkRows.Scan(&constraintName, &columnName, &referencedTable, &referencedColumn); err != nil {
 			return nil, fmt.Errorf("failed to scan foreign key: %w", err)
 		}
-		
+
 		// Get ON UPDATE and ON DELETE actions
 		var updateRule, deleteRule string
 		actionQuery := `
@@ -229,7 +229,7 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 			updateRule = "RESTRICT"
 			deleteRule = "RESTRICT"
 		}
-		
+
 		fk := types.ForeignKeyInfo{
 			Name:             constraintName,
 			Column:           columnName,
@@ -240,18 +240,18 @@ func (m *MySQLMigrator) GetTableInfo(tableName string) (*types.TableInfo, error)
 		}
 		tableInfo.ForeignKeys = append(tableInfo.ForeignKeys, fk)
 	}
-	
+
 	if err := fkRows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating foreign keys: %w", err)
 	}
-	
+
 	return tableInfo, nil
 }
 
 // formatColumnType formats MySQL column type with size/precision
 func (m *MySQLMigrator) formatColumnType(dataType string, charMaxLength, numPrecision, numScale sql.NullInt64) string {
 	upperType := strings.ToUpper(dataType)
-	
+
 	switch upperType {
 	case "VARCHAR":
 		if charMaxLength.Valid {
@@ -289,12 +289,12 @@ func (m *MySQLMigrator) GenerateAddColumnSQL(tableName string, field any) (strin
 	if !ok {
 		return "", fmt.Errorf("expected schema.Field, got %T", field)
 	}
-	
+
 	columnDef, err := m.mysqlDB.generateColumnSQL(f)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate column definition: %w", err)
 	}
-	
+
 	return fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN %s", tableName, columnDef), nil
 }
 
@@ -304,17 +304,17 @@ func (m *MySQLMigrator) GenerateModifyColumnSQL(change types.ColumnChange) ([]st
 	if change.NewColumn == nil {
 		return nil, fmt.Errorf("new column definition is required")
 	}
-	
+
 	columnDef := m.GenerateColumnDefinitionFromColumnInfo(*change.NewColumn)
-	
+
 	sql := fmt.Sprintf("ALTER TABLE `%s` MODIFY COLUMN %s", change.TableName, columnDef)
-	
+
 	// If renaming column, use CHANGE instead of MODIFY
 	if change.OldColumn != nil && change.OldColumn.Name != change.NewColumn.Name {
-		sql = fmt.Sprintf("ALTER TABLE `%s` CHANGE COLUMN `%s` %s", 
+		sql = fmt.Sprintf("ALTER TABLE `%s` CHANGE COLUMN `%s` %s",
 			change.TableName, change.OldColumn.Name, columnDef)
 	}
-	
+
 	return []string{sql}, nil
 }
 
@@ -331,13 +331,13 @@ func (m *MySQLMigrator) GenerateCreateIndexSQL(tableName, indexName string, colu
 	if unique {
 		uniqueStr = "UNIQUE "
 	}
-	
+
 	quotedColumns := make([]string, len(columns))
 	for i, col := range columns {
 		quotedColumns[i] = fmt.Sprintf("`%s`", col)
 	}
-	
-	return fmt.Sprintf("CREATE %sINDEX `%s` ON `%s` (%s)", 
+
+	return fmt.Sprintf("CREATE %sINDEX `%s` ON `%s` (%s)",
 		uniqueStr, indexName, tableName, strings.Join(quotedColumns, ", "))
 }
 
@@ -365,34 +365,34 @@ func (m *MySQLMigrator) MapFieldType(field schema.Field) string {
 }
 
 // FormatDefaultValue formats a default value for MySQL
-func (m *MySQLMigrator) FormatDefaultValue(value interface{}) string {
+func (m *MySQLMigrator) FormatDefaultValue(value any) string {
 	return m.mysqlDB.formatDefaultValue(value)
 }
 
 // GenerateColumnDefinitionFromColumnInfo generates column definition from ColumnInfo
 func (m *MySQLMigrator) GenerateColumnDefinitionFromColumnInfo(col types.ColumnInfo) string {
 	parts := []string{fmt.Sprintf("`%s`", col.Name), col.Type}
-	
+
 	if !col.Nullable {
 		parts = append(parts, "NOT NULL")
 	}
-	
+
 	if col.AutoIncrement {
 		parts = append(parts, "AUTO_INCREMENT")
 	}
-	
+
 	if col.Unique && !col.PrimaryKey {
 		parts = append(parts, "UNIQUE")
 	}
-	
+
 	if col.Default != nil {
 		parts = append(parts, fmt.Sprintf("DEFAULT %s", m.FormatDefaultValue(col.Default)))
 	}
-	
+
 	if col.PrimaryKey {
 		parts = append(parts, "PRIMARY KEY")
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
@@ -411,7 +411,7 @@ func (m *MySQLMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.Colu
 
 // Additional wrapper methods to satisfy the types.DatabaseMigrator interface
 
-// GenerateCreateTableSQL wraps to match the DatabaseMigrator interface  
+// GenerateCreateTableSQL wraps to match the DatabaseMigrator interface
 func (w *MySQLMigratorWrapper) GenerateCreateTableSQL(schemaInterface any) (string, error) {
 	s, ok := schemaInterface.(*schema.Schema)
 	if !ok {

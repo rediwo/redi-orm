@@ -10,7 +10,7 @@ import (
 
 func TestMySQLRawQuery_Exec(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -23,7 +23,7 @@ func TestMySQLRawQuery_Exec(t *testing.T) {
 	// Create test table
 	_, err = db.Exec("DROP TABLE IF EXISTS test_raw_query")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_raw_query (
 			id INT PRIMARY KEY AUTO_INCREMENT,
@@ -59,7 +59,7 @@ func TestMySQLRawQuery_Exec(t *testing.T) {
 
 func TestMySQLRawQuery_Find(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestMySQLRawQuery_Find(t *testing.T) {
 	// Create test table and data
 	_, err = db.Exec("DROP TABLE IF EXISTS test_find")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_find (
 			id INT PRIMARY KEY AUTO_INCREMENT,
@@ -121,7 +121,7 @@ func TestMySQLRawQuery_Find(t *testing.T) {
 
 func TestMySQLRawQuery_FindOne(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestMySQLRawQuery_FindOne(t *testing.T) {
 	// Create test table and data
 	_, err = db.Exec("DROP TABLE IF EXISTS test_find_one")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_find_one (
 			id INT PRIMARY KEY,

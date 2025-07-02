@@ -61,13 +61,13 @@ func (t *PostgreSQLTransaction) Model(modelName string) types.ModelQuery {
 }
 
 // CreateMany creates multiple records within the transaction
-func (t *PostgreSQLTransaction) CreateMany(ctx context.Context, modelName string, data []interface{}) (types.Result, error) {
+func (t *PostgreSQLTransaction) CreateMany(ctx context.Context, modelName string, data []any) (types.Result, error) {
 	// This would need the full model implementation
 	return types.Result{}, fmt.Errorf("CreateMany not implemented")
 }
 
 // UpdateMany updates multiple records within the transaction
-func (t *PostgreSQLTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data interface{}) (types.Result, error) {
+func (t *PostgreSQLTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data any) (types.Result, error) {
 	// This would need the full model implementation
 	return types.Result{}, fmt.Errorf("UpdateMany not implemented")
 }
@@ -79,7 +79,7 @@ func (t *PostgreSQLTransaction) DeleteMany(ctx context.Context, modelName string
 }
 
 // Raw creates a raw query within the transaction
-func (t *PostgreSQLTransaction) Raw(query string, args ...interface{}) types.RawQuery {
+func (t *PostgreSQLTransaction) Raw(query string, args ...any) types.RawQuery {
 	return &PostgreSQLTransactionRawQuery{
 		tx:   t.tx,
 		sql:  query,
@@ -91,7 +91,7 @@ func (t *PostgreSQLTransaction) Raw(query string, args ...interface{}) types.Raw
 type PostgreSQLTransactionRawQuery struct {
 	tx   *sql.Tx
 	sql  string
-	args []interface{}
+	args []any
 }
 
 // Exec executes the query within the transaction
@@ -111,7 +111,7 @@ func (q *PostgreSQLTransactionRawQuery) Exec(ctx context.Context) (types.Result,
 }
 
 // Find executes the query and scans multiple rows into dest
-func (q *PostgreSQLTransactionRawQuery) Find(ctx context.Context, dest interface{}) error {
+func (q *PostgreSQLTransactionRawQuery) Find(ctx context.Context, dest any) error {
 	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -122,7 +122,7 @@ func (q *PostgreSQLTransactionRawQuery) Find(ctx context.Context, dest interface
 }
 
 // FindOne executes the query and scans a single row into dest
-func (q *PostgreSQLTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+func (q *PostgreSQLTransactionRawQuery) FindOne(ctx context.Context, dest any) error {
 	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
 }
 
@@ -138,7 +138,7 @@ func (t *PostgreSQLTransactionDB) GetDriverType() string {
 }
 
 // Raw creates a raw query within the transaction
-func (t *PostgreSQLTransactionDB) Raw(query string, args ...interface{}) types.RawQuery {
+func (t *PostgreSQLTransactionDB) Raw(query string, args ...any) types.RawQuery {
 	return &PostgreSQLTransactionRawQuery{
 		tx:   t.tx,
 		sql:  query,
@@ -185,4 +185,3 @@ func (t *PostgreSQLTransactionDB) LoadSchemaFrom(ctx context.Context, filename s
 func (t *PostgreSQLTransactionDB) SyncSchemas(ctx context.Context) error {
 	return fmt.Errorf("cannot sync schemas within a transaction")
 }
-

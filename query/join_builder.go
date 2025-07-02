@@ -20,21 +20,21 @@ const (
 
 // JoinClause represents a single join operation
 type JoinClause struct {
-	Type          JoinType
-	Table         string                // Table to join
-	Alias         string                // Table alias
-	Condition     string                // Join condition
-	Schema        *schema.Schema        // Schema of joined table
-	Relation      *schema.Relation      // Relation definition
-	NestedJoins   []JoinClause         // Nested joins for this table
+	Type        JoinType
+	Table       string           // Table to join
+	Alias       string           // Table alias
+	Condition   string           // Join condition
+	Schema      *schema.Schema   // Schema of joined table
+	Relation    *schema.Relation // Relation definition
+	NestedJoins []JoinClause     // Nested joins for this table
 }
 
 // JoinBuilder handles building SQL joins from relations
 type JoinBuilder struct {
-	database      types.Database
-	joins         []JoinClause
-	tableAliases  map[string]int       // Track alias counters
-	schemaCache   map[string]*schema.Schema
+	database     types.Database
+	joins        []JoinClause
+	tableAliases map[string]int // Track alias counters
+	schemaCache  map[string]*schema.Schema
 }
 
 // NewJoinBuilder creates a new join builder
@@ -59,29 +59,29 @@ func (b *JoinBuilder) AddRelationJoin(
 	if err != nil {
 		return fmt.Errorf("failed to get schema for %s: %w", fromModel, err)
 	}
-	
+
 	// Get relation
 	relation, err := fromSchema.GetRelation(relationName)
 	if err != nil {
 		return fmt.Errorf("failed to get relation %s: %w", relationName, err)
 	}
-	
+
 	// Get related schema
 	relatedSchema, err := b.getSchema(relation.Model)
 	if err != nil {
 		return fmt.Errorf("failed to get schema for related model %s: %w", relation.Model, err)
 	}
-	
+
 	// Generate table name and alias
 	relatedTable := relatedSchema.GetTableName()
 	alias := b.generateAlias(relatedTable)
-	
+
 	// Build join condition
 	condition, err := b.buildJoinCondition(&relation, fromAlias, alias, fromSchema, relatedSchema)
 	if err != nil {
 		return fmt.Errorf("failed to build join condition: %w", err)
 	}
-	
+
 	// Create join clause
 	join := JoinClause{
 		Type:      joinType,
@@ -91,7 +91,7 @@ func (b *JoinBuilder) AddRelationJoin(
 		Schema:    relatedSchema,
 		Relation:  &relation,
 	}
-	
+
 	b.joins = append(b.joins, join)
 	return nil
 }
@@ -106,29 +106,29 @@ func (b *JoinBuilder) AddNestedRelationJoin(
 	if len(relationPath) == 0 {
 		return nil
 	}
-	
+
 	currentModel := parentModel
 	currentAlias := parentAlias
-	
+
 	for _, relationName := range relationPath {
 		// Get current schema
 		currentSchema, err := b.getSchema(currentModel)
 		if err != nil {
 			return fmt.Errorf("failed to get schema for %s: %w", currentModel, err)
 		}
-		
+
 		// Get relation
 		relation, err := currentSchema.GetRelation(relationName)
 		if err != nil {
 			return fmt.Errorf("failed to get relation %s in model %s: %w", relationName, currentModel, err)
 		}
-		
+
 		// Add join for this relation
 		err = b.AddRelationJoin(currentModel, currentAlias, relationName, joinType)
 		if err != nil {
 			return err
 		}
-		
+
 		// Update current model and alias for next iteration
 		currentModel = relation.Model
 		// Get the alias of the join we just added
@@ -136,7 +136,7 @@ func (b *JoinBuilder) AddNestedRelationJoin(
 			currentAlias = b.joins[len(b.joins)-1].Alias
 		}
 	}
-	
+
 	return nil
 }
 
@@ -145,7 +145,7 @@ func (b *JoinBuilder) BuildSQL() string {
 	if len(b.joins) == 0 {
 		return ""
 	}
-	
+
 	var parts []string
 	for _, join := range b.joins {
 		parts = append(parts, fmt.Sprintf("%s %s AS %s ON %s",
@@ -155,7 +155,7 @@ func (b *JoinBuilder) BuildSQL() string {
 			join.Condition,
 		))
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
@@ -174,14 +174,14 @@ func (b *JoinBuilder) generateAlias(tableName string) string {
 			alias += string(part[0])
 		}
 	}
-	
+
 	// Make it unique
 	count, exists := b.tableAliases[alias]
 	if !exists {
 		b.tableAliases[alias] = 1
 		return alias
 	}
-	
+
 	b.tableAliases[alias] = count + 1
 	return fmt.Sprintf("%s%d", alias, count+1)
 }
@@ -191,12 +191,12 @@ func (b *JoinBuilder) getSchema(modelName string) (*schema.Schema, error) {
 	if cached, exists := b.schemaCache[modelName]; exists {
 		return cached, nil
 	}
-	
+
 	schema, err := b.database.GetModelSchema(modelName)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	b.schemaCache[modelName] = schema
 	return schema, nil
 }
@@ -221,14 +221,14 @@ func (b *JoinBuilder) buildJoinCondition(
 			return "", err
 		}
 		return fmt.Sprintf("%s.%s = %s.%s", fromAlias, fromCol, toAlias, toCol), nil
-		
+
 	case schema.RelationOneToMany:
 		// TO.foreign_key = FROM.id (or references field)
 		toCol, err := toSchema.GetColumnNameByFieldName(relation.ForeignKey)
 		if err != nil {
 			return "", err
 		}
-		
+
 		fromField := relation.References
 		if fromField == "" {
 			fromField = "id"
@@ -238,7 +238,7 @@ func (b *JoinBuilder) buildJoinCondition(
 			return "", err
 		}
 		return fmt.Sprintf("%s.%s = %s.%s", toAlias, toCol, fromAlias, fromCol), nil
-		
+
 	case schema.RelationOneToOne:
 		// Check which side has the foreign key
 		if _, err := fromSchema.GetField(relation.ForeignKey); err == nil {
@@ -268,11 +268,11 @@ func (b *JoinBuilder) buildJoinCondition(
 			}
 			return fmt.Sprintf("%s.%s = %s.%s", toAlias, toCol, fromAlias, fromCol), nil
 		}
-		
+
 	case schema.RelationManyToMany:
 		// Many-to-many requires special handling with junction table
 		return "", fmt.Errorf("many-to-many relations require junction table joins")
-		
+
 	default:
 		return "", fmt.Errorf("unknown relation type: %s", relation.Type)
 	}
@@ -290,32 +290,32 @@ func (b *JoinBuilder) AddManyToManyJoin(
 	if err != nil {
 		return fmt.Errorf("failed to get schema for %s: %w", fromModel, err)
 	}
-	
+
 	// Get relation
 	relation, err := fromSchema.GetRelation(relationName)
 	if err != nil {
 		return fmt.Errorf("failed to get relation %s: %w", relationName, err)
 	}
-	
+
 	if relation.Type != schema.RelationManyToMany {
 		return fmt.Errorf("relation %s is not many-to-many", relationName)
 	}
-	
+
 	// Get related schema
 	relatedSchema, err := b.getSchema(relation.Model)
 	if err != nil {
 		return fmt.Errorf("failed to get schema for related model %s: %w", relation.Model, err)
 	}
-	
+
 	// Generate junction table name
 	junctionTable := schema.GetJunctionTableName(fromModel, relation.Model)
 	junctionAlias := b.generateAlias(junctionTable)
-	
+
 	// First join: from table to junction table
 	fromField := "id"
 	fromCol, _ := fromSchema.GetColumnNameByFieldName(fromField)
 	junctionFromCol := strings.ToLower(fromSchema.GetTableName()) + "_id"
-	
+
 	join1 := JoinClause{
 		Type:      joinType,
 		Table:     junctionTable,
@@ -323,7 +323,7 @@ func (b *JoinBuilder) AddManyToManyJoin(
 		Condition: fmt.Sprintf("%s.%s = %s.%s", fromAlias, fromCol, junctionAlias, junctionFromCol),
 	}
 	b.joins = append(b.joins, join1)
-	
+
 	// Second join: junction table to related table
 	relatedAlias := b.generateAlias(relatedSchema.GetTableName())
 	relatedField := relation.References
@@ -332,7 +332,7 @@ func (b *JoinBuilder) AddManyToManyJoin(
 	}
 	relatedCol, _ := relatedSchema.GetColumnNameByFieldName(relatedField)
 	junctionToCol := strings.ToLower(relatedSchema.GetTableName()) + "_id"
-	
+
 	join2 := JoinClause{
 		Type:      joinType,
 		Table:     relatedSchema.GetTableName(),
@@ -342,6 +342,6 @@ func (b *JoinBuilder) AddManyToManyJoin(
 		Relation:  &relation,
 	}
 	b.joins = append(b.joins, join2)
-	
+
 	return nil
 }

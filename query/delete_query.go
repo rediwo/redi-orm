@@ -60,7 +60,7 @@ func (q *DeleteQueryImpl) Exec(ctx context.Context) (types.Result, error) {
 }
 
 // BuildSQL builds the delete SQL query
-func (q *DeleteQueryImpl) BuildSQL() (string, []interface{}, error) {
+func (q *DeleteQueryImpl) BuildSQL() (string, []any, error) {
 	// Get table name
 	tableName, err := q.fieldMapper.ModelToTable(q.modelName)
 	if err != nil {
@@ -68,7 +68,7 @@ func (q *DeleteQueryImpl) BuildSQL() (string, []interface{}, error) {
 	}
 
 	var sql strings.Builder
-	var args []interface{}
+	var args []any
 
 	sql.WriteString(fmt.Sprintf("DELETE FROM %s", tableName))
 
@@ -99,13 +99,13 @@ func (q *DeleteQueryImpl) BuildSQL() (string, []interface{}, error) {
 }
 
 // buildWhereClause builds the WHERE part of the query for delete
-func (q *DeleteQueryImpl) buildWhereClause(conditions []types.Condition) (string, []interface{}, error) {
+func (q *DeleteQueryImpl) buildWhereClause(conditions []types.Condition) (string, []any, error) {
 	if len(conditions) == 0 {
 		return "", nil, nil
 	}
 
 	var conditionSQLs []string
-	var args []interface{}
+	var args []any
 
 	for _, condition := range conditions {
 		sql, condArgs := condition.ToSQL()

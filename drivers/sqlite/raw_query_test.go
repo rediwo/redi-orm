@@ -23,7 +23,7 @@ func TestSQLiteRawQuery_NewSQLiteRawQuery(t *testing.T) {
 
 	// Test raw query creation
 	sql := "SELECT 1 as test_value"
-	args := []interface{}{"arg1", 42}
+	args := []any{"arg1", 42}
 
 	rawQuery := db.Raw(sql, args...)
 	require.NotNil(t, rawQuery)
@@ -55,7 +55,7 @@ func TestSQLiteRawQuery_Exec_Select(t *testing.T) {
 	// Test SELECT query execution
 	rawQuery := db.Raw("SELECT 1 as test_value, 'hello' as test_string")
 	result, err := rawQuery.Exec(ctx)
-	
+
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), result.LastInsertID) // SELECT doesn't insert
 	assert.Equal(t, int64(0), result.RowsAffected) // SELECT doesn't affect rows
@@ -80,16 +80,16 @@ func TestSQLiteRawQuery_Exec_Insert(t *testing.T) {
 	// Test INSERT query execution
 	rawQuery := db.Raw("INSERT INTO test_table (name, value) VALUES (?, ?)", "test_name", 42)
 	result, err := rawQuery.Exec(ctx)
-	
+
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), result.LastInsertID)
 	assert.Equal(t, int64(1), result.RowsAffected)
 
 	// Test batch insert
-	rawQuery = db.Raw("INSERT INTO test_table (name, value) VALUES (?, ?), (?, ?)", 
+	rawQuery = db.Raw("INSERT INTO test_table (name, value) VALUES (?, ?), (?, ?)",
 		"test2", 100, "test3", 200)
 	result, err = rawQuery.Exec(ctx)
-	
+
 	assert.NoError(t, err)
 	assert.Equal(t, int64(3), result.LastInsertID) // Should be the last inserted ID
 	assert.Equal(t, int64(2), result.RowsAffected) // 2 rows affected
@@ -118,7 +118,7 @@ func TestSQLiteRawQuery_Exec_Update(t *testing.T) {
 	// Test UPDATE query execution
 	rawQuery := db.Raw("UPDATE test_table SET value = ? WHERE value > ?", 999, 15)
 	result, err := rawQuery.Exec(ctx)
-	
+
 	assert.NoError(t, err)
 	// LastInsertID can vary in SQLite, but for UPDATE operations it should not be used
 	assert.Equal(t, int64(2), result.RowsAffected) // Should update 2 rows (value 20 and 30)
@@ -159,7 +159,7 @@ func TestSQLiteRawQuery_Exec_Delete(t *testing.T) {
 	// Test DELETE query execution
 	rawQuery := db.Raw("DELETE FROM test_table WHERE value < ?", 25)
 	result, err := rawQuery.Exec(ctx)
-	
+
 	assert.NoError(t, err)
 	// LastInsertID can vary in SQLite, but for DELETE operations it should not be used
 	assert.Equal(t, int64(2), result.RowsAffected) // Should delete 2 rows (value 10 and 20)
@@ -199,16 +199,16 @@ func TestSQLiteRawQuery_Find(t *testing.T) {
 
 	// Test Find
 	rawQuery := db.Raw("SELECT * FROM test_table ORDER BY id")
-	
+
 	type TestRow struct {
 		ID    int
 		Name  string
 		Value int
 	}
-	
+
 	var dest []TestRow
 	err = rawQuery.Find(ctx, &dest)
-	
+
 	assert.NoError(t, err)
 	assert.Len(t, dest, 2)
 	assert.Equal(t, "test1", dest[0].Name)
@@ -238,16 +238,16 @@ func TestSQLiteRawQuery_FindOne(t *testing.T) {
 
 	// Test FindOne
 	rawQuery := db.Raw("SELECT * FROM test_table WHERE id = ?", 1)
-	
+
 	type TestRow struct {
 		ID    int
 		Name  string
 		Value int
 	}
-	
+
 	var dest TestRow
 	err = rawQuery.FindOne(ctx, &dest)
-	
+
 	assert.NoError(t, err)
 	assert.Equal(t, 1, dest.ID)
 	assert.Equal(t, "test1", dest.Name)
@@ -283,12 +283,12 @@ func TestSQLiteRawQuery_ErrorHandling(t *testing.T) {
 
 	// Test that Find and FindOne also handle errors properly
 	rawQuery = db.Raw("INVALID SQL FOR FIND")
-	
-	var dest []map[string]interface{}
+
+	var dest []map[string]any
 	err = rawQuery.Find(ctx, &dest)
 	assert.Error(t, err)
 
-	var destOne map[string]interface{}
+	var destOne map[string]any
 	err = rawQuery.FindOne(ctx, &destOne)
 	assert.Error(t, err)
 }
@@ -321,7 +321,7 @@ func TestSQLiteRawQuery_WithDifferentDataTypes(t *testing.T) {
 		(text_field, integer_field, real_field, blob_field, null_field) 
 		VALUES (?, ?, ?, ?, ?)`,
 		"test string", 42, 3.14, []byte("binary data"), nil)
-	
+
 	result, err := rawQuery.Exec(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), result.LastInsertID)
@@ -332,7 +332,7 @@ func TestSQLiteRawQuery_WithDifferentDataTypes(t *testing.T) {
 		(text_field, integer_field, real_field) 
 		VALUES (?, ?, ?)`,
 		"boolean test", 1, 0.0) // true as 1, false as 0
-	
+
 	result, err = rawQuery.Exec(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(2), result.LastInsertID)
@@ -363,23 +363,23 @@ func TestSQLiteRawQuery_TransactionContext(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		
+
 		assert.Equal(t, int64(1), result.LastInsertID)
 		assert.Equal(t, int64(1), result.RowsAffected)
-		
+
 		// Insert another record
 		rawQuery2 := tx.Raw("INSERT INTO test_table (name) VALUES (?)", "transaction_test2")
 		result2, err := rawQuery2.Exec(ctx)
 		if err != nil {
 			return err
 		}
-		
+
 		assert.Equal(t, int64(2), result2.LastInsertID)
 		assert.Equal(t, int64(1), result2.RowsAffected)
-		
+
 		return nil
 	})
-	
+
 	assert.NoError(t, err)
 
 	// Verify both records were committed
@@ -413,51 +413,51 @@ func TestSQLiteRawQuery_ParameterBinding(t *testing.T) {
 
 	// Test parameter binding with various types
 	testCases := []struct {
-		name   string
-		sql    string
-		args   []interface{}
+		name        string
+		sql         string
+		args        []any
 		expectError bool
 	}{
 		{
-			name: "String parameter",
-			sql:  "INSERT INTO test_params (name, value) VALUES (?, ?)",
-			args: []interface{}{"test_string", 100},
+			name:        "String parameter",
+			sql:         "INSERT INTO test_params (name, value) VALUES (?, ?)",
+			args:        []any{"test_string", 100},
 			expectError: false,
 		},
 		{
-			name: "Integer parameter",
-			sql:  "INSERT INTO test_params (name, value) VALUES (?, ?)",
-			args: []interface{}{"test_int", 42},
+			name:        "Integer parameter",
+			sql:         "INSERT INTO test_params (name, value) VALUES (?, ?)",
+			args:        []any{"test_int", 42},
 			expectError: false,
 		},
 		{
-			name: "Float parameter",
-			sql:  "INSERT INTO test_params (name, value) VALUES (?, ?)",
-			args: []interface{}{"test_float", 3.14},
+			name:        "Float parameter",
+			sql:         "INSERT INTO test_params (name, value) VALUES (?, ?)",
+			args:        []any{"test_float", 3.14},
 			expectError: false,
 		},
 		{
-			name: "Nil parameter",
-			sql:  "INSERT INTO test_params (name, value) VALUES (?, ?)",
-			args: []interface{}{"test_nil", nil},
+			name:        "Nil parameter",
+			sql:         "INSERT INTO test_params (name, value) VALUES (?, ?)",
+			args:        []any{"test_nil", nil},
 			expectError: false,
 		},
 		{
-			name: "Boolean parameter",
-			sql:  "INSERT INTO test_params (name, value) VALUES (?, ?)",
-			args: []interface{}{"test_bool", true},
+			name:        "Boolean parameter",
+			sql:         "INSERT INTO test_params (name, value) VALUES (?, ?)",
+			args:        []any{"test_bool", true},
 			expectError: false,
 		},
 		{
-			name: "Too few parameters",
-			sql:  "INSERT INTO test_params (name, value) VALUES (?, ?)",
-			args: []interface{}{"only_one"},
+			name:        "Too few parameters",
+			sql:         "INSERT INTO test_params (name, value) VALUES (?, ?)",
+			args:        []any{"only_one"},
 			expectError: true,
 		},
 		{
-			name: "Too many parameters",
-			sql:  "INSERT INTO test_params (name) VALUES (?)",
-			args: []interface{}{"param1", "param2"},
+			name:        "Too many parameters",
+			sql:         "INSERT INTO test_params (name) VALUES (?)",
+			args:        []any{"param1", "param2"},
 			expectError: false, // SQLite ignores extra parameters
 		},
 	}
@@ -466,7 +466,7 @@ func TestSQLiteRawQuery_ParameterBinding(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rawQuery := db.Raw(tc.sql, tc.args...)
 			_, err := rawQuery.Exec(ctx)
-			
+
 			if tc.expectError {
 				assert.Error(t, err)
 			} else {
@@ -536,7 +536,7 @@ func TestSQLiteRawQuery_ComplexQueries(t *testing.T) {
 		HAVING COUNT(p.id) >= ?
 		ORDER BY post_count DESC
 	`
-	
+
 	rawQuery = db.Raw(complexQuery, "John%", 1)
 	result, err = rawQuery.Exec(ctx)
 	assert.NoError(t, err)
@@ -549,7 +549,7 @@ func TestSQLiteRawQuery_ComplexQueries(t *testing.T) {
 		WHERE user_id = (SELECT id FROM users WHERE email = ?)
 		ORDER BY id
 	`
-	
+
 	rawQuery = db.Raw(subQuery, "john@example.com")
 	result, err = rawQuery.Exec(ctx)
 	assert.NoError(t, err)
@@ -563,7 +563,7 @@ func TestSQLiteRawQuery_ComplexQueries(t *testing.T) {
 			MIN(user_id) as min_user_id
 		FROM posts
 	`
-	
+
 	rawQuery = db.Raw(aggregateQuery)
 	result, err = rawQuery.Exec(ctx)
 	assert.NoError(t, err)

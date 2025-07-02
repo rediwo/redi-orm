@@ -85,7 +85,7 @@ func (e *Engine) registerModelInJS(name string) {
 
 		// This is a simplified implementation
 		// In reality, you'd parse the where conditions properly
-		return e.vm.ToValue(map[string]interface{}{
+		return e.vm.ToValue(map[string]any{
 			"error": "findUnique not yet fully implemented in JS engine",
 		})
 	})
@@ -93,8 +93,8 @@ func (e *Engine) registerModelInJS(name string) {
 	// Register findMany method using new API
 	modelObj.Set("findMany", func(call js.FunctionCall) js.Value {
 		// This is a simplified implementation
-		return e.vm.ToValue([]interface{}{
-			map[string]interface{}{
+		return e.vm.ToValue([]any{
+			map[string]any{
 				"error": "findMany not yet fully implemented in JS engine",
 			},
 		})
@@ -107,7 +107,7 @@ func (e *Engine) registerModelInJS(name string) {
 		}
 
 		// This is a simplified implementation
-		return e.vm.ToValue(map[string]interface{}{
+		return e.vm.ToValue(map[string]any{
 			"error": "create not yet fully implemented in JS engine",
 		})
 	})
@@ -119,7 +119,7 @@ func (e *Engine) registerModelInJS(name string) {
 		}
 
 		// This is a simplified implementation
-		return e.vm.ToValue(map[string]interface{}{
+		return e.vm.ToValue(map[string]any{
 			"error": "update not yet fully implemented in JS engine",
 		})
 	})
@@ -131,7 +131,7 @@ func (e *Engine) registerModelInJS(name string) {
 		}
 
 		// This is a simplified implementation
-		return e.vm.ToValue(map[string]interface{}{
+		return e.vm.ToValue(map[string]any{
 			"error": "delete not yet fully implemented in JS engine",
 		})
 	})
@@ -144,7 +144,7 @@ func (e *Engine) registerModelInJS(name string) {
 // createQueryBuilderObject is removed as we now use the new API
 // JavaScript integration will be implemented separately
 
-func (e *Engine) Execute(script string) (interface{}, error) {
+func (e *Engine) Execute(script string) (any, error) {
 	value, err := e.vm.RunString(script)
 	if err != nil {
 		return nil, err

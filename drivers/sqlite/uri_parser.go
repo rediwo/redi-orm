@@ -53,7 +53,7 @@ func (p *SQLiteURIParser) ParseURI(uri string) (types.Config, error) {
 
 	// Handle regular file paths
 	path := parsedURI.Path
-	
+
 	// Remove leading slashes for absolute paths
 	if strings.HasPrefix(path, "///") {
 		// sqlite:///absolute/path -> /absolute/path

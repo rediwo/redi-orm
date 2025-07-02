@@ -10,7 +10,7 @@ import (
 
 func TestPostgreSQLRawQuery_Exec(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -23,7 +23,7 @@ func TestPostgreSQLRawQuery_Exec(t *testing.T) {
 	// Create test table
 	_, err = db.Exec("DROP TABLE IF EXISTS test_raw_query")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_raw_query (
 			id SERIAL PRIMARY KEY,
@@ -59,7 +59,7 @@ func TestPostgreSQLRawQuery_Exec(t *testing.T) {
 
 func TestPostgreSQLRawQuery_Find(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestPostgreSQLRawQuery_Find(t *testing.T) {
 	// Create test table and data
 	_, err = db.Exec("DROP TABLE IF EXISTS test_find")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_find (
 			id SERIAL PRIMARY KEY,
@@ -84,7 +84,7 @@ func TestPostgreSQLRawQuery_Find(t *testing.T) {
 	defer db.Exec("DROP TABLE IF EXISTS test_find")
 
 	// Insert test data
-	_, err = db.Exec("INSERT INTO test_find (name, value) VALUES ($1, $2), ($3, $4), ($5, $6)", 
+	_, err = db.Exec("INSERT INTO test_find (name, value) VALUES ($1, $2), ($3, $4), ($5, $6)",
 		"test1", 100, "test2", 200, "test3", 300)
 	require.NoError(t, err)
 
@@ -122,7 +122,7 @@ func TestPostgreSQLRawQuery_Find(t *testing.T) {
 
 func TestPostgreSQLRawQuery_FindOne(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestPostgreSQLRawQuery_FindOne(t *testing.T) {
 	// Create test table and data
 	_, err = db.Exec("DROP TABLE IF EXISTS test_find_one")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_find_one (
 			id INT PRIMARY KEY,

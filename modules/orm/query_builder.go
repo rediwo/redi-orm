@@ -8,15 +8,15 @@ import (
 )
 
 // applyWhereConditions applies where conditions to a query
-func (m *ModelsModule) applyWhereConditions(query interface{}, where interface{}) error {
+func (m *ModelsModule) applyWhereConditions(query any, where any) error {
 	// Build conditions with proper field name resolution
 	var conditions []types.Condition
-	
+
 	// Check if it's a simple field map
-	if whereMap, ok := where.(map[string]interface{}); ok {
+	if whereMap, ok := where.(map[string]any); ok {
 		for field, value := range whereMap {
 			// Check if it's a simple field equality (not an operator object)
-			if _, isOperator := value.(map[string]interface{}); !isOperator {
+			if _, isOperator := value.(map[string]any); !isOperator {
 				// Get a field condition builder based on query type
 				var fieldCond types.FieldCondition
 				switch q := query.(type) {
@@ -31,13 +31,13 @@ func (m *ModelsModule) applyWhereConditions(query interface{}, where interface{}
 				default:
 					return fmt.Errorf("unsupported query type for where conditions")
 				}
-				
+
 				// Build the condition
 				condition := fieldCond.Equals(value)
 				conditions = append(conditions, condition)
 			} else {
 				// For complex conditions, use the existing buildCondition
-				condition := m.buildCondition(map[string]interface{}{field: value})
+				condition := m.buildCondition(map[string]any{field: value})
 				conditions = append(conditions, condition)
 			}
 		}
@@ -48,7 +48,7 @@ func (m *ModelsModule) applyWhereConditions(query interface{}, where interface{}
 			conditions = append(conditions, condition)
 		}
 	}
-	
+
 	// Apply the conditions
 	if len(conditions) > 0 {
 		var finalCondition types.Condition
@@ -57,7 +57,7 @@ func (m *ModelsModule) applyWhereConditions(query interface{}, where interface{}
 		} else {
 			finalCondition = types.NewAndCondition(conditions...)
 		}
-		
+
 		switch q := query.(type) {
 		case types.SelectQuery:
 			q.WhereCondition(finalCondition)
@@ -69,13 +69,13 @@ func (m *ModelsModule) applyWhereConditions(query interface{}, where interface{}
 			q.WhereCondition(finalCondition)
 		}
 	}
-	
+
 	return nil
 }
 
 // buildCondition builds a condition from JavaScript where object
-func (m *ModelsModule) buildCondition(where interface{}) types.Condition {
-	whereMap, ok := where.(map[string]interface{})
+func (m *ModelsModule) buildCondition(where any) types.Condition {
+	whereMap, ok := where.(map[string]any)
 	if !ok {
 		return nil
 	}
@@ -86,7 +86,7 @@ func (m *ModelsModule) buildCondition(where interface{}) types.Condition {
 		// Handle special operators
 		switch field {
 		case "OR":
-			if orConditions, ok := value.([]interface{}); ok {
+			if orConditions, ok := value.([]any); ok {
 				var orConds []types.Condition
 				for _, orCond := range orConditions {
 					orConds = append(orConds, m.buildCondition(orCond))
@@ -96,7 +96,7 @@ func (m *ModelsModule) buildCondition(where interface{}) types.Condition {
 				}
 			}
 		case "AND":
-			if andConditions, ok := value.([]interface{}); ok {
+			if andConditions, ok := value.([]any); ok {
 				var andConds []types.Condition
 				for _, andCond := range andConditions {
 					andConds = append(andConds, m.buildCondition(andCond))
@@ -129,9 +129,9 @@ func (m *ModelsModule) buildCondition(where interface{}) types.Condition {
 }
 
 // buildFieldCondition builds a field condition
-func (m *ModelsModule) buildFieldCondition(field string, value interface{}) types.Condition {
+func (m *ModelsModule) buildFieldCondition(field string, value any) types.Condition {
 	// Check if value is an operator object
-	if valueMap, ok := value.(map[string]interface{}); ok {
+	if valueMap, ok := value.(map[string]any); ok {
 		// Handle operators
 		for op, val := range valueMap {
 			switch op {
@@ -140,12 +140,12 @@ func (m *ModelsModule) buildFieldCondition(field string, value interface{}) type
 			case "not":
 				return types.NewBaseCondition(field+" != ?", val)
 			case "in":
-				if values, ok := val.([]interface{}); ok {
+				if values, ok := val.([]any); ok {
 					return m.buildInCondition(field, values)
 				}
 				return nil
 			case "notIn":
-				if values, ok := val.([]interface{}); ok {
+				if values, ok := val.([]any); ok {
 					return m.buildNotInCondition(field, values)
 				}
 				return nil
@@ -176,37 +176,37 @@ func (m *ModelsModule) buildFieldCondition(field string, value interface{}) type
 }
 
 // buildInCondition builds an IN condition
-func (m *ModelsModule) buildInCondition(field string, values []interface{}) types.Condition {
+func (m *ModelsModule) buildInCondition(field string, values []any) types.Condition {
 	if len(values) == 0 {
 		return types.NewBaseCondition("1 = 0") // Always false
 	}
-	
+
 	placeholders := make([]string, len(values))
 	for i := range values {
 		placeholders[i] = "?"
 	}
-	
+
 	sql := fmt.Sprintf("%s IN (%s)", field, strings.Join(placeholders, ", "))
 	return types.NewBaseCondition(sql, values...)
 }
 
 // buildNotInCondition builds a NOT IN condition
-func (m *ModelsModule) buildNotInCondition(field string, values []interface{}) types.Condition {
+func (m *ModelsModule) buildNotInCondition(field string, values []any) types.Condition {
 	if len(values) == 0 {
 		return types.NewBaseCondition("1 = 1") // Always true
 	}
-	
+
 	placeholders := make([]string, len(values))
 	for i := range values {
 		placeholders[i] = "?"
 	}
-	
+
 	sql := fmt.Sprintf("%s NOT IN (%s)", field, strings.Join(placeholders, ", "))
 	return types.NewBaseCondition(sql, values...)
 }
 
 // applyOrderBy applies orderBy conditions to a query
-func (m *ModelsModule) applyOrderBy(query interface{}, orderBy interface{}) {
+func (m *ModelsModule) applyOrderBy(query any, orderBy any) {
 	switch q := query.(type) {
 	case types.SelectQuery:
 		m.applyOrderByToQuery(q, orderBy)
@@ -216,15 +216,15 @@ func (m *ModelsModule) applyOrderBy(query interface{}, orderBy interface{}) {
 }
 
 // applyOrderByToQuery handles different orderBy formats
-func (m *ModelsModule) applyOrderByToQuery(query interface{}, orderBy interface{}) {
+func (m *ModelsModule) applyOrderByToQuery(query any, orderBy any) {
 	// Handle single orderBy object: { field: 'asc' }
-	if orderMap, ok := orderBy.(map[string]interface{}); ok {
+	if orderMap, ok := orderBy.(map[string]any); ok {
 		for field, direction := range orderMap {
 			dir := types.ASC
 			if dirStr, ok := direction.(string); ok && dirStr == "desc" {
 				dir = types.DESC
 			}
-			
+
 			switch q := query.(type) {
 			case types.SelectQuery:
 				q.OrderBy(field, dir)
@@ -236,15 +236,15 @@ func (m *ModelsModule) applyOrderByToQuery(query interface{}, orderBy interface{
 	}
 
 	// Handle array of orderBy objects: [{ field: 'asc' }, { field2: 'desc' }]
-	if orderArray, ok := orderBy.([]interface{}); ok {
+	if orderArray, ok := orderBy.([]any); ok {
 		for _, item := range orderArray {
-			if orderMap, ok := item.(map[string]interface{}); ok {
+			if orderMap, ok := item.(map[string]any); ok {
 				for field, direction := range orderMap {
 					dir := types.ASC
 					if dirStr, ok := direction.(string); ok && dirStr == "desc" {
 						dir = types.DESC
 					}
-					
+
 					switch q := query.(type) {
 					case types.SelectQuery:
 						q.OrderBy(field, dir)
@@ -256,4 +256,3 @@ func (m *ModelsModule) applyOrderByToQuery(query interface{}, orderBy interface{
 		}
 	}
 }
-

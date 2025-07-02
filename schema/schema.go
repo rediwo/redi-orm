@@ -36,7 +36,7 @@ type Field struct {
 	AutoIncrement bool
 	Nullable      bool
 	Unique        bool
-	Default       interface{}
+	Default       any
 	Index         bool
 	DbType        string   // Database-specific type (e.g., "@db.VarChar(255)", "@db.Money")
 	DbAttributes  []string // Additional database attributes
@@ -100,7 +100,6 @@ func ModelNameToTableName(modelName string) string {
 	snakeCase := utils.ToSnakeCase(modelName)
 	return utils.Pluralize(snakeCase)
 }
-
 
 func (s *Schema) WithTableName(name string) *Schema {
 	s.TableName = name
@@ -243,8 +242,8 @@ func (s *Schema) MapColumnNamesToFields(columnNames []string) ([]string, error) 
 }
 
 // MapSchemaDataToColumns converts data with schema field names to data with database column names
-func (s *Schema) MapSchemaDataToColumns(data map[string]interface{}) (map[string]interface{}, error) {
-	mapped := make(map[string]interface{})
+func (s *Schema) MapSchemaDataToColumns(data map[string]any) (map[string]any, error) {
+	mapped := make(map[string]any)
 	for fieldName, value := range data {
 		columnName, err := s.GetColumnNameByFieldName(fieldName)
 		if err != nil {
@@ -256,8 +255,8 @@ func (s *Schema) MapSchemaDataToColumns(data map[string]interface{}) (map[string
 }
 
 // MapColumnDataToSchema converts data with database column names to data with schema field names
-func (s *Schema) MapColumnDataToSchema(data map[string]interface{}) (map[string]interface{}, error) {
-	mapped := make(map[string]interface{})
+func (s *Schema) MapColumnDataToSchema(data map[string]any) (map[string]any, error) {
+	mapped := make(map[string]any)
 	for columnName, value := range data {
 		fieldName, err := s.GetFieldNameByColumnName(columnName)
 		if err != nil {
@@ -318,7 +317,7 @@ func (s *Schema) ValidateRelations(schemas map[string]*Schema) error {
 		if !exists {
 			return fmt.Errorf("relation %s references unknown model %s", name, relation.Model)
 		}
-		
+
 		if err := ValidateRelation(&relation, s, relatedSchema); err != nil {
 			return fmt.Errorf("invalid relation %s: %w", name, err)
 		}
@@ -342,4 +341,3 @@ func FieldTypeFromGo(t reflect.Type) FieldType {
 		return FieldTypeString
 	}
 }
-

@@ -13,11 +13,11 @@ func TestGetJunctionTableName(t *testing.T) {
 		modelB   string
 		expected string
 	}{
-		{"User", "Post", "post_users"},     // Post < User alphabetically
-		{"Post", "User", "post_users"},     // Same result regardless of order
+		{"User", "Post", "post_users"},               // Post < User alphabetically
+		{"Post", "User", "post_users"},               // Same result regardless of order
 		{"Category", "Product", "category_products"}, // Category < Product
-		{"Tag", "Article", "article_tags"}, // Article < Tag alphabetically
-		{"User", "User", "user_users"},     // Self-relation
+		{"Tag", "Article", "article_tags"},           // Article < Tag alphabetically
+		{"User", "User", "user_users"},               // Self-relation
 	}
 
 	for _, tt := range tests {
@@ -26,7 +26,7 @@ func TestGetJunctionTableName(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-	
+
 	// Additional test to ensure consistent ordering
 	t.Run("ConsistentOrdering", func(t *testing.T) {
 		// Should get same result regardless of parameter order
@@ -212,7 +212,7 @@ func TestBuildJoinCondition(t *testing.T) {
 				tt.currentSchema,
 				tt.relatedSchema,
 			)
-			
+
 			if tt.expectError {
 				require.Error(t, err)
 			} else {

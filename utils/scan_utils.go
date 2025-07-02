@@ -9,7 +9,7 @@ import (
 )
 
 // ScanRows scans multiple rows into a slice with smart field mapping
-func ScanRows(rows *sql.Rows, dest interface{}) error {
+func ScanRows(rows *sql.Rows, dest any) error {
 	destValue := reflect.ValueOf(dest)
 	if destValue.Kind() != reflect.Ptr || destValue.Elem().Kind() != reflect.Slice {
 		return fmt.Errorf("dest must be a pointer to slice")
@@ -17,10 +17,10 @@ func ScanRows(rows *sql.Rows, dest interface{}) error {
 
 	sliceValue := destValue.Elem()
 	elementType := sliceValue.Type().Elem()
-	
-	// Check if dest is *[]map[string]interface{}
-	if elementType.Kind() == reflect.Map && 
-		elementType.Key().Kind() == reflect.String && 
+
+	// Check if dest is *[]map[string]any
+	if elementType.Kind() == reflect.Map &&
+		elementType.Key().Kind() == reflect.String &&
 		elementType.Elem().Kind() == reflect.Interface &&
 		elementType.Elem().NumMethod() == 0 {
 		// Use ScanRowsToMaps for map scanning
@@ -67,7 +67,7 @@ func ScanRows(rows *sql.Rows, dest interface{}) error {
 }
 
 // ScanRow scans a single row into dest with smart field mapping
-func ScanRow(rows *sql.Rows, dest interface{}) error {
+func ScanRow(rows *sql.Rows, dest any) error {
 	if !rows.Next() {
 		return sql.ErrNoRows
 	}
@@ -100,14 +100,16 @@ func ScanRow(rows *sql.Rows, dest interface{}) error {
 }
 
 // ScanRowSimple scans a sql.Row into dest (for simple queries)
-func ScanRowSimple(row *sql.Row, dest interface{}) error {
+func ScanRowSimple(row *sql.Row, dest any) error {
 	return row.Scan(dest)
 }
 
 // ScanRowContext handles scanning from QueryRowContext for both simple and complex types
-func ScanRowContext(db interface{ QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error) }, 
-	ctx context.Context, query string, args []interface{}, dest interface{}) error {
-	
+func ScanRowContext(db interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+},
+	ctx context.Context, query string, args []any, dest any) error {
+
 	destType := reflect.TypeOf(dest)
 	if destType.Kind() != reflect.Ptr {
 		return fmt.Errorf("dest must be a pointer")
@@ -134,58 +136,58 @@ func ScanRowContext(db interface{ QueryContext(context.Context, string, ...inter
 }
 
 // prepareScanDestinations prepares scan destinations with smart field mapping
-func prepareScanDestinations(destValue reflect.Value, destType reflect.Type, columns []string) ([]interface{}, error) {
-	scanDest := make([]interface{}, len(columns))
-	
+func prepareScanDestinations(destValue reflect.Value, destType reflect.Type, columns []string) ([]any, error) {
+	scanDest := make([]any, len(columns))
+
 	for i, col := range columns {
 		field := destValue.FieldByNameFunc(func(name string) bool {
 			field, _ := destType.FieldByName(name)
-			
+
 			// 1. Check struct tag for db column name
 			if tag := field.Tag.Get("db"); tag != "" {
 				return tag == col
 			}
-			
+
 			// 2. Check json tag as fallback
 			if tag := field.Tag.Get("json"); tag != "" {
 				return tag == col
 			}
-			
+
 			// 3. Case-insensitive match
 			if strings.EqualFold(field.Name, col) {
 				return true
 			}
-			
+
 			// 4. Try camelCase/snake_case conversion
 			return ToCamelCase(col) == name || ToSnakeCase(name) == col
 		})
-		
+
 		if field.IsValid() && field.CanSet() {
 			scanDest[i] = field.Addr().Interface()
 		} else {
 			// Field not found or can't be set, use a dummy scanner
-			var dummy interface{}
+			var dummy any
 			scanDest[i] = &dummy
 		}
 	}
-	
+
 	return scanDest, nil
 }
 
 // ScanRowsToMaps scans SQL rows into a slice of maps
 // This is useful for raw queries where the result structure is not known at compile time
-func ScanRowsToMaps(rows *sql.Rows) ([]map[string]interface{}, error) {
+func ScanRowsToMaps(rows *sql.Rows) ([]map[string]any, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get columns: %w", err)
 	}
 
 	// Prepare result slice
-	var results []map[string]interface{}
+	var results []map[string]any
 
-	// Create a slice of interface{} to hold column values
-	values := make([]interface{}, len(columns))
-	valuePtrs := make([]interface{}, len(columns))
+	// Create a slice of any to hold column values
+	values := make([]any, len(columns))
+	valuePtrs := make([]any, len(columns))
 	for i := range values {
 		valuePtrs[i] = &values[i]
 	}
@@ -197,7 +199,7 @@ func ScanRowsToMaps(rows *sql.Rows) ([]map[string]interface{}, error) {
 		}
 
 		// Create map for this row
-		rowMap := make(map[string]interface{})
+		rowMap := make(map[string]any)
 		for i, col := range columns {
 			val := values[i]
 			// Handle byte arrays (convert to string)

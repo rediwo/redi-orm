@@ -36,7 +36,7 @@ func (t *SQLiteTransaction) Model(modelName string) types.ModelQuery {
 }
 
 // Raw creates a new raw query within the transaction
-func (t *SQLiteTransaction) Raw(sql string, args ...interface{}) types.RawQuery {
+func (t *SQLiteTransaction) Raw(sql string, args ...any) types.RawQuery {
 	return &SQLiteTransactionRawQuery{
 		tx:   t.tx,
 		sql:  sql,
@@ -67,7 +67,7 @@ func (t *SQLiteTransaction) RollbackTo(ctx context.Context, name string) error {
 }
 
 // CreateMany performs batch insert within the transaction
-func (t *SQLiteTransaction) CreateMany(ctx context.Context, modelName string, data []interface{}) (types.Result, error) {
+func (t *SQLiteTransaction) CreateMany(ctx context.Context, modelName string, data []any) (types.Result, error) {
 	if len(data) == 0 {
 		return types.Result{}, fmt.Errorf("no data to insert")
 	}
@@ -82,7 +82,7 @@ func (t *SQLiteTransaction) CreateMany(ctx context.Context, modelName string, da
 }
 
 // UpdateMany performs batch update within the transaction
-func (t *SQLiteTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data interface{}) (types.Result, error) {
+func (t *SQLiteTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data any) (types.Result, error) {
 	updateQuery := t.Model(modelName).Update(data).WhereCondition(condition)
 	return updateQuery.Exec(ctx)
 }
@@ -132,7 +132,7 @@ func (td *SQLiteTransactionDB) Model(modelName string) types.ModelQuery {
 	return td.transaction.Model(modelName)
 }
 
-func (td *SQLiteTransactionDB) Raw(sql string, args ...interface{}) types.RawQuery {
+func (td *SQLiteTransactionDB) Raw(sql string, args ...any) types.RawQuery {
 	return td.transaction.Raw(sql, args...)
 }
 
@@ -164,15 +164,15 @@ func (td *SQLiteTransactionDB) ResolveFieldNames(modelName string, fieldNames []
 	return td.database.ResolveFieldNames(modelName, fieldNames)
 }
 
-func (td *SQLiteTransactionDB) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (td *SQLiteTransactionDB) Exec(query string, args ...any) (sql.Result, error) {
 	return td.transaction.tx.Exec(query, args...)
 }
 
-func (td *SQLiteTransactionDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+func (td *SQLiteTransactionDB) Query(query string, args ...any) (*sql.Rows, error) {
 	return td.transaction.tx.Query(query, args...)
 }
 
-func (td *SQLiteTransactionDB) QueryRow(query string, args ...interface{}) *sql.Row {
+func (td *SQLiteTransactionDB) QueryRow(query string, args ...any) *sql.Row {
 	return td.transaction.tx.QueryRow(query, args...)
 }
 
@@ -199,7 +199,7 @@ func (td *SQLiteTransactionDB) SyncSchemas(ctx context.Context) error {
 type SQLiteTransactionRawQuery struct {
 	tx   *sql.Tx
 	sql  string
-	args []interface{}
+	args []any
 }
 
 func (q *SQLiteTransactionRawQuery) Exec(ctx context.Context) (types.Result, error) {
@@ -217,7 +217,7 @@ func (q *SQLiteTransactionRawQuery) Exec(ctx context.Context) (types.Result, err
 	}, nil
 }
 
-func (q *SQLiteTransactionRawQuery) Find(ctx context.Context, dest interface{}) error {
+func (q *SQLiteTransactionRawQuery) Find(ctx context.Context, dest any) error {
 	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -227,6 +227,6 @@ func (q *SQLiteTransactionRawQuery) Find(ctx context.Context, dest interface{}) 
 	return utils.ScanRows(rows, dest)
 }
 
-func (q *SQLiteTransactionRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+func (q *SQLiteTransactionRawQuery) FindOne(ctx context.Context, dest any) error {
 	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
 }

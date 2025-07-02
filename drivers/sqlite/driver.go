@@ -19,7 +19,7 @@ func init() {
 	registry.Register("sqlite", func(config types.Config) (types.Database, error) {
 		return NewSQLiteDB(config)
 	})
-	
+
 	// Register SQLite URI parser
 	registry.RegisterURIParser("sqlite", NewSQLiteURIParser())
 }
@@ -98,7 +98,7 @@ func (s *SQLiteDB) Model(modelName string) types.ModelQuery {
 }
 
 // Raw creates a new raw query
-func (s *SQLiteDB) Raw(sql string, args ...interface{}) types.RawQuery {
+func (s *SQLiteDB) Raw(sql string, args ...any) types.RawQuery {
 	return NewSQLiteRawQuery(s.DB, sql, args...)
 }
 
@@ -139,7 +139,6 @@ func (s *SQLiteDB) Transaction(ctx context.Context, fn func(tx types.Transaction
 
 	return nil
 }
-
 
 // GetMigrator returns a migrator for SQLite
 func (s *SQLiteDB) GetMigrator() types.DatabaseMigrator {

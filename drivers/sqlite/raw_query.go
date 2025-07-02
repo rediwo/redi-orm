@@ -13,11 +13,11 @@ import (
 type SQLiteRawQuery struct {
 	db   *sql.DB
 	sql  string
-	args []interface{}
+	args []any
 }
 
 // NewSQLiteRawQuery creates a new SQLite raw query
-func NewSQLiteRawQuery(db *sql.DB, sql string, args ...interface{}) types.RawQuery {
+func NewSQLiteRawQuery(db *sql.DB, sql string, args ...any) types.RawQuery {
 	return &SQLiteRawQuery{
 		db:   db,
 		sql:  sql,
@@ -42,7 +42,7 @@ func (q *SQLiteRawQuery) Exec(ctx context.Context) (types.Result, error) {
 }
 
 // Find executes the raw query and returns multiple results
-func (q *SQLiteRawQuery) Find(ctx context.Context, dest interface{}) error {
+func (q *SQLiteRawQuery) Find(ctx context.Context, dest any) error {
 	rows, err := q.db.QueryContext(ctx, q.sql, q.args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -53,6 +53,6 @@ func (q *SQLiteRawQuery) Find(ctx context.Context, dest interface{}) error {
 }
 
 // FindOne executes the raw query and returns a single result
-func (q *SQLiteRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+func (q *SQLiteRawQuery) FindOne(ctx context.Context, dest any) error {
 	return utils.ScanRowContext(q.db, ctx, q.sql, q.args, dest)
 }

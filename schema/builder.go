@@ -70,7 +70,7 @@ func (fb *FieldBuilder) Unique() *FieldBuilder {
 	return fb
 }
 
-func (fb *FieldBuilder) Default(value interface{}) *FieldBuilder {
+func (fb *FieldBuilder) Default(value any) *FieldBuilder {
 	fb.field.Default = value
 	return fb
 }

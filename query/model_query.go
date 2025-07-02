@@ -35,7 +35,7 @@ func NewModelQuery(modelName string, database types.Database, fieldMapper types.
 	if len(modelName) > 0 {
 		tableAlias = strings.ToLower(string(modelName[0]))
 	}
-	
+
 	return &ModelQueryImpl{
 		modelName:   modelName,
 		database:    database,
@@ -59,12 +59,12 @@ func (q *ModelQueryImpl) Select(fields ...string) types.SelectQuery {
 }
 
 // Insert creates a new insert query
-func (q *ModelQueryImpl) Insert(data interface{}) types.InsertQuery {
+func (q *ModelQueryImpl) Insert(data any) types.InsertQuery {
 	return NewInsertQuery(q.clone(), data)
 }
 
 // Update creates a new update query
-func (q *ModelQueryImpl) Update(data interface{}) types.UpdateQuery {
+func (q *ModelQueryImpl) Update(data any) types.UpdateQuery {
 	return NewUpdateQuery(q.clone(), data)
 }
 
@@ -86,7 +86,7 @@ func (q *ModelQueryImpl) WhereCondition(condition types.Condition) types.ModelQu
 }
 
 // WhereRaw adds a raw SQL condition
-func (q *ModelQueryImpl) WhereRaw(sql string, args ...interface{}) types.ModelQuery {
+func (q *ModelQueryImpl) WhereRaw(sql string, args ...any) types.ModelQuery {
 	newQuery := q.clone()
 	newQuery.conditions = append(newQuery.conditions, types.NewRawCondition(sql, args...))
 	return newQuery
@@ -143,19 +143,19 @@ func (q *ModelQueryImpl) Offset(offset int) types.ModelQuery {
 }
 
 // FindMany executes the query and returns multiple results
-func (q *ModelQueryImpl) FindMany(ctx context.Context, dest interface{}) error {
+func (q *ModelQueryImpl) FindMany(ctx context.Context, dest any) error {
 	selectQuery := q.Select()
 	return selectQuery.FindMany(ctx, dest)
 }
 
 // FindUnique executes the query and returns a single unique result
-func (q *ModelQueryImpl) FindUnique(ctx context.Context, dest interface{}) error {
+func (q *ModelQueryImpl) FindUnique(ctx context.Context, dest any) error {
 	selectQuery := q.Select().Limit(1)
 	return selectQuery.FindFirst(ctx, dest)
 }
 
 // FindFirst executes the query and returns the first result
-func (q *ModelQueryImpl) FindFirst(ctx context.Context, dest interface{}) error {
+func (q *ModelQueryImpl) FindFirst(ctx context.Context, dest any) error {
 	selectQuery := q.Select().Limit(1)
 	return selectQuery.FindFirst(ctx, dest)
 }
@@ -185,11 +185,11 @@ func (q *ModelQueryImpl) Avg(ctx context.Context, fieldName string) (float64, er
 	return 0, fmt.Errorf("avg aggregation not yet implemented")
 }
 
-func (q *ModelQueryImpl) Max(ctx context.Context, fieldName string) (interface{}, error) {
+func (q *ModelQueryImpl) Max(ctx context.Context, fieldName string) (any, error) {
 	return nil, fmt.Errorf("max aggregation not yet implemented")
 }
 
-func (q *ModelQueryImpl) Min(ctx context.Context, fieldName string) (interface{}, error) {
+func (q *ModelQueryImpl) Min(ctx context.Context, fieldName string) (any, error) {
 	return nil, fmt.Errorf("min aggregation not yet implemented")
 }
 

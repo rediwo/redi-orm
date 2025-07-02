@@ -11,9 +11,9 @@ func TestMySQLURIParser_ParseURI(t *testing.T) {
 	parser := NewMySQLURIParser()
 
 	testCases := []struct {
-		name        string
-		uri         string
-		expected    struct {
+		name     string
+		uri      string
+		expected struct {
 			host     string
 			port     int
 			user     string
@@ -179,7 +179,7 @@ func TestMySQLURIParser_ParseURI(t *testing.T) {
 func TestMySQLURIParser_GetSupportedSchemes(t *testing.T) {
 	parser := NewMySQLURIParser()
 	schemes := parser.GetSupportedSchemes()
-	
+
 	assert.Contains(t, schemes, "mysql")
 	assert.Contains(t, schemes, "mysql2")
 }
@@ -187,6 +187,6 @@ func TestMySQLURIParser_GetSupportedSchemes(t *testing.T) {
 func TestMySQLURIParser_GetDriverType(t *testing.T) {
 	parser := NewMySQLURIParser()
 	driverType := parser.GetDriverType()
-	
+
 	assert.Equal(t, "mysql", driverType)
 }

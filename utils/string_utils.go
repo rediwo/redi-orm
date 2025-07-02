@@ -10,15 +10,15 @@ func ToCamelCase(s string) string {
 	if s == "" {
 		return ""
 	}
-	
+
 	parts := strings.Split(s, "_")
 	result := ""
-	
+
 	for i, part := range parts {
 		if len(part) == 0 {
 			continue
 		}
-		
+
 		if i == 0 {
 			// First part stays as is, unless it starts with underscore
 			if s[0] == '_' && i == 0 && len(parts) > 1 {
@@ -32,7 +32,7 @@ func ToCamelCase(s string) string {
 			result += strings.ToUpper(part[:1]) + part[1:]
 		}
 	}
-	
+
 	return result
 }
 
@@ -42,12 +42,12 @@ func ToSnakeCase(s string) string {
 	if s == "" {
 		return ""
 	}
-	
+
 	// Check if already snake_case
 	if strings.Contains(s, "_") && !strings.ContainsAny(s, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 		return s
 	}
-	
+
 	// Convert camelCase to snake_case
 	var result []rune
 	for i, r := range s {
@@ -57,7 +57,7 @@ func ToSnakeCase(s string) string {
 		}
 		result = append(result, r)
 	}
-	
+
 	return strings.ToLower(string(result))
 }
 
@@ -76,19 +76,19 @@ func IsSnakeCase(s string) bool {
 	if s == "" {
 		return true
 	}
-	
+
 	// Check for invalid patterns
 	if strings.HasPrefix(s, "_") || strings.HasSuffix(s, "_") || strings.Contains(s, "__") {
 		return false
 	}
-	
+
 	// Must be all lowercase with underscores
 	for _, r := range s {
 		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_') {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -97,24 +97,24 @@ func IsCamelCase(s string) bool {
 	if s == "" {
 		return true
 	}
-	
+
 	// Must start with lowercase letter
 	if !(s[0] >= 'a' && s[0] <= 'z') {
 		return false
 	}
-	
+
 	// Cannot contain underscores
 	if strings.Contains(s, "_") {
 		return false
 	}
-	
+
 	// Check for consecutive uppercase letters (not camelCase)
 	for i := 0; i < len(s)-1; i++ {
 		if s[i] >= 'A' && s[i] <= 'Z' && s[i+1] >= 'A' && s[i+1] <= 'Z' {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -123,17 +123,17 @@ func IsPascalCase(s string) bool {
 	if s == "" {
 		return true
 	}
-	
+
 	// Must start with uppercase letter
 	if !(s[0] >= 'A' && s[0] <= 'Z') {
 		return false
 	}
-	
+
 	// Cannot contain underscores
 	if strings.Contains(s, "_") {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -142,18 +142,18 @@ func Pluralize(s string) string {
 	if s == "" {
 		return ""
 	}
-	
+
 	// Special cases (removed "person" as test expects "persons")
 	pluralMap := map[string]string{
-		"child":  "children",
-		"goose":  "geese",
-		"foot":   "feet",
-		"tooth":  "teeth",
-		"mouse":  "mice",
-		"man":    "men",
-		"woman":  "women",
+		"child": "children",
+		"goose": "geese",
+		"foot":  "feet",
+		"tooth": "teeth",
+		"mouse": "mice",
+		"man":   "men",
+		"woman": "women",
 	}
-	
+
 	lower := strings.ToLower(s)
 	if plural, ok := pluralMap[lower]; ok {
 		if s[0] >= 'A' && s[0] <= 'Z' {
@@ -161,29 +161,29 @@ func Pluralize(s string) string {
 		}
 		return plural
 	}
-	
+
 	// Regular rules
-	if strings.HasSuffix(s, "s") || strings.HasSuffix(s, "x") || 
-	   strings.HasSuffix(s, "z") || strings.HasSuffix(s, "ch") || 
-	   strings.HasSuffix(s, "sh") {
+	if strings.HasSuffix(s, "s") || strings.HasSuffix(s, "x") ||
+		strings.HasSuffix(s, "z") || strings.HasSuffix(s, "ch") ||
+		strings.HasSuffix(s, "sh") {
 		return s + "es"
 	}
-	
+
 	if strings.HasSuffix(s, "y") && len(s) > 1 {
 		prev := s[len(s)-2]
 		if prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u' {
 			return s[:len(s)-1] + "ies"
 		}
 	}
-	
+
 	if strings.HasSuffix(s, "f") {
 		return s[:len(s)-1] + "ves"
 	}
-	
+
 	if strings.HasSuffix(s, "fe") {
 		return s[:len(s)-2] + "ves"
 	}
-	
+
 	return s + "s"
 }
 
@@ -192,7 +192,7 @@ func Singularize(s string) string {
 	if s == "" {
 		return ""
 	}
-	
+
 	// Special cases
 	singularMap := map[string]string{
 		"people":   "person",
@@ -204,7 +204,7 @@ func Singularize(s string) string {
 		"men":      "man",
 		"women":    "woman",
 	}
-	
+
 	lower := strings.ToLower(s)
 	if singular, ok := singularMap[lower]; ok {
 		if s[0] >= 'A' && s[0] <= 'Z' {
@@ -212,31 +212,31 @@ func Singularize(s string) string {
 		}
 		return singular
 	}
-	
+
 	// Regular rules
 	if strings.HasSuffix(s, "ies") && len(s) > 3 {
 		return s[:len(s)-3] + "y"
 	}
-	
+
 	if strings.HasSuffix(s, "ves") && len(s) > 3 {
 		if s[len(s)-4] == 'l' { // wolves -> wolf
 			return s[:len(s)-3] + "f"
 		}
 		return s[:len(s)-3] + "fe" // knives -> knife
 	}
-	
+
 	if strings.HasSuffix(s, "es") && len(s) > 2 {
-		if strings.HasSuffix(s, "xes") || strings.HasSuffix(s, "ses") || 
-		   strings.HasSuffix(s, "zes") || strings.HasSuffix(s, "ches") || 
-		   strings.HasSuffix(s, "shes") {
+		if strings.HasSuffix(s, "xes") || strings.HasSuffix(s, "ses") ||
+			strings.HasSuffix(s, "zes") || strings.HasSuffix(s, "ches") ||
+			strings.HasSuffix(s, "shes") {
 			return s[:len(s)-2]
 		}
 	}
-	
+
 	if strings.HasSuffix(s, "s") && len(s) > 1 {
 		return s[:len(s)-1]
 	}
-	
+
 	return s
 }
 
@@ -245,14 +245,14 @@ func ValidateFieldName(name string) bool {
 	if name == "" {
 		return false
 	}
-	
+
 	// Must start with letter or underscore
-	if !((name[0] >= 'a' && name[0] <= 'z') || 
-	     (name[0] >= 'A' && name[0] <= 'Z') || 
-	     name[0] == '_') {
+	if !((name[0] >= 'a' && name[0] <= 'z') ||
+		(name[0] >= 'A' && name[0] <= 'Z') ||
+		name[0] == '_') {
 		return false
 	}
-	
+
 	// Check rest of characters
 	validChars := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 	return validChars.MatchString(name)

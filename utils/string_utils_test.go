@@ -61,8 +61,8 @@ func TestToCamelCase(t *testing.T) {
 		{"a_b_c", "aBC"},
 		{"user_profile_image", "userProfileImage"},
 		{"api_key_secret", "apiKeySecret"},
-		{"_invalid", "Invalid"}, // Invalid snake_case, converts underscore-prefixed to PascalCase
-		{"invalid_", "invalid"}, // Invalid snake_case, removes trailing underscore
+		{"_invalid", "Invalid"},                   // Invalid snake_case, converts underscore-prefixed to PascalCase
+		{"invalid_", "invalid"},                   // Invalid snake_case, removes trailing underscore
 		{"already_camelCase", "alreadyCamelCase"}, // Mixed format
 	}
 
@@ -119,11 +119,11 @@ func TestIsSnakeCase(t *testing.T) {
 		{"a", true},
 		{"a_b", true},
 		{"a_b_c", true},
-		{"firstName", false}, // camelCase
-		{"FirstName", false}, // PascalCase
-		{"ALLCAPS", false},   // All uppercase
-		{"_invalid", false},  // Starts with underscore
-		{"invalid_", false},  // Ends with underscore
+		{"firstName", false},     // camelCase
+		{"FirstName", false},     // PascalCase
+		{"ALLCAPS", false},       // All uppercase
+		{"_invalid", false},      // Starts with underscore
+		{"invalid_", false},      // Ends with underscore
 		{"invalid__name", false}, // Double underscore
 		{"mixed_Case", false},    // Mixed case
 		{"user_ID", false},       // Uppercase in middle
@@ -152,7 +152,7 @@ func TestIsCamelCase(t *testing.T) {
 		{"name", true},
 		{"a", true},
 		{"aB", true},
-		{"aBC", false}, // Consecutive uppercase letters
+		{"aBC", false},        // Consecutive uppercase letters
 		{"first_name", false}, // snake_case
 		{"FirstName", false},  // PascalCase
 		{"ALLCAPS", false},    // All uppercase
@@ -205,7 +205,7 @@ func TestRoundTripConversion(t *testing.T) {
 	// Test that converting camelCase -> snake_case -> camelCase preserves the original
 	camelCaseInputs := []string{
 		"firstName",
-		"lastName", 
+		"lastName",
 		"createdAt",
 		"updatedAt",
 		"userId",
@@ -227,7 +227,7 @@ func TestRoundTripConversion(t *testing.T) {
 	snakeCaseInputs := []string{
 		"first_name",
 		"last_name",
-		"created_at", 
+		"created_at",
 		"updated_at",
 		"user_id",
 		"is_active",

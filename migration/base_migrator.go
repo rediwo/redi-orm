@@ -17,7 +17,7 @@ type DatabaseSpecificMigrator interface {
 	// SQL generation
 	GenerateCreateTableSQL(s *schema.Schema) (string, error)
 	GenerateDropTableSQL(tableName string) string
-	GenerateAddColumnSQL(tableName string, field interface{}) (string, error)
+	GenerateAddColumnSQL(tableName string, field any) (string, error)
 	GenerateModifyColumnSQL(change types.ColumnChange) ([]string, error)
 	GenerateDropColumnSQL(tableName, columnName string) ([]string, error)
 	GenerateCreateIndexSQL(tableName, indexName string, columns []string, unique bool) string
@@ -29,7 +29,7 @@ type DatabaseSpecificMigrator interface {
 
 	// Type mapping and column generation
 	MapFieldType(field schema.Field) string
-	FormatDefaultValue(value interface{}) string
+	FormatDefaultValue(value any) string
 	GenerateColumnDefinitionFromColumnInfo(col types.ColumnInfo) string
 	ConvertFieldToColumnInfo(field schema.Field) *types.ColumnInfo
 }
@@ -72,7 +72,7 @@ func (b *BaseMigrator) GenerateDropTableSQL(tableName string) string {
 }
 
 // GenerateAddColumnSQL generates ALTER TABLE ADD COLUMN SQL
-func (b *BaseMigrator) GenerateAddColumnSQL(tableName string, field interface{}) (string, error) {
+func (b *BaseMigrator) GenerateAddColumnSQL(tableName string, field any) (string, error) {
 	return b.specific.GenerateAddColumnSQL(tableName, field)
 }
 
@@ -268,7 +268,7 @@ func (b *BaseMigrator) columnsNeedModification(existing types.ColumnInfo, desire
 
 // defaultValuesEqual compares two default values
 // This is shared logic that works for all databases
-func (b *BaseMigrator) defaultValuesEqual(existing, desired interface{}) bool {
+func (b *BaseMigrator) defaultValuesEqual(existing, desired any) bool {
 	// Handle nil cases
 	if existing == nil && desired == nil {
 		return true
@@ -285,7 +285,7 @@ func (b *BaseMigrator) defaultValuesEqual(existing, desired interface{}) bool {
 }
 
 // EnsureSchemaForRegisteredSchemas provides common EnsureSchema logic for all drivers
-func (b *BaseMigrator) EnsureSchemaForRegisteredSchemas(schemas map[string]interface{}, createTableFunc func(*schema.Schema) error) error {
+func (b *BaseMigrator) EnsureSchemaForRegisteredSchemas(schemas map[string]any, createTableFunc func(*schema.Schema) error) error {
 	// Get list of existing tables
 	existingTables, err := b.GetTables()
 	if err != nil {

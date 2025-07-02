@@ -19,22 +19,22 @@ func getTestConfig() types.Config {
 	if host == "" {
 		host = "localhost"
 	}
-	
+
 	user := os.Getenv("MYSQL_TEST_USER")
 	if user == "" {
 		user = "testuser"
 	}
-	
+
 	password := os.Getenv("MYSQL_TEST_PASSWORD")
 	if password == "" {
 		password = "testpass"
 	}
-	
+
 	database := os.Getenv("MYSQL_TEST_DATABASE")
 	if database == "" {
 		database = "testdb"
 	}
-	
+
 	return types.Config{
 		Type:     "mysql",
 		Host:     host,
@@ -52,7 +52,7 @@ func skipIfMySQLNotAvailable(t *testing.T) {
 	if err != nil {
 		t.Skip("MySQL not available for testing")
 	}
-	
+
 	ctx := context.Background()
 	if err := db.Connect(ctx); err != nil {
 		t.Skipf("Cannot connect to MySQL: %v", err)
@@ -80,7 +80,7 @@ func TestMySQLDB_NewMySQLDB(t *testing.T) {
 
 func TestMySQLDB_Connect(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestMySQLDB_FieldMapping(t *testing.T) {
 
 func TestMySQLDB_CreateModel(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -270,7 +270,7 @@ func TestMySQLDB_GenerateCreateTableSQL(t *testing.T) {
 
 func TestMySQLDB_Transaction(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -283,7 +283,7 @@ func TestMySQLDB_Transaction(t *testing.T) {
 	// Create test table
 	_, err = db.Exec("DROP TABLE IF EXISTS test_transaction")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_transaction (
 			id INT PRIMARY KEY AUTO_INCREMENT,

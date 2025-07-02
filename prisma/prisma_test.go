@@ -45,30 +45,30 @@ func TestParserModel(t *testing.T) {
 
 	lexer := NewLexer(input)
 	parser := NewParser(lexer)
-	
+
 	schema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	if len(schema.Statements) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(schema.Statements))
 	}
-	
+
 	modelStmt, ok := schema.Statements[0].(*ModelStatement)
 	if !ok {
 		t.Fatalf("expected ModelStatement, got %T", schema.Statements[0])
 	}
-	
+
 	if modelStmt.Name != "User" {
 		t.Errorf("expected model name User, got %s", modelStmt.Name)
 	}
-	
+
 	if len(modelStmt.Fields) != 4 {
 		t.Errorf("expected 4 fields, got %d", len(modelStmt.Fields))
 	}
-	
+
 	// Check id field
 	idField := modelStmt.Fields[0]
 	if idField.Name != "id" || idField.Type.Name != "Int" {
@@ -77,7 +77,7 @@ func TestParserModel(t *testing.T) {
 	if len(idField.Attributes) != 2 {
 		t.Errorf("expected 2 attributes for id field, got %d", len(idField.Attributes))
 	}
-	
+
 	// Check block attributes
 	if len(modelStmt.BlockAttributes) != 1 {
 		t.Errorf("expected 1 block attribute, got %d", len(modelStmt.BlockAttributes))
@@ -93,31 +93,31 @@ func TestParserEnum(t *testing.T) {
 
 	lexer := NewLexer(input)
 	parser := NewParser(lexer)
-	
+
 	schema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	if len(schema.Statements) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(schema.Statements))
 	}
-	
+
 	enumStmt, ok := schema.Statements[0].(*EnumStatement)
 	if !ok {
 		t.Fatalf("expected EnumStatement, got %T", schema.Statements[0])
 	}
-	
+
 	if enumStmt.Name != "Role" {
 		t.Errorf("expected enum name Role, got %s", enumStmt.Name)
 	}
-	
+
 	expectedValues := []string{"ADMIN", "USER", "GUEST"}
 	if len(enumStmt.Values) != len(expectedValues) {
 		t.Errorf("expected %d values, got %d", len(expectedValues), len(enumStmt.Values))
 	}
-	
+
 	for i, expected := range expectedValues {
 		if i < len(enumStmt.Values) && enumStmt.Values[i].Name != expected {
 			t.Errorf("expected value %s at index %d, got %s", expected, i, enumStmt.Values[i].Name)
@@ -136,36 +136,36 @@ func TestConverterBasic(t *testing.T) {
 
 	lexer := NewLexer(input)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	converter := NewConverter()
 	schemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	if len(schemas) != 1 {
 		t.Fatalf("expected 1 schema, got %d", len(schemas))
 	}
-	
+
 	userSchema, exists := schemas["User"]
 	if !exists {
 		t.Fatalf("User schema not found")
 	}
-	
+
 	if userSchema.Name != "User" {
 		t.Errorf("expected schema name User, got %s", userSchema.Name)
 	}
-	
+
 	if len(userSchema.Fields) != 5 {
 		t.Errorf("expected 5 fields, got %d", len(userSchema.Fields))
 	}
-	
+
 	// Check id field
 	idField, err := userSchema.GetField("id")
 	if err != nil {
@@ -177,7 +177,7 @@ func TestConverterBasic(t *testing.T) {
 	if idField.Type != schema.FieldTypeInt {
 		t.Errorf("expected id field type Int, got %s", idField.Type)
 	}
-	
+
 	// Check email field
 	emailField, err := userSchema.GetField("email")
 	if err != nil {
@@ -186,7 +186,7 @@ func TestConverterBasic(t *testing.T) {
 	if !emailField.Unique {
 		t.Errorf("email field should be unique")
 	}
-	
+
 	// Check age field
 	ageField, err := userSchema.GetField("age")
 	if err != nil {
@@ -195,7 +195,7 @@ func TestConverterBasic(t *testing.T) {
 	if !ageField.Nullable {
 		t.Errorf("age field should be nullable")
 	}
-	
+
 	// Check active field
 	activeField, err := userSchema.GetField("active")
 	if err != nil {
@@ -223,38 +223,38 @@ model Post {
 
 	lexer := NewLexer(input)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	converter := NewConverter()
 	schemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	if len(schemas) != 2 {
 		t.Fatalf("expected 2 schemas, got %d", len(schemas))
 	}
-	
+
 	userSchema, exists := schemas["User"]
 	if !exists {
 		t.Fatalf("User schema not found")
 	}
-	
+
 	postSchema, exists := schemas["Post"]
 	if !exists {
 		t.Fatalf("Post schema not found")
 	}
-	
+
 	// Check User relations
 	if len(userSchema.Relations) != 1 {
 		t.Errorf("expected 1 relation in User schema, got %d", len(userSchema.Relations))
 	}
-	
+
 	postsRelation, exists := userSchema.Relations["posts"]
 	if !exists {
 		t.Errorf("posts relation not found in User schema")
@@ -266,12 +266,12 @@ model Post {
 			t.Errorf("expected relation to Post model, got %s", postsRelation.Model)
 		}
 	}
-	
+
 	// Check Post relations
 	if len(postSchema.Relations) != 1 {
 		t.Errorf("expected 1 relation in Post schema, got %d", len(postSchema.Relations))
 	}
-	
+
 	authorRelation, exists := postSchema.Relations["author"]
 	if !exists {
 		t.Errorf("author relation not found in Post schema")
@@ -305,38 +305,38 @@ model User {
 
 	lexer := NewLexer(input)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	converter := NewConverter()
 	schemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	if len(schemas) != 1 {
 		t.Fatalf("expected 1 schema, got %d", len(schemas))
 	}
-	
+
 	userSchema, exists := schemas["User"]
 	if !exists {
 		t.Fatalf("User schema not found")
 	}
-	
+
 	// Check role field
 	roleField, err := userSchema.GetField("role")
 	if err != nil {
 		t.Fatalf("role field not found: %v", err)
 	}
-	
+
 	if roleField.Type != schema.FieldTypeString {
 		t.Errorf("expected role field type String (for enum), got %s", roleField.Type)
 	}
-	
+
 	if roleField.Default != "USER" {
 		t.Errorf("expected role field default USER, got %v", roleField.Default)
 	}
@@ -401,36 +401,36 @@ model Tag {
 
 	lexer := NewLexer(input)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	converter := NewConverter()
 	schemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	expectedModels := []string{"User", "Profile", "Post", "Tag"}
 	if len(schemas) != len(expectedModels) {
 		t.Fatalf("expected %d schemas, got %d", len(expectedModels), len(schemas))
 	}
-	
+
 	for _, modelName := range expectedModels {
 		if _, exists := schemas[modelName]; !exists {
 			t.Errorf("schema %s not found", modelName)
 		}
 	}
-	
+
 	// Check User schema table name mapping
 	userSchema := schemas["User"]
 	if userSchema.TableName != "users" {
 		t.Errorf("expected User table name to be 'users', got '%s'", userSchema.TableName)
 	}
-	
+
 	// Check that schemas are valid
 	for name, schema := range schemas {
 		if err := schema.Validate(); err != nil {
@@ -447,15 +447,15 @@ func TestStringRepresentation(t *testing.T) {
 
 	lexer := NewLexer(input)
 	parser := NewParser(lexer)
-	
+
 	schema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	output := schema.String()
-	
+
 	// Check that the string output contains expected elements
 	expectedStrings := []string{"model User", "id Int @id", "name String"}
 	for _, expected := range expectedStrings {
@@ -573,13 +573,13 @@ model Comment {
 
 	lexer := NewLexer(complexSchema)
 	parser := NewParser(lexer)
-	
+
 	schema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	// Count different types of statements
 	var datasources, generators, enums, models int
 	for _, stmt := range schema.Statements {
@@ -594,7 +594,7 @@ model Comment {
 			models++
 		}
 	}
-	
+
 	// Verify counts
 	if datasources != 1 {
 		t.Errorf("expected 1 datasource, got %d", datasources)
@@ -608,31 +608,31 @@ model Comment {
 	if models != 4 {
 		t.Errorf("expected 4 models, got %d", models)
 	}
-	
+
 	// Test conversion
 	converter := NewConverter()
 	reormSchemas, err := converter.Convert(schema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	// Should have 4 model schemas (User, Profile, Post, Comment)
 	if len(reormSchemas) != 4 {
 		t.Errorf("expected 4 ReORM schemas, got %d", len(reormSchemas))
 	}
-	
+
 	// Validate all schemas
 	for name, s := range reormSchemas {
 		if err := s.Validate(); err != nil {
 			t.Errorf("schema %s validation failed: %v", name, err)
 		}
 	}
-	
+
 	// Test converter methods
 	if provider := converter.GetDatabaseProvider(); provider != "postgresql" {
 		t.Errorf("expected database provider 'postgresql', got '%s'", provider)
 	}
-	
+
 	if url := converter.GetDatabaseURL(); url != "${DATABASE_URL}" {
 		t.Errorf("expected database URL '${DATABASE_URL}', got '%s'", url)
 	}
@@ -678,25 +678,25 @@ model Tag {
 
 	lexer := NewLexer(schema)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	// Test conversion
 	converter := NewConverter()
 	reormSchemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	// Should have 6 model schemas
 	if len(reormSchemas) != 6 {
 		t.Errorf("expected 6 ReORM schemas, got %d", len(reormSchemas))
 	}
-	
+
 	// Check that all schemas are valid
 	for name, s := range reormSchemas {
 		if err := s.Validate(); err != nil {
@@ -730,26 +730,26 @@ model Post {
 
 	lexer := NewLexer(schema)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	// Test conversion
 	converter := NewConverter()
 	reormSchemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	// Check User schema
 	userSchema := reormSchemas["User"]
 	if userSchema == nil {
 		t.Fatal("User schema not found")
 	}
-	
+
 	// Check array fields are converted correctly
 	expectedArrayFields := map[string]string{
 		"favoriteColors": "string[]",
@@ -758,25 +758,25 @@ model Post {
 		"weights":        "float[]",
 		"loginTimes":     "datetime[]",
 	}
-	
+
 	for fieldName, expectedType := range expectedArrayFields {
 		field, err := userSchema.GetField(fieldName)
 		if err != nil {
 			t.Errorf("field %s not found: %v", fieldName, err)
 			continue
 		}
-		
+
 		if string(field.Type) != expectedType {
 			t.Errorf("field %s: expected type %s, got %s", fieldName, expectedType, field.Type)
 		}
 	}
-	
+
 	// Check Post schema with enum array
 	postSchema := reormSchemas["Post"]
 	if postSchema == nil {
 		t.Fatal("Post schema not found")
 	}
-	
+
 	statusesField, err := postSchema.GetField("statuses")
 	if err != nil {
 		t.Errorf("statuses field not found: %v", err)
@@ -810,64 +810,64 @@ model RegularModel {
 
 	lexer := NewLexer(schema)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	// Test conversion
 	converter := NewConverter()
 	reormSchemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	// Check UserRole schema has composite key
 	userRoleSchema := reormSchemas["UserRole"]
 	if userRoleSchema == nil {
 		t.Fatal("UserRole schema not found")
 	}
-	
+
 	if len(userRoleSchema.CompositeKey) != 2 {
 		t.Errorf("UserRole: expected 2 composite key fields, got %d", len(userRoleSchema.CompositeKey))
 	}
-	
+
 	expectedCompositeKey := []string{"userId", "roleId"}
 	for i, field := range expectedCompositeKey {
 		if i >= len(userRoleSchema.CompositeKey) || userRoleSchema.CompositeKey[i] != field {
 			t.Errorf("UserRole: expected composite key field %d to be %s, got %s", i, field, userRoleSchema.CompositeKey[i])
 		}
 	}
-	
+
 	// Check PostTag schema has composite key
 	postTagSchema := reormSchemas["PostTag"]
 	if postTagSchema == nil {
 		t.Fatal("PostTag schema not found")
 	}
-	
+
 	if len(postTagSchema.CompositeKey) != 2 {
 		t.Errorf("PostTag: expected 2 composite key fields, got %d", len(postTagSchema.CompositeKey))
 	}
-	
+
 	// Check RegularModel has single primary key (no composite key)
 	regularSchema := reormSchemas["RegularModel"]
 	if regularSchema == nil {
 		t.Fatal("RegularModel schema not found")
 	}
-	
+
 	if len(regularSchema.CompositeKey) != 0 {
 		t.Errorf("RegularModel: expected no composite key, got %d fields", len(regularSchema.CompositeKey))
 	}
-	
+
 	// Ensure fields marked as individual PK in UserRole don't exist
 	for _, field := range userRoleSchema.Fields {
 		if field.PrimaryKey {
 			t.Errorf("UserRole field %s should not be marked as individual primary key when composite key exists", field.Name)
 		}
 	}
-	
+
 	// Validate all schemas
 	for name, s := range reormSchemas {
 		if err := s.Validate(); err != nil {
@@ -887,45 +887,45 @@ enum Status {
 
 	lexer := NewLexer(schema)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	// Check enum parsing
 	if len(prismaSchema.Statements) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(prismaSchema.Statements))
 	}
-	
+
 	enumStmt, ok := prismaSchema.Statements[0].(*EnumStatement)
 	if !ok {
 		t.Fatalf("expected EnumStatement, got %T", prismaSchema.Statements[0])
 	}
-	
+
 	if enumStmt.Name != "Status" {
 		t.Errorf("expected enum name Status, got %s", enumStmt.Name)
 	}
-	
+
 	if len(enumStmt.Values) != 3 {
 		t.Errorf("expected 3 enum values, got %d", len(enumStmt.Values))
 	}
-	
+
 	// Check specific enum values and their mappings
 	expectedMappings := map[string]string{
 		"ACTIVE":   "active",
-		"INACTIVE": "inactive", 
+		"INACTIVE": "inactive",
 		"PENDING":  "pending",
 	}
-	
+
 	for _, enumValue := range enumStmt.Values {
 		expectedMapping, exists := expectedMappings[enumValue.Name]
 		if !exists {
 			t.Errorf("unexpected enum value: %s", enumValue.Name)
 			continue
 		}
-		
+
 		// Check that the enum value has a @map attribute
 		found := false
 		for _, attr := range enumValue.Attributes {
@@ -938,7 +938,7 @@ enum Status {
 				}
 			}
 		}
-		
+
 		if !found {
 			t.Errorf("enum value %s missing correct @map(%q) attribute", enumValue.Name, expectedMapping)
 		}
@@ -957,13 +957,13 @@ model Product {
 
 	lexer := NewLexer(schema)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	// Debug: print statements
 	t.Logf("Parsed statements: %d", len(prismaSchema.Statements))
 	if len(prismaSchema.Statements) > 0 {
@@ -974,26 +974,26 @@ model Product {
 			}
 		}
 	}
-	
+
 	// Test conversion
 	converter := NewConverter()
 	reormSchemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	// Check Product schema
 	productSchema := reormSchemas["Product"]
 	if productSchema == nil {
 		t.Fatal("Product schema not found")
 	}
-	
+
 	// Debug: print all field names
 	t.Logf("Product schema fields:")
 	for _, field := range productSchema.Fields {
 		t.Logf("  - %s (%s)", field.Name, field.Type)
 	}
-	
+
 	// Check decimal fields
 	priceField, err := productSchema.GetField("price")
 	if err != nil {
@@ -1001,7 +1001,7 @@ model Product {
 	} else if string(priceField.Type) != "decimal" {
 		t.Errorf("price field: expected type decimal, got %s", priceField.Type)
 	}
-	
+
 	discountField, err := productSchema.GetField("discount")
 	if err != nil {
 		t.Errorf("discount field not found: %v", err)
@@ -1013,14 +1013,14 @@ model Product {
 			t.Errorf("discount field: expected nullable to be true")
 		}
 	}
-	
+
 	priceListField, err := productSchema.GetField("priceList")
 	if err != nil {
 		t.Errorf("priceList field not found: %v", err)
 	} else if string(priceListField.Type) != "decimal[]" {
 		t.Errorf("priceList field: expected type decimal[], got %s", priceListField.Type)
 	}
-	
+
 	// Validate schema
 	if err := productSchema.Validate(); err != nil {
 		t.Errorf("Product schema validation failed: %v", err)
@@ -1062,32 +1062,32 @@ enum Status {
 
 	lexer := NewLexer(schema)
 	parser := NewParser(lexer)
-	
+
 	prismaSchema := parser.ParseSchema()
-	
+
 	if len(parser.Errors()) > 0 {
 		t.Fatalf("parser errors: %v", parser.Errors())
 	}
-	
+
 	// Test conversion
 	converter := NewConverter()
 	reormSchemas, err := converter.Convert(prismaSchema)
 	if err != nil {
 		t.Fatalf("conversion error: %v", err)
 	}
-	
+
 	// Check User schema with @db attributes
 	userSchema := reormSchemas["User"]
 	if userSchema == nil {
 		t.Fatal("User schema not found")
 	}
-	
+
 	// Debug: print all field names
 	t.Logf("User schema fields:")
 	for _, field := range userSchema.Fields {
 		t.Logf("  - %s (%s) DbType: %s", field.Name, field.Type, field.DbType)
 	}
-	
+
 	// Check specific @db attributes
 	expectedDbTypes := map[string]string{
 		"email":     "@db.VarChar",
@@ -1096,19 +1096,19 @@ enum Status {
 		"fullText":  "@db.Text",
 		"bio":       "@db.VarChar",
 	}
-	
+
 	for fieldName, expectedDbType := range expectedDbTypes {
 		field, err := userSchema.GetField(fieldName)
 		if err != nil {
 			t.Errorf("field %s not found: %v", fieldName, err)
 			continue
 		}
-		
+
 		if !strings.Contains(field.DbType, expectedDbType) {
 			t.Errorf("field %s: expected DbType to contain %s, got %s", fieldName, expectedDbType, field.DbType)
 		}
 	}
-	
+
 	// Check dbgenerated default value
 	createdAtField, err := userSchema.GetField("createdAt")
 	if err != nil {
@@ -1118,20 +1118,20 @@ enum Status {
 			t.Errorf("createdAt field: expected default 'NOW()', got %v", createdAtField.Default)
 		}
 	}
-	
+
 	// Check Product schema with array field
 	productSchema := reormSchemas["Product"]
 	if productSchema == nil {
 		t.Fatal("Product schema not found")
 	}
-	
+
 	tagsField, err := productSchema.GetField("tags")
 	if err != nil {
 		t.Errorf("tags field not found: %v", err)
 	} else if string(tagsField.Type) != "string[]" {
 		t.Errorf("tags field: expected type string[], got %s", tagsField.Type)
 	}
-	
+
 	// Validate all schemas
 	for name, s := range reormSchemas {
 		if err := s.Validate(); err != nil {

@@ -67,6 +67,7 @@ test-docker: docker-up docker-wait
 
 # Code quality targets
 fmt:
+	gofmt -w -r 'interface{} -> any' .
 	go fmt ./...
 
 lint:

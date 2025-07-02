@@ -13,7 +13,7 @@ import (
 type PostgreSQLRawQuery struct {
 	db   *sql.DB
 	sql  string
-	args []interface{}
+	args []any
 }
 
 // Exec executes the query and returns the result
@@ -35,7 +35,7 @@ func (q *PostgreSQLRawQuery) Exec(ctx context.Context) (types.Result, error) {
 }
 
 // Find executes the query and scans multiple rows into dest
-func (q *PostgreSQLRawQuery) Find(ctx context.Context, dest interface{}) error {
+func (q *PostgreSQLRawQuery) Find(ctx context.Context, dest any) error {
 	rows, err := q.db.QueryContext(ctx, q.sql, q.args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -46,6 +46,6 @@ func (q *PostgreSQLRawQuery) Find(ctx context.Context, dest interface{}) error {
 }
 
 // FindOne executes the query and scans a single row into dest
-func (q *PostgreSQLRawQuery) FindOne(ctx context.Context, dest interface{}) error {
+func (q *PostgreSQLRawQuery) FindOne(ctx context.Context, dest any) error {
 	return utils.ScanRowContext(q.db, ctx, q.sql, q.args, dest)
 }

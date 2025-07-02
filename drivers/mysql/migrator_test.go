@@ -12,7 +12,7 @@ import (
 
 func TestMySQLMigrator_NewMySQLMigrator(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestMySQLMigrator_NewMySQLMigrator(t *testing.T) {
 
 func TestMySQLMigrator_GetDatabaseType(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestMySQLMigrator_GetDatabaseType(t *testing.T) {
 
 func TestMySQLMigrator_GetTables(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestMySQLMigrator_GetTables(t *testing.T) {
 	// Get tables
 	tables, err := migrator.GetTables()
 	assert.NoError(t, err)
-	
+
 	// Check that our test tables are in the list
 	var foundTable1, foundTable2 bool
 	for _, table := range tables {
@@ -89,7 +89,7 @@ func TestMySQLMigrator_GetTables(t *testing.T) {
 
 func TestMySQLMigrator_GetTableInfo(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestMySQLMigrator_GetTableInfo(t *testing.T) {
 
 func TestMySQLMigrator_GenerateCreateTableSQL(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -203,7 +203,7 @@ func TestMySQLMigrator_GenerateCreateTableSQL(t *testing.T) {
 
 func TestMySQLMigrator_GenerateModifyColumnSQL(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -284,7 +284,7 @@ func TestMySQLMigrator_GenerateModifyColumnSQL(t *testing.T) {
 
 func TestMySQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -306,7 +306,7 @@ func TestMySQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 	`)
 	require.NoError(t, err)
 	defer db.Exec("DROP TABLE IF EXISTS test_products")
-	
+
 	// Insert some test data
 	_, err = db.Exec("INSERT INTO test_products (name, price, description) VALUES ('Widget', 100, 'A nice widget')")
 	require.NoError(t, err)
@@ -333,32 +333,32 @@ func TestMySQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 
 	sqls, err := migrator.GenerateModifyColumnSQL(change)
 	require.NoError(t, err)
-	
+
 	// Execute the migration SQL
 	for _, sql := range sqls {
 		_, err = db.Exec(sql)
 		require.NoError(t, err, "Failed to execute: %s", sql)
 	}
-	
+
 	// Verify the column type changed
 	tableInfo, err := migrator.GetTableInfo("test_products")
 	require.NoError(t, err)
-	
+
 	priceCol := findColumn(tableInfo.Columns, "price")
 	require.NotNil(t, priceCol)
 	assert.Equal(t, "DECIMAL(10,2)", priceCol.Type)
 	assert.Equal(t, "0.00", priceCol.Default)
-	
+
 	// Verify data integrity
 	rows, err := db.Query("SELECT name, price FROM test_products ORDER BY name")
 	require.NoError(t, err)
 	defer rows.Close()
-	
+
 	var results []struct {
 		name  string
 		price float64
 	}
-	
+
 	for rows.Next() {
 		var r struct {
 			name  string
@@ -368,7 +368,7 @@ func TestMySQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 		require.NoError(t, err)
 		results = append(results, r)
 	}
-	
+
 	assert.Len(t, results, 2)
 	assert.Equal(t, "Gadget", results[0].name)
 	assert.Equal(t, 200.0, results[0].price)
@@ -378,7 +378,7 @@ func TestMySQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 
 func TestMySQLMigrator_GenerateDropColumnSQL(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -397,7 +397,7 @@ func TestMySQLMigrator_GenerateDropColumnSQL(t *testing.T) {
 
 func TestMySQLMigrator_GenerateCreateIndexSQL(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)
@@ -424,7 +424,7 @@ func TestMySQLMigrator_GenerateCreateIndexSQL(t *testing.T) {
 
 func TestMySQLMigrator_ApplyMigration(t *testing.T) {
 	skipIfMySQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewMySQLDB(config)
 	require.NoError(t, err)

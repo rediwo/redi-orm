@@ -13,7 +13,7 @@ import (
 
 func TestPostgreSQLMigrator_NewPostgreSQLMigrator(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -34,7 +34,7 @@ func TestPostgreSQLMigrator_NewPostgreSQLMigrator(t *testing.T) {
 
 func TestPostgreSQLMigrator_GetDatabaseType(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestPostgreSQLMigrator_GetDatabaseType(t *testing.T) {
 
 func TestPostgreSQLMigrator_GetTables(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestPostgreSQLMigrator_GetTables(t *testing.T) {
 	// Get tables
 	tables, err := migrator.GetTables()
 	assert.NoError(t, err)
-	
+
 	// Check that our test tables are in the list
 	var foundTable1, foundTable2 bool
 	for _, table := range tables {
@@ -90,7 +90,7 @@ func TestPostgreSQLMigrator_GetTables(t *testing.T) {
 
 func TestPostgreSQLMigrator_GetTableInfo(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestPostgreSQLMigrator_GetTableInfo(t *testing.T) {
 
 func TestPostgreSQLMigrator_GenerateCreateTableSQL(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -203,7 +203,7 @@ func TestPostgreSQLMigrator_GenerateCreateTableSQL(t *testing.T) {
 
 func TestPostgreSQLMigrator_GenerateModifyColumnSQL(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -303,7 +303,7 @@ func TestPostgreSQLMigrator_GenerateModifyColumnSQL(t *testing.T) {
 
 func TestPostgreSQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -325,7 +325,7 @@ func TestPostgreSQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 	`)
 	require.NoError(t, err)
 	defer db.Exec("DROP TABLE IF EXISTS test_products")
-	
+
 	// Insert some test data
 	_, err = db.Exec("INSERT INTO test_products (name, price, description) VALUES ($1, $2, $3)", "Widget", 100, "A nice widget")
 	require.NoError(t, err)
@@ -352,32 +352,32 @@ func TestPostgreSQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 
 	sqls, err := migrator.GenerateModifyColumnSQL(change)
 	require.NoError(t, err)
-	
+
 	// Execute the migration SQL
 	for _, sql := range sqls {
 		_, err = db.Exec(sql)
 		require.NoError(t, err, "Failed to execute: %s", sql)
 	}
-	
+
 	// Verify the column type changed
 	tableInfo, err := migrator.GetTableInfo("test_products")
 	require.NoError(t, err)
-	
+
 	priceCol := findColumn(tableInfo.Columns, "price")
 	require.NotNil(t, priceCol)
 	assert.Equal(t, "DECIMAL(10,2)", priceCol.Type)
 	assert.Equal(t, "0.00", priceCol.Default)
-	
+
 	// Verify data integrity
 	rows, err := db.Query("SELECT name, price FROM test_products ORDER BY name")
 	require.NoError(t, err)
 	defer rows.Close()
-	
+
 	var results []struct {
 		name  string
 		price float64
 	}
-	
+
 	for rows.Next() {
 		var r struct {
 			name  string
@@ -387,7 +387,7 @@ func TestPostgreSQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 		require.NoError(t, err)
 		results = append(results, r)
 	}
-	
+
 	assert.Len(t, results, 2)
 	assert.Equal(t, "Gadget", results[0].name)
 	assert.Equal(t, 200.0, results[0].price)
@@ -397,7 +397,7 @@ func TestPostgreSQLMigrator_GenerateModifyColumnSQL_Integration(t *testing.T) {
 
 func TestPostgreSQLMigrator_GenerateDropColumnSQL(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -416,7 +416,7 @@ func TestPostgreSQLMigrator_GenerateDropColumnSQL(t *testing.T) {
 
 func TestPostgreSQLMigrator_GenerateCreateIndexSQL(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -443,7 +443,7 @@ func TestPostgreSQLMigrator_GenerateCreateIndexSQL(t *testing.T) {
 
 func TestPostgreSQLMigrator_ApplyMigration(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)

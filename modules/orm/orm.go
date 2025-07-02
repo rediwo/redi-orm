@@ -17,7 +17,7 @@ import (
 // ModelsModule provides Prisma-like database operations
 type ModelsModule struct {
 	loop    *eventloop.EventLoop
-	db      types.Database
+	db      types.Database // TODO: Currently unused, will be used for transaction support
 	schemas map[string]*schema.Schema
 }
 
@@ -89,10 +89,10 @@ func (m *ModelsModule) createMethod(vm *js.Runtime, modelName, methodName string
 			}
 		}
 
-		var options map[string]interface{}
+		var options map[string]any
 		if len(call.Arguments) > 0 && !js.IsUndefined(call.Arguments[0]) && !js.IsNull(call.Arguments[0]) {
 			exported := call.Arguments[0].Export()
-			if optMap, ok := exported.(map[string]interface{}); ok {
+			if optMap, ok := exported.(map[string]any); ok {
 				options = optMap
 			}
 		}
@@ -123,7 +123,7 @@ func (m *ModelsModule) createQueryRawMethod(vm *js.Runtime, db types.Database) f
 		}
 
 		sql := call.Arguments[0].String()
-		var args []interface{}
+		var args []any
 
 		// Collect additional arguments
 		for i := 1; i < len(call.Arguments); i++ {
@@ -169,7 +169,7 @@ func (m *ModelsModule) createExecuteRawMethod(vm *js.Runtime, db types.Database)
 		}
 
 		sql := call.Arguments[0].String()
-		var args []interface{}
+		var args []any
 
 		// Collect additional arguments
 		for i := 1; i < len(call.Arguments); i++ {
@@ -187,7 +187,7 @@ func (m *ModelsModule) createExecuteRawMethod(vm *js.Runtime, db types.Database)
 					reject(m.createError(vm, err))
 				} else {
 					rowsAffected, _ := result.RowsAffected()
-					resolve(vm.ToValue(map[string]interface{}{
+					resolve(vm.ToValue(map[string]any{
 						"rowsAffected": rowsAffected,
 					}))
 				}

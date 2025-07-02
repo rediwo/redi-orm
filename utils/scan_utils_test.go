@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"testing"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestScanRows_WithMaps(t *testing.T) {
@@ -31,18 +31,18 @@ func TestScanRows_WithMaps(t *testing.T) {
 		(3, 'test3', 300, 'binary3')`)
 	require.NoError(t, err)
 
-	// Test scanning into []map[string]interface{}
+	// Test scanning into []map[string]any
 	rows, err := db.Query("SELECT * FROM test_table ORDER BY id")
 	require.NoError(t, err)
 	defer rows.Close()
 
-	var results []map[string]interface{}
+	var results []map[string]any
 	err = ScanRows(rows, &results)
 	require.NoError(t, err)
 
 	// Verify results
 	assert.Len(t, results, 3)
-	
+
 	// Check first row
 	assert.Equal(t, int64(1), results[0]["id"])
 	assert.Equal(t, "test1", results[0]["name"])
@@ -138,7 +138,7 @@ func TestScanRowsToMaps_Direct(t *testing.T) {
 
 	// Verify results
 	assert.Len(t, results, 2)
-	
+
 	// Check handling of non-NULL value
 	assert.Equal(t, int64(1), results[0]["id"])
 	assert.Equal(t, "test1", results[0]["name"])

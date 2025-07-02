@@ -19,22 +19,22 @@ func getTestConfig() types.Config {
 	if host == "" {
 		host = "localhost"
 	}
-	
+
 	user := os.Getenv("POSTGRES_TEST_USER")
 	if user == "" {
 		user = "testuser"
 	}
-	
+
 	password := os.Getenv("POSTGRES_TEST_PASSWORD")
 	if password == "" {
 		password = "testpass"
 	}
-	
+
 	database := os.Getenv("POSTGRES_TEST_DATABASE")
 	if database == "" {
 		database = "testdb"
 	}
-	
+
 	return types.Config{
 		Type:     "postgresql",
 		Host:     host,
@@ -52,7 +52,7 @@ func skipIfPostgreSQLNotAvailable(t *testing.T) {
 	if err != nil {
 		t.Skip("PostgreSQL not available for testing")
 	}
-	
+
 	ctx := context.Background()
 	if err := db.Connect(ctx); err != nil {
 		t.Skipf("Cannot connect to PostgreSQL: %v", err)
@@ -80,7 +80,7 @@ func TestPostgreSQLDB_NewPostgreSQLDB(t *testing.T) {
 
 func TestPostgreSQLDB_Connect(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestPostgreSQLDB_FieldMapping(t *testing.T) {
 
 func TestPostgreSQLDB_CreateModel(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -268,7 +268,7 @@ func TestPostgreSQLDB_GenerateCreateTableSQL(t *testing.T) {
 
 func TestPostgreSQLDB_Transaction(t *testing.T) {
 	skipIfPostgreSQLNotAvailable(t)
-	
+
 	config := getTestConfig()
 	db, err := NewPostgreSQLDB(config)
 	require.NoError(t, err)
@@ -281,7 +281,7 @@ func TestPostgreSQLDB_Transaction(t *testing.T) {
 	// Create test table
 	_, err = db.Exec("DROP TABLE IF EXISTS test_transaction")
 	require.NoError(t, err)
-	
+
 	_, err = db.Exec(`
 		CREATE TABLE test_transaction (
 			id SERIAL PRIMARY KEY,

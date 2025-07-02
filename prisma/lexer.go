@@ -35,19 +35,19 @@ const (
 	DECIMAL
 
 	// Operators and delimiters
-	LBRACE    // {
-	RBRACE    // }
-	LBRACKET  // [
-	RBRACKET  // ]
-	LPAREN    // (
-	RPAREN    // )
-	AT        // @
-	BLOCK_AT  // @@
-	QUESTION  // ?
-	COMMA     // ,
-	EQUALS    // =
-	COLON     // :
-	DOT       // .
+	LBRACE   // {
+	RBRACE   // }
+	LBRACKET // [
+	RBRACKET // ]
+	LPAREN   // (
+	RPAREN   // )
+	AT       // @
+	BLOCK_AT // @@
+	QUESTION // ?
+	COMMA    // ,
+	EQUALS   // =
+	COLON    // :
+	DOT      // .
 
 	// Attribute functions
 	DEFAULT
@@ -84,7 +84,7 @@ const (
 	BIT
 	VARBIT
 	XML
-	
+
 	// Referential actions
 	CASCADE
 	RESTRICT
@@ -98,10 +98,10 @@ const (
 
 // Token represents a token
 type Token struct {
-	Type     TokenType
-	Literal  string
-	Line     int
-	Column   int
+	Type    TokenType
+	Literal string
+	Line    int
+	Column  int
 }
 
 // Lexer represents the lexer
@@ -186,7 +186,7 @@ func (l *Lexer) readChar() {
 	}
 	l.position = l.readPosition
 	l.readPosition++
-	
+
 	if l.ch == '\n' {
 		l.line++
 		l.column = 0
@@ -500,6 +500,6 @@ func (t TokenType) String() string {
 
 // String returns string representation of Token
 func (t Token) String() string {
-	return fmt.Sprintf("{Type: %s, Literal: %q, Line: %d, Column: %d}", 
+	return fmt.Sprintf("{Type: %s, Literal: %q, Line: %d, Column: %d}",
 		t.Type.String(), t.Literal, t.Line, t.Column)
 }
