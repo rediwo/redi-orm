@@ -20,6 +20,20 @@ A modern, schema-driven ORM for Go with a JavaScript runtime interface. RediORM 
 go get github.com/rediwo/redi-orm
 ```
 
+### CLI Tool
+
+Build the `redi-orm` CLI for migration management and running JavaScript files:
+
+```bash
+go install github.com/rediwo/redi-orm/cmd/redi-orm@latest
+```
+
+Or build from source:
+
+```bash
+go build -o redi-orm ./cmd/redi-orm
+```
+
 ## 🎯 Quick Start
 
 ### Go API
@@ -225,6 +239,82 @@ async function main() {
 }
 
 main().catch(console.error);
+```
+
+## 🔨 CLI Tool
+
+RediORM includes a powerful CLI tool for database migrations and running JavaScript files with ORM support.
+
+### Running JavaScript Files
+
+Execute JavaScript files with full ORM support:
+
+```bash
+# Basic usage
+redi-orm run script.js
+
+# With timeout for long-running scripts
+redi-orm run --timeout=30000 batch-process.js  # 30 seconds
+redi-orm run --timeout 60000 data-migration.js  # Alternative syntax
+
+# Pass arguments to the script
+redi-orm run process.js --input data.json --output results.json
+```
+
+The `--timeout` flag is useful for:
+- Batch processing operations
+- Data migration scripts
+- Long-running synchronization tasks
+- Scripts with multiple async operations
+
+### Migration Commands
+
+#### Development Mode (Auto-migration)
+
+```bash
+# Auto-migrate based on schema file
+redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma
+
+# Preview changes without applying (dry run)
+redi-orm migrate:dry-run --db=sqlite://./myapp.db --schema=./schema.prisma
+
+# Force destructive changes (drops columns/tables)
+redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma --force
+```
+
+#### Production Mode (File-based migrations)
+
+```bash
+# Generate a new migration file
+redi-orm migrate:generate --db=sqlite://./myapp.db --schema=./schema.prisma --name="add_user_table"
+
+# Apply pending migrations
+redi-orm migrate:apply --db=sqlite://./myapp.db --migrations=./migrations
+
+# Rollback last migration
+redi-orm migrate:rollback --db=sqlite://./myapp.db --migrations=./migrations
+
+# Check migration status
+redi-orm migrate:status --db=sqlite://./myapp.db
+
+# Reset all migrations (dangerous!)
+redi-orm migrate:reset --db=sqlite://./myapp.db --force
+```
+
+### CLI Examples
+
+```bash
+# Run a data processing script with 5 minute timeout
+redi-orm run --timeout=300000 scripts/process-large-dataset.js
+
+# Migrate development database
+redi-orm migrate --db=sqlite://./dev.db --schema=./schema.prisma --mode=auto
+
+# Generate production migration
+redi-orm migrate:generate --db=postgresql://user:pass@localhost/prod --schema=./schema.prisma --name="add_indexes"
+
+# Apply migrations in production
+redi-orm migrate:apply --db=postgresql://user:pass@localhost/prod --migrations=./migrations
 ```
 
 ## 🏗️ Architecture

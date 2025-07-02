@@ -7,6 +7,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/migration"
@@ -56,12 +59,17 @@ Flags:
   --force       Force destructive changes without confirmation
                 Use with caution! This will drop columns/tables
   
+  --timeout     Execution timeout in milliseconds (for run command)
+                Example: --timeout 30000 (30 seconds)
+                Default: 0 (no timeout)
+  
   --help        Show help message
 
 Examples:
   # Run JavaScript file with ORM
   redi-orm run app.js
   redi-orm run scripts/migrate-data.js
+  redi-orm run --timeout 60000 long-running-script.js
   
   # Auto-migrate (development)
   redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma
@@ -96,6 +104,7 @@ func main() {
 		name          string
 		force         bool
 		help          bool
+		timeout       int
 	)
 
 	flag.StringVar(&dbURI, "db", "", "Database URI")
@@ -105,6 +114,7 @@ func main() {
 	flag.StringVar(&name, "name", "", "Migration name")
 	flag.BoolVar(&force, "force", false, "Force destructive changes")
 	flag.BoolVar(&help, "help", false, "Show help message")
+	flag.IntVar(&timeout, "timeout", 0, "Execution timeout in milliseconds (for run command)")
 
 	// Custom usage
 	flag.Usage = func() {
@@ -132,8 +142,36 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Now parse flags after the command
-	flag.CommandLine.Parse(os.Args[2:])
+	// For the run command, handle timeout flag manually to support Node.js-style syntax
+	if command == "run" {
+		args := os.Args[2:]
+		var filteredArgs []string
+		
+		for i := 0; i < len(args); i++ {
+			arg := args[i]
+			if arg == "--timeout" && i+1 < len(args) {
+				// --timeout 5000 style
+				if val, err := strconv.Atoi(args[i+1]); err == nil {
+					timeout = val
+					i++ // skip next arg
+					continue
+				}
+			} else if strings.HasPrefix(arg, "--timeout=") {
+				// --timeout=5000 style
+				if val, err := strconv.Atoi(strings.TrimPrefix(arg, "--timeout=")); err == nil {
+					timeout = val
+					continue
+				}
+			}
+			filteredArgs = append(filteredArgs, arg)
+		}
+		
+		// Now parse remaining flags
+		flag.CommandLine.Parse(filteredArgs)
+	} else {
+		// For other commands, use normal flag parsing
+		flag.CommandLine.Parse(os.Args[2:])
+	}
 
 	// Execute command
 	ctx := context.Background()
@@ -144,7 +182,9 @@ func main() {
 			log.Fatal("Error: JavaScript file path required\nUsage: redi-orm run <script.js>")
 		}
 		scriptPath := flag.Args()[0]
-		runScript(scriptPath)
+		// Pass remaining args after the script path as script arguments
+		scriptArgs := flag.Args()[1:]
+		runScript(scriptPath, scriptArgs, timeout)
 		return
 	}
 
@@ -408,7 +448,7 @@ func runMigrateRollback(ctx context.Context, dbURI, migrationsDir string) {
 	}
 }
 
-func runScript(scriptPath string) {
+func runScript(scriptPath string, args []string, timeoutMs int) {
 	// Check if script file exists
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		log.Fatalf("Script file not found: %s", scriptPath)
@@ -428,6 +468,8 @@ func runScript(scriptPath string) {
 		ScriptPath: absPath,
 		BasePath:   filepath.Dir(absPath),
 		Version:    version,
+		Args:       args,
+		Timeout:    time.Duration(timeoutMs) * time.Millisecond,
 	}
 
 	// Execute the script

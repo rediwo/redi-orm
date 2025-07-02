@@ -174,13 +174,8 @@ func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQ
 
 	query := model.Select()
 	
-	// Apply where conditions properly by building and applying them
-	if whereMap, ok := where.(map[string]any); ok {
-		for field, value := range whereMap {
-			condition := query.Where(field).Equals(value)
-			query = query.WhereCondition(condition)
-		}
-	}
+	// Apply where conditions
+	query = m.applySimpleWhereConditions(query, where).(types.SelectQuery)
 
 	// Handle select fields
 	if selectFields, ok := options["select"]; ok {
@@ -205,11 +200,9 @@ func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQ
 func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	query := model.Select()
 
-	// Apply where conditions if provided
+	// Apply where conditions
 	if where, ok := options["where"]; ok {
-		if err := m.applyWhereConditions(query, where); err != nil {
-			return nil, err
-		}
+		query = m.applySimpleWhereConditions(query, where).(types.SelectQuery)
 	}
 
 	// Apply orderBy if provided
@@ -240,11 +233,9 @@ func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQu
 func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	query := model.Select()
 
-	// Apply where conditions if provided
+	// Apply where conditions
 	if where, ok := options["where"]; ok {
-		if err := m.applyWhereConditions(query, where); err != nil {
-			return nil, err
-		}
+		query = m.applySimpleWhereConditions(query, where).(types.SelectQuery)
 	}
 
 	// Apply orderBy if provided
@@ -418,6 +409,10 @@ func (m *ModelsModule) executeAggregate(ctx context.Context, model types.ModelQu
 func (m *ModelsModule) executeGroupBy(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
 	// GroupBy is complex and would require significant query builder changes
 	// For now, return a placeholder
+	_ = ctx
+	_ = model
+	_ = modelName
+	_ = options
 	return nil, fmt.Errorf("groupBy not yet implemented")
 }
 
@@ -439,23 +434,16 @@ func (m *ModelsModule) executeUpdate(ctx context.Context, model types.ModelQuery
 
 	query := model.Update(processedData)
 	
-	// Apply where conditions properly by building and applying them
-	if whereMap, ok := where.(map[string]any); ok {
-		for field, value := range whereMap {
-			condition := query.Where(field).Equals(value)
-			query = query.WhereCondition(condition)
-		}
-	}
+	// Apply where conditions
+	query = m.applySimpleWhereConditions(query, where).(types.UpdateQuery)
 
 	// Handle returning specific fields
 	if selectFields, ok := options["select"]; ok {
 		fields := m.extractFieldNames(selectFields)
-		updateQuery := query.(types.UpdateQuery)
-		updateQuery = updateQuery.Returning(fields...)
-		query = updateQuery
+		query = query.Returning(fields...)
 	}
 
-	result, err := query.(types.UpdateQuery).Exec(ctx)
+	result, err := query.Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -468,6 +456,7 @@ func (m *ModelsModule) executeUpdate(ctx context.Context, model types.ModelQuery
 }
 
 func (m *ModelsModule) executeUpdateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
+	_ = modelName // TODO: might be needed for future enhancements
 	data, ok := options["data"]
 	if !ok {
 		return nil, fmt.Errorf("updateMany requires 'data' field")
@@ -478,14 +467,12 @@ func (m *ModelsModule) executeUpdateMany(ctx context.Context, model types.ModelQ
 
 	query := model.Update(processedData)
 
-	// Apply where conditions if provided
+	// Apply where conditions
 	if where, ok := options["where"]; ok {
-		if err := m.applyWhereConditions(query, where); err != nil {
-			return nil, err
-		}
+		query = m.applySimpleWhereConditions(query, where).(types.UpdateQuery)
 	}
 
-	result, err := query.(types.UpdateQuery).Exec(ctx)
+	result, err := query.Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -498,6 +485,10 @@ func (m *ModelsModule) executeUpdateMany(ctx context.Context, model types.ModelQ
 func (m *ModelsModule) executeUpdateManyAndReturn(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
 	// Similar to updateMany but returns updated records
 	// This would require fetching the updated records
+	_ = ctx
+	_ = model
+	_ = modelName
+	_ = options
 	return nil, fmt.Errorf("updateManyAndReturn not yet implemented")
 }
 
@@ -519,9 +510,7 @@ func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery
 
 	// First try to find the record
 	selectQuery := model.Select()
-	if err := m.applyWhereConditions(selectQuery, where); err != nil {
-		return nil, err
-	}
+	selectQuery = m.applySimpleWhereConditions(selectQuery, where).(types.SelectQuery)
 
 	var existing map[string]any
 	err := selectQuery.FindFirst(ctx, &existing)
@@ -530,10 +519,8 @@ func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery
 		// Record exists, update it
 		updateData := m.processUpdateData(update)
 		updateQuery := model.Update(updateData)
-		if err := m.applyWhereConditions(updateQuery, where); err != nil {
-			return nil, err
-		}
-		_, err := updateQuery.(types.UpdateQuery).Exec(ctx)
+		updateQuery = m.applySimpleWhereConditions(updateQuery, where).(types.UpdateQuery)
+		_, err := updateQuery.Exec(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -569,9 +556,7 @@ func (m *ModelsModule) executeDelete(ctx context.Context, model types.ModelQuery
 
 	// First fetch the record to return it
 	selectQuery := model.Select()
-	if err := m.applyWhereConditions(selectQuery, where); err != nil {
-		return nil, err
-	}
+	selectQuery = m.applySimpleWhereConditions(selectQuery, where).(types.SelectQuery)
 
 	var existing map[string]any
 	err := selectQuery.FindFirst(ctx, &existing)
@@ -581,11 +566,9 @@ func (m *ModelsModule) executeDelete(ctx context.Context, model types.ModelQuery
 
 	// Now delete it
 	deleteQuery := model.Delete()
-	if err := m.applyWhereConditions(deleteQuery, where); err != nil {
-		return nil, err
-	}
+	deleteQuery = m.applySimpleWhereConditions(deleteQuery, where).(types.DeleteQuery)
 
-	_, err = deleteQuery.(types.DeleteQuery).Exec(ctx)
+	_, err = deleteQuery.Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -594,16 +577,15 @@ func (m *ModelsModule) executeDelete(ctx context.Context, model types.ModelQuery
 }
 
 func (m *ModelsModule) executeDeleteMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
+	_ = modelName // TODO: might be needed for future enhancements
 	deleteQuery := model.Delete()
 
-	// Apply where conditions if provided
+	// Apply where conditions
 	if where, ok := options["where"]; ok {
-		if err := m.applyWhereConditions(deleteQuery, where); err != nil {
-			return nil, err
-		}
+		deleteQuery = m.applySimpleWhereConditions(deleteQuery, where).(types.DeleteQuery)
 	}
 
-	result, err := deleteQuery.(types.DeleteQuery).Exec(ctx)
+	result, err := deleteQuery.Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -615,9 +597,55 @@ func (m *ModelsModule) executeDeleteMany(ctx context.Context, model types.ModelQ
 
 // Helper functions
 
+// applySimpleWhereConditions applies simple field equality conditions to a query
+// It takes a where clause (expected to be map[string]any) and applies each field=value condition
+// The function is generic and works with any query type that has Where() and WhereCondition() methods
+func (m *ModelsModule) applySimpleWhereConditions(query any, where any) any {
+	if whereMap, ok := where.(map[string]any); ok {
+		// Use reflection to handle different query types
+		queryValue := reflect.ValueOf(query)
+		for field, value := range whereMap {
+			// Call Where(field) method
+			whereMethod := queryValue.MethodByName("Where")
+			if !whereMethod.IsValid() {
+				continue
+			}
+			whereResult := whereMethod.Call([]reflect.Value{reflect.ValueOf(field)})
+			if len(whereResult) == 0 {
+				continue
+			}
+			
+			// Call Equals(value) on the result
+			conditionBuilder := whereResult[0]
+			equalsMethod := conditionBuilder.MethodByName("Equals")
+			if !equalsMethod.IsValid() {
+				continue
+			}
+			equalsResult := equalsMethod.Call([]reflect.Value{reflect.ValueOf(value)})
+			if len(equalsResult) == 0 {
+				continue
+			}
+			
+			// Call WhereCondition(condition) on the query
+			whereConditionMethod := queryValue.MethodByName("WhereCondition")
+			if !whereConditionMethod.IsValid() {
+				continue
+			}
+			whereConditionResult := whereConditionMethod.Call([]reflect.Value{equalsResult[0]})
+			if len(whereConditionResult) > 0 {
+				// Update query with the result
+				query = whereConditionResult[0].Interface()
+				queryValue = reflect.ValueOf(query)
+			}
+		}
+	}
+	return query
+}
+
 func (m *ModelsModule) processNestedWrites(data any, operation string) any {
 	// Process nested create/connect/disconnect operations
 	// For now, just return the data as-is
+	_ = operation // TODO: implement nested writes based on operation type
 	return data
 }
 

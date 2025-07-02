@@ -22,7 +22,6 @@ Tests fundamental CRUD structure:
 - Verifies models are accessible via `db.models`
 - Confirms all CRUD methods exist on models
 - Validates method signatures
-**Note: Actual CRUD operations require struct handling improvements**
 
 ### `simple_test.js`
 Tests the basic fromUri functionality:
@@ -41,10 +40,13 @@ Tests schema loading and synchronization:
 - Custom table/column mapping
 
 ### `transaction_test.js`
-Tests transaction structure:
+Tests transaction functionality:
 - Verifies transaction-related models exist
 - Confirms required methods are available
-**Note: Actual transaction operations require global `$transaction` function**
+- Tests successful transactions with balance transfers
+- Tests transaction rollback on errors
+- Tests multiple operations in a single transaction
+- Uses `db.transaction()` for transaction handling
 
 ### `query_test.js`
 Tests query structure and raw queries:
@@ -151,3 +153,7 @@ Custom assertion module with methods:
 - Field name to column name mapping is now properly handled in where clauses
 - Junction table names are generated with alphabetical ordering for consistency
 - String utility functions moved from internal package to utils package
+- Transaction support implemented with `db.transaction()` method
+- Fixed update operations to properly apply where conditions
+- Added map support to scanning utilities for flexible result handling
+- All ORM tests now pass successfully
