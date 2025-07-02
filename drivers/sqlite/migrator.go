@@ -478,6 +478,19 @@ func (m *SQLiteMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.Col
 	}
 }
 
+// IsSystemIndex checks if an index is a system-generated index in SQLite
+func (m *SQLiteMigrator) IsSystemIndex(indexName string) bool {
+	lower := strings.ToLower(indexName)
+	
+	// SQLite system index patterns:
+	// - sqlite_autoindex_*: automatically created indexes for UNIQUE and PRIMARY KEY
+	// - sqlite_*: other system indexes
+	// - pk_*: primary key indexes
+	return strings.HasPrefix(lower, "sqlite_") ||
+		strings.HasPrefix(lower, "pk_") ||
+		strings.Contains(lower, "primary")
+}
+
 // Additional wrapper methods to satisfy the types.DatabaseMigrator interface
 
 // GenerateCreateTableSQL wraps to match the DatabaseMigrator interface

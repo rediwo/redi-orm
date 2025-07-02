@@ -479,3 +479,262 @@ func findColumn(columns []types.ColumnInfo, name string) *types.ColumnInfo {
 	}
 	return nil
 }
+
+func TestPostgreSQLMigrator_IndexComparison(t *testing.T) {
+	skipIfPostgreSQLNotAvailable(t)
+
+	config := getTestConfig()
+	db, err := NewPostgreSQLDB(config)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = db.Connect(ctx)
+	require.NoError(t, err)
+	defer db.Close()
+
+	migrator := db.GetMigrator()
+
+	tests := []struct {
+		name           string
+		setupTable     func()
+		desiredSchema  *schema.Schema
+		expectedAdds   int
+		expectedDrops  int
+	}{
+		{
+			name: "add new index",
+			setupTable: func() {
+				// Create a simple table without indexes
+				sql := `CREATE TABLE users (
+					id BIGSERIAL PRIMARY KEY,
+					email VARCHAR(255),
+					user_name VARCHAR(255)
+				)`
+				err := migrator.ApplyMigration(sql)
+				require.NoError(t, err)
+			},
+			desiredSchema: func() *schema.Schema {
+				s := schema.New("User").WithTableName("users")
+				s.AddField(schema.Field{
+					Name:          "id",
+					Type:          schema.FieldTypeInt64,
+					PrimaryKey:    true,
+					AutoIncrement: true,
+				})
+				s.AddField(schema.Field{
+					Name: "email",
+					Type: schema.FieldTypeString,
+				})
+				s.AddField(schema.Field{
+					Name: "userName",
+					Type: schema.FieldTypeString,
+					Map:  "user_name",
+				})
+				s.AddIndex(schema.Index{
+					Fields: []string{"email"},
+				})
+				return s
+			}(),
+			expectedAdds:  1,
+			expectedDrops: 0,
+		},
+		{
+			name: "drop existing index",
+			setupTable: func() {
+				// Create table with an index
+				sqls := []string{
+					`CREATE TABLE users (
+						id BIGSERIAL PRIMARY KEY,
+						email VARCHAR(255),
+						user_name VARCHAR(255)
+					)`,
+					`CREATE INDEX idx_users_email ON users(email)`,
+				}
+				for _, sql := range sqls {
+					err := migrator.ApplyMigration(sql)
+					require.NoError(t, err)
+				}
+			},
+			desiredSchema: func() *schema.Schema {
+				s := schema.New("User").WithTableName("users")
+				s.AddField(schema.Field{
+					Name:          "id",
+					Type:          schema.FieldTypeInt64,
+					PrimaryKey:    true,
+					AutoIncrement: true,
+				})
+				s.AddField(schema.Field{
+					Name: "email",
+					Type: schema.FieldTypeString,
+				})
+				s.AddField(schema.Field{
+					Name: "userName",
+					Type: schema.FieldTypeString,
+					Map:  "user_name",
+				})
+				// No indexes
+				return s
+			}(),
+			expectedAdds:  0,
+			expectedDrops: 1,
+		},
+		{
+			name: "composite index",
+			setupTable: func() {
+				// Create a simple table without indexes
+				sql := `CREATE TABLE users (
+					id BIGSERIAL PRIMARY KEY,
+					email VARCHAR(255),
+					user_name VARCHAR(255),
+					status VARCHAR(255)
+				)`
+				err := migrator.ApplyMigration(sql)
+				require.NoError(t, err)
+			},
+			desiredSchema: func() *schema.Schema {
+				s := schema.New("User").WithTableName("users")
+				s.AddField(schema.Field{
+					Name:          "id",
+					Type:          schema.FieldTypeInt64,
+					PrimaryKey:    true,
+					AutoIncrement: true,
+				})
+				s.AddField(schema.Field{
+					Name: "email",
+					Type: schema.FieldTypeString,
+				})
+				s.AddField(schema.Field{
+					Name: "userName",
+					Type: schema.FieldTypeString,
+					Map:  "user_name",
+				})
+				s.AddField(schema.Field{
+					Name: "status",
+					Type: schema.FieldTypeString,
+				})
+				s.AddIndex(schema.Index{
+					Fields: []string{"email", "status"},
+				})
+				return s
+			}(),
+			expectedAdds:  1,
+			expectedDrops: 0,
+		},
+		{
+			name: "field with column mapping in index",
+			setupTable: func() {
+				// Create a simple table without indexes
+				sql := `CREATE TABLE users (
+					id BIGSERIAL PRIMARY KEY,
+					email VARCHAR(255),
+					user_name VARCHAR(255),
+					created_at TIMESTAMP
+				)`
+				err := migrator.ApplyMigration(sql)
+				require.NoError(t, err)
+			},
+			desiredSchema: func() *schema.Schema {
+				s := schema.New("User").WithTableName("users")
+				s.AddField(schema.Field{
+					Name:          "id",
+					Type:          schema.FieldTypeInt64,
+					PrimaryKey:    true,
+					AutoIncrement: true,
+				})
+				s.AddField(schema.Field{
+					Name: "email",
+					Type: schema.FieldTypeString,
+				})
+				s.AddField(schema.Field{
+					Name: "userName",
+					Type: schema.FieldTypeString,
+					Map:  "user_name",
+				})
+				s.AddField(schema.Field{
+					Name: "createdAt",
+					Type: schema.FieldTypeDateTime,
+					Map:  "created_at",
+				})
+				s.AddIndex(schema.Index{
+					Fields: []string{"createdAt"}, // Should use created_at column
+				})
+				return s
+			}(),
+			expectedAdds:  1,
+			expectedDrops: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean up from previous test
+			migrator.ApplyMigration("DROP TABLE IF EXISTS users")
+			
+			// Setup table
+			tt.setupTable()
+			
+			// Register schema
+			err = db.RegisterSchema("User", tt.desiredSchema)
+			require.NoError(t, err)
+			
+			// Get existing table info
+			existingTable, err := migrator.GetTableInfo("users")
+			require.NoError(t, err)
+			
+			// Compare schemas
+			plan, err := migrator.CompareSchema(existingTable, tt.desiredSchema)
+			require.NoError(t, err)
+			
+			// Check index changes
+			assert.Equal(t, tt.expectedAdds, len(plan.AddIndexes), "Added indexes count mismatch")
+			assert.Equal(t, tt.expectedDrops, len(plan.DropIndexes), "Dropped indexes count mismatch")
+			
+			// Cleanup
+			migrator.ApplyMigration("DROP TABLE IF EXISTS users")
+		})
+	}
+}
+
+func TestPostgreSQLMigrator_SystemIndexDetection(t *testing.T) {
+	skipIfPostgreSQLNotAvailable(t)
+
+	config := getTestConfig()
+	db, err := NewPostgreSQLDB(config)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = db.Connect(ctx)
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Create PostgreSQL-specific migrator
+	postgresDB := db
+	migrator := &PostgreSQLMigrator{
+		db:           postgresDB.GetDB(),
+		postgresqlDB: postgresDB,
+	}
+
+	// Test system index patterns
+	tests := []struct {
+		indexName    string
+		isSystemIndex bool
+	}{
+		{"users_pkey", true},
+		{"posts_pkey", true},
+		{"email_key", true},
+		{"users_email_key", true},
+		{"users_posts_fkey", true},
+		{"pg_internal_index", true},
+		{"idx_users_email", false},
+		{"custom_index", false},
+		{"users_email_idx", false},
+		{"unique_email", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.indexName, func(t *testing.T) {
+			result := migrator.IsSystemIndex(tt.indexName)
+			assert.Equal(t, tt.isSystemIndex, result, "IsSystemIndex result mismatch for %s", tt.indexName)
+		})
+	}
+}

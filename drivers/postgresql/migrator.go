@@ -498,6 +498,22 @@ func (m *PostgreSQLMigrator) GenerateColumnDefinition(field schema.Field) string
 	return m.GenerateColumnDefinitionFromColumnInfo(column)
 }
 
+// IsSystemIndex checks if an index is a system-generated index in PostgreSQL
+func (m *PostgreSQLMigrator) IsSystemIndex(indexName string) bool {
+	lower := strings.ToLower(indexName)
+	
+	// PostgreSQL system index patterns:
+	// - Primary key: tablename_pkey
+	// - Unique constraint: tablename_columnname_key
+	// - Foreign key: tablename_columnname_fkey
+	// - System internal: pg_*
+	return strings.HasSuffix(lower, "_pkey") ||
+		strings.HasSuffix(lower, "_key") ||
+		strings.HasSuffix(lower, "_fkey") ||
+		strings.HasPrefix(lower, "pg_") ||
+		strings.Contains(lower, "primary")
+}
+
 // ApplyMigration applies a migration SQL statement
 func (m *PostgreSQLMigrator) ApplyMigration(sql string) error {
 	_, err := m.db.Exec(sql)

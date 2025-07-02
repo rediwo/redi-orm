@@ -135,6 +135,16 @@ func (s *Schema) GetField(name string) (*Field, error) {
 	return nil, fmt.Errorf("field %s not found", name)
 }
 
+// GetFieldByName returns a field by name (returns nil if not found)
+func (s *Schema) GetFieldByName(name string) *Field {
+	for i := range s.Fields {
+		if s.Fields[i].Name == name {
+			return &s.Fields[i]
+		}
+	}
+	return nil
+}
+
 func (s *Schema) GetPrimaryKey() (*Field, error) {
 	for i := range s.Fields {
 		if s.Fields[i].PrimaryKey {

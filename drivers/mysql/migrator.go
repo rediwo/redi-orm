@@ -409,6 +409,20 @@ func (m *MySQLMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.Colu
 	}
 }
 
+// IsSystemIndex checks if an index is a system-generated index in MySQL
+func (m *MySQLMigrator) IsSystemIndex(indexName string) bool {
+	lower := strings.ToLower(indexName)
+	
+	// MySQL system index patterns:
+	// - Primary key: PRIMARY
+	// - Foreign key constraints: fk_*
+	// - System internal: mysql_*
+	return lower == "primary" ||
+		strings.HasPrefix(lower, "fk_") ||
+		strings.HasPrefix(lower, "mysql_") ||
+		strings.Contains(lower, "primary_key")
+}
+
 // Additional wrapper methods to satisfy the types.DatabaseMigrator interface
 
 // GenerateCreateTableSQL wraps to match the DatabaseMigrator interface
