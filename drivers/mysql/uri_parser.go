@@ -82,9 +82,9 @@ func (p *MySQLURIParser) ParseURI(uri string) (types.Config, error) {
 			// Common MySQL connection parameters
 			switch key {
 			case "charset", "collation", "parseTime", "loc", "timeout",
-			     "readTimeout", "writeTimeout", "allowNativePasswords",
-			     "allowOldPasswords", "clientFoundRows", "columnsWithAlias",
-			     "interpolateParams", "multiStatements", "tls":
+				"readTimeout", "writeTimeout", "allowNativePasswords",
+				"allowOldPasswords", "clientFoundRows", "columnsWithAlias",
+				"interpolateParams", "multiStatements", "tls":
 				config.Options[key] = values[0]
 			default:
 				// Store any other parameters as well

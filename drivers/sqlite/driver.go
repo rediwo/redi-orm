@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/rediwo/redi-orm/drivers/base"
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
@@ -194,10 +194,40 @@ func (s *SQLiteDB) generateColumnSQL(field schema.Field) (string, error) {
 	}
 
 	if field.Default != nil {
-		parts = append(parts, fmt.Sprintf("DEFAULT %v", field.Default))
+		defaultValue := s.formatDefaultValue(field.Default)
+		parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultValue))
 	}
 
 	return strings.Join(parts, " "), nil
+}
+
+// formatDefaultValue formats a default value for SQLite
+func (s *SQLiteDB) formatDefaultValue(value any) string {
+	switch v := value.(type) {
+	case string:
+		// Handle special SQLite functions
+		if v == "now()" || v == "CURRENT_TIMESTAMP" {
+			return "CURRENT_TIMESTAMP"
+		}
+		// Handle boolean strings
+		if v == "true" {
+			return "1"
+		}
+		if v == "false" {
+			return "0"
+		}
+		// Quote string values
+		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
+	case bool:
+		if v {
+			return "1"
+		}
+		return "0"
+	case nil:
+		return "NULL"
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }
 
 // mapFieldTypeToSQL maps schema field types to SQLite SQL types

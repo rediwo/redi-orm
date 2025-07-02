@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/rediwo/redi-orm/drivers/base"
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
@@ -66,7 +66,7 @@ func (m *MySQLDB) buildDSN() string {
 
 	// Add query parameters from Options
 	var params []string
-	
+
 	// Add options from Config.Options
 	if m.Config.Options != nil {
 		for key, value := range m.Config.Options {

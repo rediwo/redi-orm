@@ -8,7 +8,10 @@ import (
 	"sort"
 	"testing"
 
-	_ "github.com/rediwo/redi-orm/modules/orm" // Import to register the module
+	_ "github.com/rediwo/redi-orm/drivers/mysql"      // Import MySQL driver
+	_ "github.com/rediwo/redi-orm/drivers/postgresql" // Import PostgreSQL driver
+	_ "github.com/rediwo/redi-orm/drivers/sqlite"     // Import SQLite driver
+	_ "github.com/rediwo/redi-orm/modules/orm"        // Import to register the module
 	"github.com/rediwo/redi/runtime"
 )
 

@@ -230,9 +230,9 @@ func TestPostgreSQLURIParser_ParseURI_WithOptions(t *testing.T) {
 			name: "with multiple options",
 			uri:  "postgresql://user:pass@localhost:5432/testdb?sslmode=require&application_name=myapp&connect_timeout=10",
 			expectedConfig: map[string]string{
-				"sslmode":           "require",
-				"application_name":  "myapp",
-				"connect_timeout":   "10",
+				"sslmode":          "require",
+				"application_name": "myapp",
+				"connect_timeout":  "10",
 			},
 			expectError: false,
 		},
@@ -265,12 +265,12 @@ func TestPostgreSQLURIParser_ParseURI_WithOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config, err := parser.ParseURI(tt.uri)
-			
+
 			if tt.expectError {
 				require.Error(t, err)
 				return
 			}
-			
+
 			require.NoError(t, err)
 			assert.Equal(t, "postgresql", config.Type)
 			assert.Equal(t, "localhost", config.Host)
@@ -278,7 +278,7 @@ func TestPostgreSQLURIParser_ParseURI_WithOptions(t *testing.T) {
 			assert.Equal(t, "user", config.User)
 			assert.Equal(t, "pass", config.Password)
 			assert.Equal(t, "testdb", config.Database)
-			
+
 			// Check options
 			require.NotNil(t, config.Options)
 			for key, expectedValue := range tt.expectedConfig {

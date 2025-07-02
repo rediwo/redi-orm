@@ -71,6 +71,11 @@ func (r *Runner) RunMigrations(ctx context.Context) error {
 
 // RollbackMigration rolls back the last applied migration
 func (r *Runner) RollbackMigration(ctx context.Context) error {
+	// Ensure migrations table exists
+	if err := r.ensureMigrationsTable(); err != nil {
+		return fmt.Errorf("failed to ensure migrations table: %w", err)
+	}
+
 	// Get last applied migration
 	lastMigration, err := r.getLastMigration()
 	if err != nil {
@@ -104,7 +109,7 @@ func (r *Runner) RollbackMigration(ctx context.Context) error {
 }
 
 // applyMigration applies a single migration
-func (r *Runner) applyMigration(ctx context.Context, migration *MigrationFile) error {
+func (r *Runner) applyMigration(ctx context.Context, migration *types.MigrationFile) error {
 	fmt.Printf("Applying migration %s: %s\n", migration.Version, migration.Name)
 
 	// Verify checksum
@@ -219,11 +224,11 @@ func (r *Runner) getAppliedMigrations() (map[string]bool, error) {
 }
 
 // getLastMigration returns the last applied migration
-func (r *Runner) getLastMigration() (*Migration, error) {
+func (r *Runner) getLastMigration() (*types.Migration, error) {
 	query := `SELECT version, name, checksum, applied_at FROM ` + MigrationsTableName +
 		` ORDER BY version DESC LIMIT 1`
 
-	var m Migration
+	var m types.Migration
 	err := r.db.QueryRow(query).Scan(&m.Version, &m.Name, &m.Checksum, &m.AppliedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -236,7 +241,7 @@ func (r *Runner) getLastMigration() (*Migration, error) {
 }
 
 // recordMigration records a migration in the migrations table
-func (r *Runner) recordMigration(migration *MigrationFile) error {
+func (r *Runner) recordMigration(migration *types.MigrationFile) error {
 	query := fmt.Sprintf(`INSERT INTO %s (version, name, checksum, applied_at) VALUES ('%s', '%s', '%s', '%s')`,
 		MigrationsTableName,
 		migration.Version,

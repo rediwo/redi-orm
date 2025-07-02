@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"testing"
 
+	_ "github.com/rediwo/redi-orm/drivers/mysql"      // Import MySQL driver for tests
+	_ "github.com/rediwo/redi-orm/drivers/postgresql" // Import PostgreSQL driver for tests
+	_ "github.com/rediwo/redi-orm/drivers/sqlite"     // Import SQLite driver for tests
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"

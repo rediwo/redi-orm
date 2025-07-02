@@ -348,9 +348,9 @@ func TestPostgreSQLDB_FieldTypeMapping(t *testing.T) {
 
 func TestPostgreSQLDB_buildDSN(t *testing.T) {
 	tests := []struct {
-		name     string
-		config   types.Config
-		expected []string // List of expected substrings in DSN
+		name        string
+		config      types.Config
+		expected    []string // List of expected substrings in DSN
 		notExpected []string // List of substrings that should NOT be in DSN
 	}{
 		{

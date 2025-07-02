@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
-	"github.com/rediwo/redi-orm/drivers/base"
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"

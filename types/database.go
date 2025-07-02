@@ -8,7 +8,7 @@ import (
 
 // Config holds database connection configuration
 type Config struct {
-	Type     string            // Database type (e.g., "sqlite", "mysql", "postgresql")
+	Type     string // Database type (e.g., "sqlite", "mysql", "postgresql")
 	Host     string
 	Port     int
 	Database string
@@ -384,6 +384,35 @@ type IndexChange struct {
 	IndexName string
 	OldIndex  *IndexInfo // nil for additions
 	NewIndex  *IndexInfo // nil for deletions
+}
+
+// DatabaseSpecificMigrator defines database-specific operations that each driver must implement
+type DatabaseSpecificMigrator interface {
+	// Database introspection
+	GetTables() ([]string, error)
+	GetTableInfo(tableName string) (*TableInfo, error)
+
+	// SQL generation
+	GenerateCreateTableSQL(s *schema.Schema) (string, error)
+	GenerateDropTableSQL(tableName string) string
+	GenerateAddColumnSQL(tableName string, field any) (string, error)
+	GenerateModifyColumnSQL(change ColumnChange) ([]string, error)
+	GenerateDropColumnSQL(tableName, columnName string) ([]string, error)
+	GenerateCreateIndexSQL(tableName, indexName string, columns []string, unique bool) string
+	GenerateDropIndexSQL(indexName string) string
+
+	// Migration execution
+	ApplyMigration(sql string) error
+	GetDatabaseType() string
+
+	// Type mapping and column generation
+	MapFieldType(field schema.Field) string
+	FormatDefaultValue(value any) string
+	GenerateColumnDefinitionFromColumnInfo(col ColumnInfo) string
+	ConvertFieldToColumnInfo(field schema.Field) *ColumnInfo
+
+	// Index management
+	IsSystemIndex(indexName string) bool
 }
 
 type DatabaseMigrator interface {

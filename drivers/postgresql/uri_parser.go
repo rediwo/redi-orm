@@ -74,9 +74,9 @@ func (p *PostgreSQLURIParser) ParseURI(uri string) (types.Config, error) {
 		if len(values) > 0 {
 			// Common PostgreSQL connection parameters
 			switch key {
-			case "sslmode", "application_name", "connect_timeout", 
-			     "timezone", "search_path", "statement_timeout",
-			     "lock_timeout", "client_encoding":
+			case "sslmode", "application_name", "connect_timeout",
+				"timezone", "search_path", "statement_timeout",
+				"lock_timeout", "client_encoding":
 				config.Options[key] = values[0]
 			default:
 				// Store any other parameters as well

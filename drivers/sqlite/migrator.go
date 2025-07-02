@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rediwo/redi-orm/migration"
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
 
-// SQLiteMigrator implements DatabaseSpecificMigrator for SQLite
+// SQLiteMigrator implements types.DatabaseSpecificMigrator for SQLite
 type SQLiteMigrator struct {
 	db       *sql.DB
 	sqliteDB *SQLiteDB
@@ -19,7 +19,7 @@ type SQLiteMigrator struct {
 
 // SQLiteMigratorWrapper wraps SQLiteMigrator with BaseMigrator to implement types.DatabaseMigrator
 type SQLiteMigratorWrapper struct {
-	*migration.BaseMigrator
+	*base.BaseMigrator
 	specific *SQLiteMigrator
 }
 
@@ -32,7 +32,7 @@ func NewSQLiteMigrator(db *sql.DB, sqliteDB *SQLiteDB) types.DatabaseMigrator {
 	wrapper := &SQLiteMigratorWrapper{
 		specific: specific,
 	}
-	wrapper.BaseMigrator = migration.NewBaseMigrator(specific)
+	wrapper.BaseMigrator = base.NewBaseMigrator(specific)
 	return wrapper
 }
 
@@ -481,7 +481,7 @@ func (m *SQLiteMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.Col
 // IsSystemIndex checks if an index is a system-generated index in SQLite
 func (m *SQLiteMigrator) IsSystemIndex(indexName string) bool {
 	lower := strings.ToLower(indexName)
-	
+
 	// SQLite system index patterns:
 	// - sqlite_autoindex_*: automatically created indexes for UNIQUE and PRIMARY KEY
 	// - sqlite_*: other system indexes

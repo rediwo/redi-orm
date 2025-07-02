@@ -17,14 +17,14 @@ type Manager struct {
 	migrator    types.DatabaseMigrator
 	history     *HistoryManager
 	differ      *Differ
-	options     MigrationOptions
+	options     types.MigrationOptions
 	fileManager *FileManager
 	generator   *Generator
 	runner      *Runner
 }
 
 // NewManager creates a new migration manager
-func NewManager(db types.Database, options MigrationOptions) (*Manager, error) {
+func NewManager(db types.Database, options types.MigrationOptions) (*Manager, error) {
 	migrator := db.GetMigrator()
 	if migrator == nil {
 		return nil, fmt.Errorf("database does not support migrations")
@@ -48,7 +48,7 @@ func NewManager(db types.Database, options MigrationOptions) (*Manager, error) {
 	}
 
 	// Initialize file-based migration components if in file mode
-	if options.Mode == MigrationModeFile && options.MigrationsDir != "" {
+	if options.Mode == types.MigrationModeFile && options.MigrationsDir != "" {
 		manager.fileManager = NewFileManager(options.MigrationsDir)
 		manager.generator = NewGenerator(migrator, manager.fileManager)
 
@@ -65,7 +65,7 @@ func NewManager(db types.Database, options MigrationOptions) (*Manager, error) {
 // Migrate performs migration based on schemas and configured mode
 func (m *Manager) Migrate(schemas map[string]*schema.Schema) error {
 	// Handle file-based migrations
-	if m.options.Mode == MigrationModeFile {
+	if m.options.Mode == types.MigrationModeFile {
 		return m.runFileMigrations()
 	}
 
@@ -172,7 +172,7 @@ func (m *Manager) RollbackMigration() error {
 }
 
 // executeMigration executes a migration plan
-func (m *Manager) executeMigration(version string, changes []SchemaChange, checksum string) error {
+func (m *Manager) executeMigration(version string, changes []types.SchemaChange, checksum string) error {
 	// Begin transaction
 	tx, err := m.db.Begin()
 	if err != nil {
@@ -220,7 +220,7 @@ func (m *Manager) GetMigrationStatus() (*MigrationStatus, error) {
 		return nil, err
 	}
 
-	var lastMigration *Migration
+	var lastMigration *types.Migration
 	if len(migrations) > 0 {
 		lastMigration = &migrations[len(migrations)-1]
 	}
@@ -270,7 +270,7 @@ func (m *Manager) ResetMigrations() error {
 }
 
 // printMigrationPlan prints the migration plan for dry run
-func (m *Manager) printMigrationPlan(changes []SchemaChange) {
+func (m *Manager) printMigrationPlan(changes []types.SchemaChange) {
 	fmt.Println("\n=== MIGRATION PLAN (DRY RUN) ===")
 
 	for i, change := range changes {
@@ -288,7 +288,7 @@ func (m *Manager) printMigrationPlan(changes []SchemaChange) {
 }
 
 // hasDestructiveChanges checks if the migration contains destructive changes
-func (m *Manager) hasDestructiveChanges(changes []SchemaChange) bool {
+func (m *Manager) hasDestructiveChanges(changes []types.SchemaChange) bool {
 	for _, change := range changes {
 		if m.isDestructive(change) {
 			return true
@@ -298,11 +298,11 @@ func (m *Manager) hasDestructiveChanges(changes []SchemaChange) bool {
 }
 
 // isDestructive checks if a change is destructive
-func (m *Manager) isDestructive(change SchemaChange) bool {
+func (m *Manager) isDestructive(change types.SchemaChange) bool {
 	switch change.Type {
-	case ChangeTypeDropTable, ChangeTypeDropColumn:
+	case types.ChangeTypeDropTable, types.ChangeTypeDropColumn:
 		return true
-	case ChangeTypeAlterColumn:
+	case types.ChangeTypeAlterColumn:
 		// Column type changes can be destructive
 		return true
 	default:
@@ -312,8 +312,8 @@ func (m *Manager) isDestructive(change SchemaChange) bool {
 
 // MigrationStatus represents the current migration status
 type MigrationStatus struct {
-	AppliedMigrations []Migration
-	LastMigration     *Migration
+	AppliedMigrations []types.Migration
+	LastMigration     *types.Migration
 	TableCount        int
 	Tables            []string
 }

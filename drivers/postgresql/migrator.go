@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rediwo/redi-orm/migration"
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
 
-// PostgreSQLMigrator implements database-specific migration logic for PostgreSQL
+// PostgreSQLMigrator implements types.DatabaseSpecificMigrator for PostgreSQL
 type PostgreSQLMigrator struct {
 	db           *sql.DB
 	postgresqlDB *PostgreSQLDB
@@ -18,7 +18,7 @@ type PostgreSQLMigrator struct {
 
 // PostgreSQLMigratorWrapper wraps PostgreSQLMigrator with BaseMigrator to implement types.DatabaseMigrator
 type PostgreSQLMigratorWrapper struct {
-	*migration.BaseMigrator
+	*base.BaseMigrator
 	specific *PostgreSQLMigrator
 }
 
@@ -31,7 +31,7 @@ func NewPostgreSQLMigrator(db *sql.DB, postgresqlDB *PostgreSQLDB) types.Databas
 	wrapper := &PostgreSQLMigratorWrapper{
 		specific: specific,
 	}
-	wrapper.BaseMigrator = migration.NewBaseMigrator(specific)
+	wrapper.BaseMigrator = base.NewBaseMigrator(specific)
 	return wrapper
 }
 
@@ -501,7 +501,7 @@ func (m *PostgreSQLMigrator) GenerateColumnDefinition(field schema.Field) string
 // IsSystemIndex checks if an index is a system-generated index in PostgreSQL
 func (m *PostgreSQLMigrator) IsSystemIndex(indexName string) bool {
 	lower := strings.ToLower(indexName)
-	
+
 	// PostgreSQL system index patterns:
 	// - Primary key: tablename_pkey
 	// - Unique constraint: tablename_columnname_key

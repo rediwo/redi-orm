@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/rediwo/redi-orm/migration"
 	"github.com/rediwo/redi-orm/prisma"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -142,18 +141,70 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 		return fmt.Errorf("no schemas loaded")
 	}
 
-	// Create migration manager and run migration
-	migrationManager, err := migration.NewManager(db, migration.MigrationOptions{
-		AutoMigrate: true,
-		DryRun:      false,
-		Force:       true,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create migration manager: %w", err)
+	// Get the migrator from the database
+	migrator := db.GetMigrator()
+	if migrator == nil {
+		return fmt.Errorf("database does not support migrations")
 	}
 
-	if err := migrationManager.Migrate(schemas); err != nil {
-		return fmt.Errorf("migration failed: %w", err)
+	// Get current tables
+	currentTables, err := migrator.GetTables()
+	if err != nil {
+		return fmt.Errorf("failed to get tables: %w", err)
+	}
+
+	// Create a map for quick lookup
+	currentTableMap := make(map[string]bool)
+	for _, table := range currentTables {
+		currentTableMap[table] = true
+	}
+
+	// Process each schema
+	for _, sch := range schemas {
+		if sch.TableName == "" {
+			continue
+		}
+
+		if !currentTableMap[sch.TableName] {
+			// Table doesn't exist, create it
+			sql, err := migrator.GenerateCreateTableSQL(sch)
+			if err != nil {
+				return fmt.Errorf("failed to generate CREATE TABLE SQL for %s: %w", sch.TableName, err)
+			}
+			
+			if err := migrator.ApplyMigration(sql); err != nil {
+				return fmt.Errorf("failed to create table %s: %w", sch.TableName, err)
+			}
+		} else {
+			// Table exists, check for differences
+			tableInfo, err := migrator.GetTableInfo(sch.TableName)
+			if err != nil {
+				return fmt.Errorf("failed to get table info for %s: %w", sch.TableName, err)
+			}
+
+			// Compare schema with existing table
+			plan, err := migrator.CompareSchema(tableInfo, sch)
+			if err != nil {
+				return fmt.Errorf("failed to compare schema for %s: %w", sch.TableName, err)
+			}
+
+			// Generate and apply migration SQL
+			if plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 || 
+				len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0) {
+				
+				sqlStatements, err := migrator.GenerateMigrationSQL(plan)
+				if err != nil {
+					return fmt.Errorf("failed to generate migration SQL for %s: %w", sch.TableName, err)
+				}
+
+				// Apply each SQL statement
+				for _, sql := range sqlStatements {
+					if err := migrator.ApplyMigration(sql); err != nil {
+						return fmt.Errorf("failed to apply migration for %s: %w", sch.TableName, err)
+					}
+				}
+			}
+		}
 	}
 
 	return nil

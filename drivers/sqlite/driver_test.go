@@ -494,7 +494,7 @@ func TestSQLiteDB_GenerateColumnSQL(t *testing.T) {
 	sql, err = db.generateColumnSQL(field)
 	assert.NoError(t, err)
 	assert.Contains(t, sql, "active INTEGER")
-	assert.Contains(t, sql, "DEFAULT true")
+	assert.Contains(t, sql, "DEFAULT 1")
 	assert.Contains(t, sql, "NOT NULL")
 }
 
@@ -525,7 +525,7 @@ func TestSQLiteDB_GenerateCreateTableSQL(t *testing.T) {
 	assert.Contains(t, sql, "UNIQUE")
 	assert.Contains(t, sql, "age INTEGER")
 	assert.Contains(t, sql, "active INTEGER")
-	assert.Contains(t, sql, "DEFAULT true")
+	assert.Contains(t, sql, "DEFAULT 1")
 }
 
 func TestSQLiteDB_IntegrationTest(t *testing.T) {

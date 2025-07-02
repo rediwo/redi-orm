@@ -208,7 +208,7 @@ func TestSQLiteMigrator_GenerateCreateTableSQL(t *testing.T) {
 	assert.Contains(t, sql, "name TEXT NOT NULL")
 	assert.Contains(t, sql, "email TEXT NOT NULL UNIQUE")
 	assert.Contains(t, sql, "age INTEGER")
-	assert.Contains(t, sql, "active INTEGER NOT NULL DEFAULT true")
+	assert.Contains(t, sql, "active INTEGER NOT NULL DEFAULT 1")
 }
 
 func TestSQLiteMigrator_GenerateDropTableSQL(t *testing.T) {
@@ -258,7 +258,7 @@ func TestSQLiteMigrator_GenerateAddColumnSQL(t *testing.T) {
 	field3 := schema.NewField("active").Bool().Default(true).Build()
 	sql3, err := migrator.GenerateAddColumnSQL("users", field3)
 	assert.NoError(t, err)
-	assert.Equal(t, "ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT true", sql3)
+	assert.Equal(t, "ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1", sql3)
 }
 
 func TestSQLiteMigrator_GenerateModifyColumnSQL(t *testing.T) {
@@ -865,11 +865,11 @@ func TestSQLiteMigrator_IndexComparison(t *testing.T) {
 	migrator := db.GetMigrator()
 
 	tests := []struct {
-		name           string
-		setupTable     func()
-		desiredSchema  *schema.Schema
-		expectedAdds   int
-		expectedDrops  int
+		name          string
+		setupTable    func()
+		desiredSchema *schema.Schema
+		expectedAdds  int
+		expectedDrops int
 	}{
 		{
 			name: "add new index",
@@ -895,9 +895,9 @@ func TestSQLiteMigrator_IndexComparison(t *testing.T) {
 					Type: schema.FieldTypeString,
 				})
 				s.AddField(schema.Field{
-					Name:         "userName",
-					Type:         schema.FieldTypeString,
-					Map:          "user_name",
+					Name: "userName",
+					Type: schema.FieldTypeString,
+					Map:  "user_name",
 				})
 				s.AddIndex(schema.Index{
 					Fields: []string{"email"},
@@ -936,9 +936,9 @@ func TestSQLiteMigrator_IndexComparison(t *testing.T) {
 					Type: schema.FieldTypeString,
 				})
 				s.AddField(schema.Field{
-					Name:         "userName",
-					Type:         schema.FieldTypeString,
-					Map:          "user_name",
+					Name: "userName",
+					Type: schema.FieldTypeString,
+					Map:  "user_name",
 				})
 				// No indexes
 				return s
@@ -971,9 +971,9 @@ func TestSQLiteMigrator_IndexComparison(t *testing.T) {
 					Type: schema.FieldTypeString,
 				})
 				s.AddField(schema.Field{
-					Name:         "userName",
-					Type:         schema.FieldTypeString,
-					Map:          "user_name",
+					Name: "userName",
+					Type: schema.FieldTypeString,
+					Map:  "user_name",
 				})
 				s.AddField(schema.Field{
 					Name: "status",
@@ -1012,14 +1012,14 @@ func TestSQLiteMigrator_IndexComparison(t *testing.T) {
 					Type: schema.FieldTypeString,
 				})
 				s.AddField(schema.Field{
-					Name:         "userName",
-					Type:         schema.FieldTypeString,
-					Map:          "user_name",
+					Name: "userName",
+					Type: schema.FieldTypeString,
+					Map:  "user_name",
 				})
 				s.AddField(schema.Field{
-					Name:       "createdAt",
-					Type:       schema.FieldTypeDateTime,
-					Map:        "created_at",
+					Name: "createdAt",
+					Type: schema.FieldTypeDateTime,
+					Map:  "created_at",
 				})
 				s.AddIndex(schema.Index{
 					Fields: []string{"createdAt"}, // Should use created_at column
@@ -1039,22 +1039,22 @@ func TestSQLiteMigrator_IndexComparison(t *testing.T) {
 			for _, table := range tables {
 				migrator.ApplyMigration("DROP TABLE IF EXISTS " + table)
 			}
-			
+
 			// Setup table
 			tt.setupTable()
-			
+
 			// Register schema
 			err = db.RegisterSchema("User", tt.desiredSchema)
 			require.NoError(t, err)
-			
+
 			// Get existing table info
 			existingTable, err := migrator.GetTableInfo("users")
 			require.NoError(t, err)
-			
+
 			// Compare schemas
 			plan, err := migrator.CompareSchema(existingTable, tt.desiredSchema)
 			require.NoError(t, err)
-			
+
 			// Check index changes
 			assert.Equal(t, tt.expectedAdds, len(plan.AddIndexes), "Added indexes count mismatch")
 			assert.Equal(t, tt.expectedDrops, len(plan.DropIndexes), "Dropped indexes count mismatch")
@@ -1082,7 +1082,7 @@ func TestSQLiteMigrator_SystemIndexDetection(t *testing.T) {
 
 	// Test system index patterns
 	tests := []struct {
-		indexName    string
+		indexName     string
 		isSystemIndex bool
 	}{
 		{"sqlite_autoindex_users_1", true},

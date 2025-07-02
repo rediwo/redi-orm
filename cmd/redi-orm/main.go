@@ -12,10 +12,14 @@ import (
 	"time"
 
 	"github.com/rediwo/redi-orm/database"
+	_ "github.com/rediwo/redi-orm/drivers/mysql"      // Import MySQL driver
+	_ "github.com/rediwo/redi-orm/drivers/postgresql" // Import PostgreSQL driver
+	_ "github.com/rediwo/redi-orm/drivers/sqlite"     // Import SQLite driver
 	"github.com/rediwo/redi-orm/migration"
 	_ "github.com/rediwo/redi-orm/modules/orm" // Import ORM module
 	"github.com/rediwo/redi-orm/prisma"
 	"github.com/rediwo/redi-orm/schema"
+	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi/runtime"
 )
 
@@ -240,10 +244,10 @@ func runMigrate(ctx context.Context, dbURI, schemaPath, migrationsDir, mode stri
 	}
 
 	// Create migration manager
-	options := migration.MigrationOptions{
+	options := types.MigrationOptions{
 		DryRun:        dryRun,
 		Force:         force,
-		Mode:          migration.MigrationMode(mode),
+		Mode:          types.MigrationMode(mode),
 		MigrationsDir: migrationsDir,
 	}
 	manager, err := migration.NewManager(db, options)
@@ -277,7 +281,7 @@ func runMigrateStatus(ctx context.Context, dbURI string) {
 	defer db.Close()
 
 	// Create migration manager
-	options := migration.MigrationOptions{}
+	options := types.MigrationOptions{}
 	manager, err := migration.NewManager(db, options)
 	if err != nil {
 		log.Fatalf("Failed to create migration manager: %v", err)
@@ -335,7 +339,7 @@ func runMigrateReset(ctx context.Context, dbURI string, force bool) {
 	defer db.Close()
 
 	// Create migration manager
-	options := migration.MigrationOptions{
+	options := types.MigrationOptions{
 		Force: force,
 	}
 	manager, err := migration.NewManager(db, options)
@@ -375,8 +379,8 @@ func runMigrateGenerate(ctx context.Context, dbURI, schemaPath, migrationsDir, n
 	}
 
 	// Create migration manager
-	options := migration.MigrationOptions{
-		Mode:          migration.MigrationModeFile,
+	options := types.MigrationOptions{
+		Mode:          types.MigrationModeFile,
 		MigrationsDir: migrationsDir,
 	}
 	manager, err := migration.NewManager(db, options)
@@ -404,8 +408,8 @@ func runMigrateApply(ctx context.Context, dbURI, migrationsDir string) {
 	defer db.Close()
 
 	// Create migration manager
-	options := migration.MigrationOptions{
-		Mode:          migration.MigrationModeFile,
+	options := types.MigrationOptions{
+		Mode:          types.MigrationModeFile,
 		MigrationsDir: migrationsDir,
 	}
 	manager, err := migration.NewManager(db, options)
@@ -433,8 +437,8 @@ func runMigrateRollback(ctx context.Context, dbURI, migrationsDir string) {
 	defer db.Close()
 
 	// Create migration manager
-	options := migration.MigrationOptions{
-		Mode:          migration.MigrationModeFile,
+	options := types.MigrationOptions{
+		Mode:          types.MigrationModeFile,
 		MigrationsDir: migrationsDir,
 	}
 	manager, err := migration.NewManager(db, options)

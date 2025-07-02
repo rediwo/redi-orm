@@ -255,12 +255,12 @@ func TestMySQLURIParser_ParseURI_WithOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config, err := parser.ParseURI(tt.uri)
-			
+
 			if tt.expectError {
 				require.Error(t, err)
 				return
 			}
-			
+
 			require.NoError(t, err)
 			assert.Equal(t, "mysql", config.Type)
 			assert.Equal(t, "localhost", config.Host)
@@ -268,7 +268,7 @@ func TestMySQLURIParser_ParseURI_WithOptions(t *testing.T) {
 			assert.Equal(t, "user", config.User)
 			assert.Equal(t, "pass", config.Password)
 			assert.Equal(t, "testdb", config.Database)
-			
+
 			// Check options
 			require.NotNil(t, config.Options)
 			for key, expectedValue := range tt.expectedConfig {

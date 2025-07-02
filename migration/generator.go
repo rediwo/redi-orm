@@ -14,6 +14,7 @@ import (
 type Generator struct {
 	differ      *Differ
 	fileManager *FileManager
+	migrator    types.DatabaseMigrator
 }
 
 // NewGenerator creates a new migration generator
@@ -21,11 +22,12 @@ func NewGenerator(migrator types.DatabaseMigrator, fileManager *FileManager) *Ge
 	return &Generator{
 		differ:      NewDiffer(migrator),
 		fileManager: fileManager,
+		migrator:    migrator,
 	}
 }
 
 // GenerateMigration generates a new migration by comparing schemas with database
-func (g *Generator) GenerateMigration(name string, schemas map[string]*schema.Schema) (*MigrationFile, error) {
+func (g *Generator) GenerateMigration(name string, schemas map[string]*schema.Schema) (*types.MigrationFile, error) {
 	// Compute differences
 	changes, err := g.differ.ComputeDiff(schemas)
 	if err != nil {
@@ -55,12 +57,12 @@ func (g *Generator) GenerateMigration(name string, schemas map[string]*schema.Sc
 	}
 
 	// Create migration file
-	migration := &MigrationFile{
+	migration := &types.MigrationFile{
 		Version: version,
 		Name:    name,
 		UpSQL:   upSQL,
 		DownSQL: downSQL,
-		Metadata: MigrationMetadata{
+		Metadata: types.MigrationMetadata{
 			Version:     version,
 			Name:        name,
 			Checksum:    checksum,
@@ -75,7 +77,7 @@ func (g *Generator) GenerateMigration(name string, schemas map[string]*schema.Sc
 }
 
 // generateSQL generates up and down SQL from changes
-func (g *Generator) generateSQL(changes []SchemaChange) (upSQL, downSQL string, err error) {
+func (g *Generator) generateSQL(changes []types.SchemaChange) (upSQL, downSQL string, err error) {
 	var upStatements []string
 	var downStatements []string
 
@@ -89,7 +91,7 @@ func (g *Generator) generateSQL(changes []SchemaChange) (upSQL, downSQL string, 
 
 		// Drop indexes first (in down SQL, these become creates)
 		for _, change := range changes {
-			if change.Type == ChangeTypeDropIndex {
+			if change.Type == types.ChangeTypeDropIndex {
 				upStatements = append(upStatements, change.SQL)
 				// For down SQL, we need to recreate the index
 				// This would need to be stored in metadata
@@ -100,11 +102,11 @@ func (g *Generator) generateSQL(changes []SchemaChange) (upSQL, downSQL string, 
 		// Handle column changes
 		for _, change := range changes {
 			switch change.Type {
-			case ChangeTypeCreateTable:
+			case types.ChangeTypeCreateTable:
 				upStatements = append(upStatements, change.SQL)
 				downStatements = append([]string{fmt.Sprintf("DROP TABLE %s", tableName)}, downStatements...)
 
-			case ChangeTypeDropTable:
+			case types.ChangeTypeDropTable:
 				upStatements = append(upStatements, change.SQL)
 				// For down SQL, we would need the full table definition stored
 				// This is a limitation - we can't recreate dropped tables without storing their schema
@@ -112,20 +114,20 @@ func (g *Generator) generateSQL(changes []SchemaChange) (upSQL, downSQL string, 
 					fmt.Sprintf("-- Cannot recreate table %s without stored schema", tableName),
 				}, downStatements...)
 
-			case ChangeTypeAddColumn:
+			case types.ChangeTypeAddColumn:
 				upStatements = append(upStatements, change.SQL)
 				downStatements = append([]string{
 					fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", tableName, change.ColumnName),
 				}, downStatements...)
 
-			case ChangeTypeDropColumn:
+			case types.ChangeTypeDropColumn:
 				upStatements = append(upStatements, change.SQL)
 				// For down SQL, we would need the column definition stored
 				downStatements = append([]string{
 					fmt.Sprintf("-- Cannot recreate column %s.%s without stored definition", tableName, change.ColumnName),
 				}, downStatements...)
 
-			case ChangeTypeAlterColumn:
+			case types.ChangeTypeAlterColumn:
 				upStatements = append(upStatements, change.SQL)
 				// For down SQL, we would need the old column definition
 				downStatements = append([]string{
@@ -136,7 +138,7 @@ func (g *Generator) generateSQL(changes []SchemaChange) (upSQL, downSQL string, 
 
 		// Add indexes last (in down SQL, these become drops)
 		for _, change := range changes {
-			if change.Type == ChangeTypeAddIndex {
+			if change.Type == types.ChangeTypeAddIndex {
 				upStatements = append(upStatements, change.SQL)
 				downStatements = append([]string{
 					fmt.Sprintf("DROP INDEX %s", change.IndexName),
@@ -153,8 +155,8 @@ func (g *Generator) generateSQL(changes []SchemaChange) (upSQL, downSQL string, 
 }
 
 // groupChangesByTable groups changes by table name
-func (g *Generator) groupChangesByTable(changes []SchemaChange) map[string][]SchemaChange {
-	grouped := make(map[string][]SchemaChange)
+func (g *Generator) groupChangesByTable(changes []types.SchemaChange) map[string][]types.SchemaChange {
+	grouped := make(map[string][]types.SchemaChange)
 	for _, change := range changes {
 		grouped[change.TableName] = append(grouped[change.TableName], change)
 	}
@@ -181,32 +183,32 @@ func (g *Generator) buildSQLScript(statements []string, direction, version strin
 }
 
 // generateDescription generates a human-readable description of changes
-func (g *Generator) generateDescription(changes []SchemaChange) string {
-	summary := make(map[ChangeType]int)
+func (g *Generator) generateDescription(changes []types.SchemaChange) string {
+	summary := make(map[types.ChangeType]int)
 	for _, change := range changes {
 		summary[change.Type]++
 	}
 
 	var parts []string
-	if count := summary[ChangeTypeCreateTable]; count > 0 {
+	if count := summary[types.ChangeTypeCreateTable]; count > 0 {
 		parts = append(parts, fmt.Sprintf("Create %d table(s)", count))
 	}
-	if count := summary[ChangeTypeDropTable]; count > 0 {
+	if count := summary[types.ChangeTypeDropTable]; count > 0 {
 		parts = append(parts, fmt.Sprintf("Drop %d table(s)", count))
 	}
-	if count := summary[ChangeTypeAddColumn]; count > 0 {
+	if count := summary[types.ChangeTypeAddColumn]; count > 0 {
 		parts = append(parts, fmt.Sprintf("Add %d column(s)", count))
 	}
-	if count := summary[ChangeTypeDropColumn]; count > 0 {
+	if count := summary[types.ChangeTypeDropColumn]; count > 0 {
 		parts = append(parts, fmt.Sprintf("Drop %d column(s)", count))
 	}
-	if count := summary[ChangeTypeAlterColumn]; count > 0 {
+	if count := summary[types.ChangeTypeAlterColumn]; count > 0 {
 		parts = append(parts, fmt.Sprintf("Alter %d column(s)", count))
 	}
-	if count := summary[ChangeTypeAddIndex]; count > 0 {
+	if count := summary[types.ChangeTypeAddIndex]; count > 0 {
 		parts = append(parts, fmt.Sprintf("Add %d index(es)", count))
 	}
-	if count := summary[ChangeTypeDropIndex]; count > 0 {
+	if count := summary[types.ChangeTypeDropIndex]; count > 0 {
 		parts = append(parts, fmt.Sprintf("Drop %d index(es)", count))
 	}
 
@@ -243,8 +245,17 @@ func (g *Generator) computeSchemaHash(s *schema.Schema) string {
 }
 
 // generateCreateIndexSQL generates SQL to recreate a dropped index
-// This is a placeholder - in a real implementation, we'd need to store
-// the index definition in the metadata
-func (g *Generator) generateCreateIndexSQL(change SchemaChange) string {
-	return fmt.Sprintf("-- Recreate index %s (definition needed from metadata)", change.IndexName)
+func (g *Generator) generateCreateIndexSQL(change types.SchemaChange) string {
+	if change.IndexDef == nil {
+		// If no index definition is available, return a comment
+		return fmt.Sprintf("-- Cannot recreate index %s without stored definition", change.IndexName)
+	}
+	
+	// Use the migrator to generate the correct SQL for the database type
+	return g.migrator.GenerateCreateIndexSQL(
+		change.TableName,
+		change.IndexDef.Name,
+		change.IndexDef.Columns,
+		change.IndexDef.Unique,
+	)
 }

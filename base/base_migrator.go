@@ -1,4 +1,4 @@
-package migration
+package base
 
 import (
 	"fmt"
@@ -8,42 +8,13 @@ import (
 	"github.com/rediwo/redi-orm/types"
 )
 
-// DatabaseSpecificMigrator defines database-specific operations that each driver must implement
-type DatabaseSpecificMigrator interface {
-	// Database introspection
-	GetTables() ([]string, error)
-	GetTableInfo(tableName string) (*types.TableInfo, error)
-
-	// SQL generation
-	GenerateCreateTableSQL(s *schema.Schema) (string, error)
-	GenerateDropTableSQL(tableName string) string
-	GenerateAddColumnSQL(tableName string, field any) (string, error)
-	GenerateModifyColumnSQL(change types.ColumnChange) ([]string, error)
-	GenerateDropColumnSQL(tableName, columnName string) ([]string, error)
-	GenerateCreateIndexSQL(tableName, indexName string, columns []string, unique bool) string
-	GenerateDropIndexSQL(indexName string) string
-
-	// Migration execution
-	ApplyMigration(sql string) error
-	GetDatabaseType() string
-
-	// Type mapping and column generation
-	MapFieldType(field schema.Field) string
-	FormatDefaultValue(value any) string
-	GenerateColumnDefinitionFromColumnInfo(col types.ColumnInfo) string
-	ConvertFieldToColumnInfo(field schema.Field) *types.ColumnInfo
-
-	// Index management
-	IsSystemIndex(indexName string) bool
-}
-
 // BaseMigrator provides common migration functionality that all database drivers can use
 type BaseMigrator struct {
-	specific DatabaseSpecificMigrator
+	specific types.DatabaseSpecificMigrator
 }
 
 // NewBaseMigrator creates a new base migrator with database-specific implementation
-func NewBaseMigrator(specific DatabaseSpecificMigrator) *BaseMigrator {
+func NewBaseMigrator(specific types.DatabaseSpecificMigrator) *BaseMigrator {
 	return &BaseMigrator{
 		specific: specific,
 	}

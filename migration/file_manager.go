@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/rediwo/redi-orm/types"
 )
 
 // FileManager handles migration files on disk
@@ -27,7 +29,7 @@ func (f *FileManager) EnsureDirectory() error {
 }
 
 // WriteMigration writes a migration to disk
-func (f *FileManager) WriteMigration(migration *MigrationFile) error {
+func (f *FileManager) WriteMigration(migration *types.MigrationFile) error {
 	// Ensure base directory exists
 	if err := f.EnsureDirectory(); err != nil {
 		return fmt.Errorf("failed to create migrations directory: %w", err)
@@ -67,7 +69,7 @@ func (f *FileManager) WriteMigration(migration *MigrationFile) error {
 }
 
 // ReadMigration reads a migration from disk
-func (f *FileManager) ReadMigration(version string) (*MigrationFile, error) {
+func (f *FileManager) ReadMigration(version string) (*types.MigrationFile, error) {
 	// Find migration directory
 	entries, err := os.ReadDir(f.baseDir)
 	if err != nil {
@@ -102,7 +104,7 @@ func (f *FileManager) ReadMigration(version string) (*MigrationFile, error) {
 		return nil, fmt.Errorf("failed to read metadata.json: %w", err)
 	}
 
-	var metadata MigrationMetadata
+	var metadata types.MigrationMetadata
 	if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
@@ -114,7 +116,7 @@ func (f *FileManager) ReadMigration(version string) (*MigrationFile, error) {
 		name = parts[1]
 	}
 
-	return &MigrationFile{
+	return &types.MigrationFile{
 		Version:  version,
 		Name:     name,
 		UpSQL:    string(upSQL),
@@ -124,16 +126,16 @@ func (f *FileManager) ReadMigration(version string) (*MigrationFile, error) {
 }
 
 // ListMigrations returns all migrations sorted by version
-func (f *FileManager) ListMigrations() ([]*MigrationFile, error) {
+func (f *FileManager) ListMigrations() ([]*types.MigrationFile, error) {
 	entries, err := os.ReadDir(f.baseDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []*MigrationFile{}, nil
+			return []*types.MigrationFile{}, nil
 		}
 		return nil, fmt.Errorf("failed to read migrations directory: %w", err)
 	}
 
-	var migrations []*MigrationFile
+	var migrations []*types.MigrationFile
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -165,13 +167,13 @@ func (f *FileManager) ListMigrations() ([]*MigrationFile, error) {
 }
 
 // GetPendingMigrations returns migrations that haven't been applied yet
-func (f *FileManager) GetPendingMigrations(appliedVersions map[string]bool) ([]*MigrationFile, error) {
+func (f *FileManager) GetPendingMigrations(appliedVersions map[string]bool) ([]*types.MigrationFile, error) {
 	allMigrations, err := f.ListMigrations()
 	if err != nil {
 		return nil, err
 	}
 
-	var pending []*MigrationFile
+	var pending []*types.MigrationFile
 	for _, migration := range allMigrations {
 		if !appliedVersions[migration.Version] {
 			pending = append(pending, migration)

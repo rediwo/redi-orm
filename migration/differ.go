@@ -21,8 +21,8 @@ func NewDiffer(migrator types.DatabaseMigrator) *Differ {
 }
 
 // ComputeDiff compares desired schemas with current database state
-func (d *Differ) ComputeDiff(schemas map[string]*schema.Schema) ([]SchemaChange, error) {
-	var changes []SchemaChange
+func (d *Differ) ComputeDiff(schemas map[string]*schema.Schema) ([]types.SchemaChange, error) {
+	var changes []types.SchemaChange
 
 	// Get current tables from database
 	currentTables, err := d.migrator.GetTables()
@@ -43,8 +43,8 @@ func (d *Differ) ComputeDiff(schemas map[string]*schema.Schema) ([]SchemaChange,
 			if err != nil {
 				return nil, err
 			}
-			changes = append(changes, SchemaChange{
-				Type:      ChangeTypeCreateTable,
+			changes = append(changes, types.SchemaChange{
+				Type:      types.ChangeTypeCreateTable,
 				TableName: s.TableName,
 				SQL:       sql,
 			})
@@ -71,8 +71,8 @@ func (d *Differ) ComputeDiff(schemas map[string]*schema.Schema) ([]SchemaChange,
 		}
 
 		if !desiredTableMap[table] {
-			changes = append(changes, SchemaChange{
-				Type:      ChangeTypeDropTable,
+			changes = append(changes, types.SchemaChange{
+				Type:      types.ChangeTypeDropTable,
 				TableName: table,
 				SQL:       d.migrator.GenerateDropTableSQL(table),
 			})
@@ -83,8 +83,8 @@ func (d *Differ) ComputeDiff(schemas map[string]*schema.Schema) ([]SchemaChange,
 }
 
 // computeTableDiff compares a single table's schema with database
-func (d *Differ) computeTableDiff(s *schema.Schema) ([]SchemaChange, error) {
-	var changes []SchemaChange
+func (d *Differ) computeTableDiff(s *schema.Schema) ([]types.SchemaChange, error) {
+	var changes []types.SchemaChange
 
 	// Get current table info
 	tableInfo, err := d.migrator.GetTableInfo(s.TableName)
@@ -108,8 +108,8 @@ func (d *Differ) computeTableDiff(s *schema.Schema) ([]SchemaChange, error) {
 	// Process columns
 	for i, change := range plan.AddColumns {
 		if i < len(sqlStatements) {
-			changes = append(changes, SchemaChange{
-				Type:       ChangeTypeAddColumn,
+			changes = append(changes, types.SchemaChange{
+				Type:       types.ChangeTypeAddColumn,
 				TableName:  change.TableName,
 				ColumnName: change.ColumnName,
 				SQL:        sqlStatements[i],
@@ -119,8 +119,8 @@ func (d *Differ) computeTableDiff(s *schema.Schema) ([]SchemaChange, error) {
 
 	for _, change := range plan.ModifyColumns {
 		// Modify columns may generate multiple SQL statements
-		changes = append(changes, SchemaChange{
-			Type:       ChangeTypeAlterColumn,
+		changes = append(changes, types.SchemaChange{
+			Type:       types.ChangeTypeAlterColumn,
 			TableName:  change.TableName,
 			ColumnName: change.ColumnName,
 			SQL:        fmt.Sprintf("-- Modify column %s.%s", change.TableName, change.ColumnName),
@@ -128,8 +128,8 @@ func (d *Differ) computeTableDiff(s *schema.Schema) ([]SchemaChange, error) {
 	}
 
 	for _, change := range plan.DropColumns {
-		changes = append(changes, SchemaChange{
-			Type:       ChangeTypeDropColumn,
+		changes = append(changes, types.SchemaChange{
+			Type:       types.ChangeTypeDropColumn,
 			TableName:  change.TableName,
 			ColumnName: change.ColumnName,
 			SQL:        fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", change.TableName, change.ColumnName),
@@ -138,8 +138,8 @@ func (d *Differ) computeTableDiff(s *schema.Schema) ([]SchemaChange, error) {
 
 	// Process indexes
 	for _, change := range plan.AddIndexes {
-		changes = append(changes, SchemaChange{
-			Type:      ChangeTypeAddIndex,
+		changes = append(changes, types.SchemaChange{
+			Type:      types.ChangeTypeAddIndex,
 			TableName: change.TableName,
 			IndexName: change.IndexName,
 			SQL:       d.migrator.GenerateCreateIndexSQL(change.TableName, change.IndexName, change.NewIndex.Columns, change.NewIndex.Unique),
@@ -147,19 +147,30 @@ func (d *Differ) computeTableDiff(s *schema.Schema) ([]SchemaChange, error) {
 	}
 
 	for _, change := range plan.DropIndexes {
-		changes = append(changes, SchemaChange{
-			Type:      ChangeTypeDropIndex,
+		schemaChange := types.SchemaChange{
+			Type:      types.ChangeTypeDropIndex,
 			TableName: change.TableName,
 			IndexName: change.IndexName,
 			SQL:       d.migrator.GenerateDropIndexSQL(change.IndexName),
-		})
+		}
+		
+		// Store index definition for rollback
+		if change.OldIndex != nil {
+			schemaChange.IndexDef = &types.IndexDefinition{
+				Name:    change.OldIndex.Name,
+				Columns: change.OldIndex.Columns,
+				Unique:  change.OldIndex.Unique,
+			}
+		}
+		
+		changes = append(changes, schemaChange)
 	}
 
 	return changes, nil
 }
 
 // ComputeChecksum computes a checksum for a migration plan
-func ComputeChecksum(changes []SchemaChange) string {
+func ComputeChecksum(changes []types.SchemaChange) string {
 	h := sha256.New()
 
 	for _, change := range changes {

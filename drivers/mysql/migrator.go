@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rediwo/redi-orm/migration"
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
 
-// MySQLMigrator implements DatabaseSpecificMigrator for MySQL
+// MySQLMigrator implements types.DatabaseSpecificMigrator for MySQL
 type MySQLMigrator struct {
 	db      *sql.DB
 	mysqlDB *MySQLDB
@@ -18,7 +18,7 @@ type MySQLMigrator struct {
 
 // MySQLMigratorWrapper wraps MySQLMigrator with BaseMigrator to implement types.DatabaseMigrator
 type MySQLMigratorWrapper struct {
-	*migration.BaseMigrator
+	*base.BaseMigrator
 	specific *MySQLMigrator
 }
 
@@ -31,7 +31,7 @@ func NewMySQLMigrator(db *sql.DB, mysqlDB *MySQLDB) types.DatabaseMigrator {
 	wrapper := &MySQLMigratorWrapper{
 		specific: specific,
 	}
-	wrapper.BaseMigrator = migration.NewBaseMigrator(specific)
+	wrapper.BaseMigrator = base.NewBaseMigrator(specific)
 	return wrapper
 }
 
@@ -412,7 +412,7 @@ func (m *MySQLMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.Colu
 // IsSystemIndex checks if an index is a system-generated index in MySQL
 func (m *MySQLMigrator) IsSystemIndex(indexName string) bool {
 	lower := strings.ToLower(indexName)
-	
+
 	// MySQL system index patterns:
 	// - Primary key: PRIMARY
 	// - Foreign key constraints: fk_*

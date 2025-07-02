@@ -476,11 +476,11 @@ func TestMySQLMigrator_IndexComparison(t *testing.T) {
 	migrator := db.GetMigrator()
 
 	tests := []struct {
-		name           string
-		setupTable     func()
-		desiredSchema  *schema.Schema
-		expectedAdds   int
-		expectedDrops  int
+		name          string
+		setupTable    func()
+		desiredSchema *schema.Schema
+		expectedAdds  int
+		expectedDrops int
 	}{
 		{
 			name: "add new index",
@@ -650,26 +650,26 @@ func TestMySQLMigrator_IndexComparison(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up from previous test
 			migrator.ApplyMigration("DROP TABLE IF EXISTS users")
-			
+
 			// Setup table
 			tt.setupTable()
-			
+
 			// Register schema
 			err = db.RegisterSchema("User", tt.desiredSchema)
 			require.NoError(t, err)
-			
+
 			// Get existing table info
 			existingTable, err := migrator.GetTableInfo("users")
 			require.NoError(t, err)
-			
+
 			// Compare schemas
 			plan, err := migrator.CompareSchema(existingTable, tt.desiredSchema)
 			require.NoError(t, err)
-			
+
 			// Check index changes
 			assert.Equal(t, tt.expectedAdds, len(plan.AddIndexes), "Added indexes count mismatch")
 			assert.Equal(t, tt.expectedDrops, len(plan.DropIndexes), "Dropped indexes count mismatch")
-			
+
 			// Cleanup
 			migrator.ApplyMigration("DROP TABLE IF EXISTS users")
 		})
@@ -697,7 +697,7 @@ func TestMySQLMigrator_SystemIndexDetection(t *testing.T) {
 
 	// Test system index patterns
 	tests := []struct {
-		indexName    string
+		indexName     string
 		isSystemIndex bool
 	}{
 		{"PRIMARY", true},

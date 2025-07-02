@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/rediwo/redi-orm/types"
 )
 
 // HistoryManager manages migration history in the database
@@ -32,7 +34,7 @@ func (h *HistoryManager) EnsureMigrationTable() error {
 }
 
 // GetAppliedMigrations returns all applied migrations
-func (h *HistoryManager) GetAppliedMigrations() ([]Migration, error) {
+func (h *HistoryManager) GetAppliedMigrations() ([]types.Migration, error) {
 	query := `SELECT id, version, name, applied_at, checksum FROM ` + MigrationsTableName + ` ORDER BY id`
 
 	rows, err := h.db.Query(query)
@@ -41,9 +43,9 @@ func (h *HistoryManager) GetAppliedMigrations() ([]Migration, error) {
 	}
 	defer rows.Close()
 
-	var migrations []Migration
+	var migrations []types.Migration
 	for rows.Next() {
-		var m Migration
+		var m types.Migration
 		err := rows.Scan(&m.ID, &m.Version, &m.Name, &m.AppliedAt, &m.Checksum)
 		if err != nil {
 			return nil, err
@@ -75,10 +77,10 @@ func (h *HistoryManager) IsMigrationApplied(version string) (bool, error) {
 }
 
 // GetLastMigration returns the most recent migration
-func (h *HistoryManager) GetLastMigration() (*Migration, error) {
+func (h *HistoryManager) GetLastMigration() (*types.Migration, error) {
 	query := `SELECT id, version, name, applied_at, checksum FROM ` + MigrationsTableName + ` ORDER BY id DESC LIMIT 1`
 
-	var m Migration
+	var m types.Migration
 	err := h.db.QueryRow(query).Scan(&m.ID, &m.Version, &m.Name, &m.AppliedAt, &m.Checksum)
 	if err == sql.ErrNoRows {
 		return nil, nil
