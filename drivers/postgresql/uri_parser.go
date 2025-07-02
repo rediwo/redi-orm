@@ -65,11 +65,25 @@ func (p *PostgreSQLURIParser) ParseURI(uri string) (types.Config, error) {
 		User:     user,
 		Password: password,
 		Database: database,
+		Options:  make(map[string]string),
 	}
 
 	// Parse query parameters for additional options
-	// Note: Currently we don't have an Options field in types.Config
-	// TODO: Add support for additional connection options when types.Config supports it
+	query := parsedURI.Query()
+	for key, values := range query {
+		if len(values) > 0 {
+			// Common PostgreSQL connection parameters
+			switch key {
+			case "sslmode", "application_name", "connect_timeout", 
+			     "timezone", "search_path", "statement_timeout",
+			     "lock_timeout", "client_encoding":
+				config.Options[key] = values[0]
+			default:
+				// Store any other parameters as well
+				config.Options[key] = values[0]
+			}
+		}
+	}
 
 	return config, nil
 }

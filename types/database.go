@@ -8,13 +8,14 @@ import (
 
 // Config holds database connection configuration
 type Config struct {
-	Type     string // Database type (e.g., "sqlite", "mysql", "postgresql")
+	Type     string            // Database type (e.g., "sqlite", "mysql", "postgresql")
 	Host     string
 	Port     int
 	Database string
 	User     string
 	Password string
-	FilePath string // for SQLite
+	FilePath string            // for SQLite
+	Options  map[string]string // Additional connection options (e.g., sslmode, charset, etc.)
 }
 
 // Order represents sorting direction

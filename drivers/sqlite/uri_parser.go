@@ -37,6 +37,7 @@ func (p *SQLiteURIParser) ParseURI(uri string) (types.Config, error) {
 
 	config := types.Config{
 		Type: "sqlite",
+		Options: make(map[string]string),
 	}
 
 	// Handle special case for in-memory database
@@ -72,7 +73,22 @@ func (p *SQLiteURIParser) ParseURI(uri string) (types.Config, error) {
 		path = parsedURI.Host + path
 	}
 
-	// Add query parameters if present
+	// Parse query parameters for SQLite options
+	query := parsedURI.Query()
+	for key, values := range query {
+		if len(values) > 0 {
+			// Common SQLite connection parameters
+			switch key {
+			case "mode", "cache", "psow", "nolock", "immutable", "_mutex":
+				config.Options[key] = values[0]
+			default:
+				// Store any other parameters as well
+				config.Options[key] = values[0]
+			}
+		}
+	}
+
+	// Add query parameters to file path if present
 	if parsedURI.RawQuery != "" {
 		path = path + "?" + parsedURI.RawQuery
 	}

@@ -190,3 +190,90 @@ func TestMySQLURIParser_GetDriverType(t *testing.T) {
 
 	assert.Equal(t, "mysql", driverType)
 }
+
+func TestMySQLURIParser_ParseURI_WithOptions(t *testing.T) {
+	parser := NewMySQLURIParser()
+
+	tests := []struct {
+		name           string
+		uri            string
+		expectedConfig map[string]string
+		expectError    bool
+	}{
+		{
+			name: "with charset option",
+			uri:  "mysql://user:pass@localhost:3306/testdb?charset=utf8mb4",
+			expectedConfig: map[string]string{
+				"charset":   "utf8mb4",
+				"parseTime": "true", // Default
+			},
+			expectError: false,
+		},
+		{
+			name: "with parseTime disabled",
+			uri:  "mysql://user:pass@localhost:3306/testdb?parseTime=false",
+			expectedConfig: map[string]string{
+				"parseTime": "false",
+				"charset":   "utf8mb4", // Default
+			},
+			expectError: false,
+		},
+		{
+			name: "with multiple options",
+			uri:  "mysql://user:pass@localhost:3306/testdb?charset=utf8&parseTime=true&timeout=10s&readTimeout=30s",
+			expectedConfig: map[string]string{
+				"charset":     "utf8",
+				"parseTime":   "true",
+				"timeout":     "10s",
+				"readTimeout": "30s",
+			},
+			expectError: false,
+		},
+		{
+			name: "with TLS option",
+			uri:  "mysql://user:pass@localhost:3306/testdb?tls=true",
+			expectedConfig: map[string]string{
+				"tls":       "true",
+				"charset":   "utf8mb4", // Default
+				"parseTime": "true",    // Default
+			},
+			expectError: false,
+		},
+		{
+			name: "with interpolateParams and multiStatements",
+			uri:  "mysql://user:pass@localhost:3306/testdb?interpolateParams=true&multiStatements=true",
+			expectedConfig: map[string]string{
+				"interpolateParams": "true",
+				"multiStatements":   "true",
+				"charset":           "utf8mb4", // Default
+				"parseTime":         "true",    // Default
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config, err := parser.ParseURI(tt.uri)
+			
+			if tt.expectError {
+				require.Error(t, err)
+				return
+			}
+			
+			require.NoError(t, err)
+			assert.Equal(t, "mysql", config.Type)
+			assert.Equal(t, "localhost", config.Host)
+			assert.Equal(t, 3306, config.Port)
+			assert.Equal(t, "user", config.User)
+			assert.Equal(t, "pass", config.Password)
+			assert.Equal(t, "testdb", config.Database)
+			
+			// Check options
+			require.NotNil(t, config.Options)
+			for key, expectedValue := range tt.expectedConfig {
+				assert.Equal(t, expectedValue, config.Options[key], "Option %s should match", key)
+			}
+		})
+	}
+}

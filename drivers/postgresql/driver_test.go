@@ -345,3 +345,124 @@ func TestPostgreSQLDB_FieldTypeMapping(t *testing.T) {
 		})
 	}
 }
+
+func TestPostgreSQLDB_buildDSN(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   types.Config
+		expected []string // List of expected substrings in DSN
+		notExpected []string // List of substrings that should NOT be in DSN
+	}{
+		{
+			name: "basic config without options",
+			config: types.Config{
+				Type:     "postgresql",
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Password: "testpass",
+				Database: "testdb",
+			},
+			expected: []string{
+				"host=localhost",
+				"port=5432",
+				"user=testuser",
+				"password=testpass",
+				"dbname=testdb",
+				"sslmode=disable", // Default when not specified
+			},
+		},
+		{
+			name: "config with SSL mode in options",
+			config: types.Config{
+				Type:     "postgresql",
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Password: "testpass",
+				Database: "testdb",
+				Options: map[string]string{
+					"sslmode": "require",
+				},
+			},
+			expected: []string{
+				"host=localhost",
+				"port=5432",
+				"user=testuser",
+				"password=testpass",
+				"dbname=testdb",
+				"sslmode=require",
+			},
+			notExpected: []string{
+				"sslmode=disable", // Should not have default when explicitly set
+			},
+		},
+		{
+			name: "config with multiple options",
+			config: types.Config{
+				Type:     "postgresql",
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Password: "testpass",
+				Database: "testdb",
+				Options: map[string]string{
+					"sslmode":          "require",
+					"application_name": "myapp",
+					"connect_timeout":  "10",
+					"timezone":         "UTC",
+				},
+			},
+			expected: []string{
+				"host=localhost",
+				"port=5432",
+				"user=testuser",
+				"password=testpass",
+				"dbname=testdb",
+				"sslmode=require",
+				"application_name=myapp",
+				"connect_timeout=10",
+				"timezone=UTC",
+			},
+		},
+		{
+			name: "config without password",
+			config: types.Config{
+				Type:     "postgresql",
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+			},
+			expected: []string{
+				"host=localhost",
+				"port=5432",
+				"user=testuser",
+				"dbname=testdb",
+				"sslmode=disable",
+			},
+			notExpected: []string{
+				"password=", // Should not include password field at all if empty
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := NewPostgreSQLDB(tt.config)
+			require.NoError(t, err)
+
+			dsn := db.buildDSN()
+
+			// Check that all expected parts are in the DSN
+			for _, expectedPart := range tt.expected {
+				assert.Contains(t, dsn, expectedPart, "DSN should contain: %s", expectedPart)
+			}
+
+			// Check that unwanted parts are NOT in the DSN
+			for _, notExpectedPart := range tt.notExpected {
+				assert.NotContains(t, dsn, notExpectedPart, "DSN should NOT contain: %s", notExpectedPart)
+			}
+		})
+	}
+}

@@ -72,26 +72,35 @@ func (p *MySQLURIParser) ParseURI(uri string) (types.Config, error) {
 		}
 	}
 
+	// Initialize Options map
+	config.Options = make(map[string]string)
+
 	// Parse query parameters for additional options
 	query := parsedURI.Query()
-
-	// Handle charset
-	if charset := query.Get("charset"); charset != "" {
-		// Store in a generic Options map if needed
-		// For now, we'll just validate it
-		if charset != "utf8mb4" && charset != "utf8" {
-			// Just a warning, not an error
+	for key, values := range query {
+		if len(values) > 0 {
+			// Common MySQL connection parameters
+			switch key {
+			case "charset", "collation", "parseTime", "loc", "timeout",
+			     "readTimeout", "writeTimeout", "allowNativePasswords",
+			     "allowOldPasswords", "clientFoundRows", "columnsWithAlias",
+			     "interpolateParams", "multiStatements", "tls":
+				config.Options[key] = values[0]
+			default:
+				// Store any other parameters as well
+				config.Options[key] = values[0]
+			}
 		}
 	}
 
-	// Handle parseTime
-	if parseTime := query.Get("parseTime"); parseTime != "" {
-		// MySQL driver specific option
+	// Set default charset if not specified
+	if _, ok := config.Options["charset"]; !ok {
+		config.Options["charset"] = "utf8mb4"
 	}
 
-	// Handle timeout
-	if timeout := query.Get("timeout"); timeout != "" {
-		// Could parse and store if needed
+	// Set default parseTime if not specified
+	if _, ok := config.Options["parseTime"]; !ok {
+		config.Options["parseTime"] = "true"
 	}
 
 	return config, nil

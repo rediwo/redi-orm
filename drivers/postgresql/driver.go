@@ -87,13 +87,18 @@ func (p *PostgreSQLDB) buildDSN() string {
 		parts = append(parts, fmt.Sprintf("dbname=%s", p.Config.Database))
 	}
 
+	// Add additional options from Config.Options
+	if p.Config.Options != nil {
+		for key, value := range p.Config.Options {
+			// Escape special characters in values if needed
+			parts = append(parts, fmt.Sprintf("%s=%s", key, value))
+		}
+	}
+
 	// Add sslmode if not specified
 	hasSSLMode := false
-	for _, part := range parts {
-		if strings.HasPrefix(part, "sslmode=") {
-			hasSSLMode = true
-			break
-		}
+	if p.Config.Options != nil {
+		_, hasSSLMode = p.Config.Options["sslmode"]
 	}
 	if !hasSSLMode {
 		parts = append(parts, "sslmode=disable")
