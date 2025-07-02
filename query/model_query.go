@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rediwo/redi-orm/types"
 )
@@ -19,6 +20,7 @@ type ModelQueryImpl struct {
 	having      types.Condition
 	limit       *int
 	offset      *int
+	tableAlias  string
 }
 
 type OrderClause struct {
@@ -28,6 +30,12 @@ type OrderClause struct {
 
 // NewModelQuery creates a new model query
 func NewModelQuery(modelName string, database types.Database, fieldMapper types.FieldMapper) *ModelQueryImpl {
+	// Generate a simple table alias from model name
+	tableAlias := "t"
+	if len(modelName) > 0 {
+		tableAlias = strings.ToLower(string(modelName[0]))
+	}
+	
 	return &ModelQueryImpl{
 		modelName:   modelName,
 		database:    database,
@@ -36,6 +44,7 @@ func NewModelQuery(modelName string, database types.Database, fieldMapper types.
 		includes:    []string{},
 		orderBy:     []OrderClause{},
 		groupBy:     []string{},
+		tableAlias:  tableAlias,
 	}
 }
 
@@ -195,6 +204,7 @@ func (q *ModelQueryImpl) clone() *ModelQueryImpl {
 		orderBy:     make([]OrderClause, len(q.orderBy)),
 		groupBy:     make([]string, len(q.groupBy)),
 		having:      q.having,
+		tableAlias:  q.tableAlias,
 	}
 
 	copy(newQuery.conditions, q.conditions)

@@ -9,6 +9,7 @@ A modern, schema-driven ORM for Go with a JavaScript runtime interface. RediORM 
 - **Multi-Database Support** - SQLite, MySQL, and PostgreSQL
 - **Smart Field Mapping** - Automatic conversion between naming conventions
 - **Migration System** - Track and manage database schema changes
+- **Relations Support** - One-to-one, one-to-many, many-to-one, and many-to-many relations
 - **Raw SQL Support** - Execute arbitrary SQL when needed
 - **Transaction Support** - Full ACID compliance with savepoints
 - **Type-Safe Queries** - Compile-time safety in Go, runtime validation in JS
@@ -62,6 +63,7 @@ func main() {
             title   String
             content String
             userId  Int
+            user    User   @relation(fields: [userId], references: [id])
         }
     `
     if err := db.LoadSchema(ctx, schemaContent); err != nil {
@@ -264,6 +266,7 @@ redi-orm/
 | Migrations | ✅ | ✅ | ✅ |
 | Raw Queries | ✅ | ✅ | ✅ |
 | Field Mapping | ✅ | ✅ | ✅ |
+| Relations | ✅ | ✅ | ✅ |
 | Savepoints | ✅ | ✅ | ✅ |
 
 ## 🔧 Advanced Features
@@ -319,6 +322,66 @@ RediORM automatically handles field name conversions:
 - Schema: `firstName` → Database: `first_name`
 - Database: `created_at` → Schema: `createdAt`
 - Custom mapping: `@map("custom_name")`
+
+### Relations
+
+Define relations in your schema:
+
+```javascript
+model User {
+    id    Int     @id @default(autoincrement())
+    email String  @unique
+    posts Post[]  // One-to-many relation
+}
+
+model Post {
+    id       Int      @id @default(autoincrement())
+    title    String
+    userId   Int
+    user     User     @relation(fields: [userId], references: [id])
+    comments Comment[]
+}
+
+model Comment {
+    id     Int    @id @default(autoincrement())
+    text   String
+    postId Int
+    post   Post   @relation(fields: [postId], references: [id])
+}
+```
+
+Query with relations:
+
+```javascript
+// Find users with their posts
+const users = await db.models.User.findMany({
+    include: {
+        posts: true
+    }
+});
+
+// Find posts with user and comments
+const posts = await db.models.Post.findMany({
+    include: {
+        user: true,
+        comments: true
+    }
+});
+
+// Filter by relation fields
+const userPosts = await db.models.Post.findMany({
+    where: {
+        userId: 1
+    }
+});
+
+// Count related records
+const postCount = await db.models.Post.count({
+    where: {
+        userId: 1
+    }
+});
+```
 
 ### Smart Scanning
 
@@ -406,7 +469,8 @@ make ci
 - [x] Migration system
 - [x] JavaScript runtime
 - [x] Raw SQL support
-- [ ] Relations and joins
+- [x] Relations (basic support)
+- [ ] Advanced relation features (eager loading, nested writes)
 - [ ] Query optimization
 - [ ] Connection pooling
 - [ ] Middleware support

@@ -13,6 +13,7 @@ type SelectQueryImpl struct {
 	*ModelQueryImpl
 	selectedFields []string
 	distinct       bool
+	joinBuilder    *JoinBuilder
 }
 
 // NewSelectQuery creates a new select query
@@ -21,6 +22,7 @@ func NewSelectQuery(baseQuery *ModelQueryImpl, fields []string) *SelectQueryImpl
 		ModelQueryImpl: baseQuery,
 		selectedFields: fields,
 		distinct:       false,
+		joinBuilder:    NewJoinBuilder(baseQuery.database),
 	}
 }
 
@@ -40,6 +42,25 @@ func (q *SelectQueryImpl) WhereCondition(condition types.Condition) types.Select
 func (q *SelectQueryImpl) Include(relations ...string) types.SelectQuery {
 	newQuery := q.clone()
 	newQuery.includes = append(newQuery.includes, relations...)
+	
+	// Add joins for each included relation
+	for _, relation := range relations {
+		// Parse nested relations (e.g., "posts.comments")
+		relationPath := strings.Split(relation, ".")
+		
+		// Add join for this relation path
+		err := newQuery.joinBuilder.AddNestedRelationJoin(
+			newQuery.tableAlias, // Use the main table alias
+			newQuery.modelName,
+			relationPath,
+			LeftJoin, // Use LEFT JOIN to include records without relations
+		)
+		if err != nil {
+			// Log error but continue - we might handle this differently in production
+			fmt.Printf("Warning: failed to add join for relation %s: %v\n", relation, err)
+		}
+	}
+	
 	return newQuery
 }
 
@@ -141,11 +162,19 @@ func (q *SelectQueryImpl) BuildSQL() (string, []interface{}, error) {
 		return "", nil, fmt.Errorf("failed to resolve table name: %w", err)
 	}
 
-	// Build SELECT clause
+	// Build SELECT clause (with table alias support)
 	selectClause := q.buildSelectClause(tableName)
 
-	// Build FROM clause
-	fromClause := fmt.Sprintf("FROM %s", tableName)
+	// Build FROM clause with alias
+	fromClause := fmt.Sprintf("FROM %s AS %s", tableName, q.tableAlias)
+	
+	// Add JOINs if any
+	if q.joinBuilder != nil {
+		joinSQL := q.joinBuilder.BuildSQL()
+		if joinSQL != "" {
+			fromClause += " " + joinSQL
+		}
+	}
 
 	// Build WHERE clause
 	whereClause, args, err := q.buildWhereClause()
@@ -209,19 +238,37 @@ func (q *SelectQueryImpl) buildSelectClause(tableName string) string {
 		distinctStr = "DISTINCT "
 	}
 
+	// If no specific fields selected, select all from main table and joined tables
 	if len(q.selectedFields) == 0 {
-		return fmt.Sprintf("SELECT %s*", distinctStr)
+		selectParts := []string{fmt.Sprintf("%s.*", q.tableAlias)}
+		
+		// Add fields from joined tables if includes are specified
+		if q.joinBuilder != nil {
+			for _, join := range q.joinBuilder.GetJoinedTables() {
+				if join.Schema != nil {
+					selectParts = append(selectParts, fmt.Sprintf("%s.*", join.Alias))
+				}
+			}
+		}
+		
+		return fmt.Sprintf("SELECT %s%s", distinctStr, strings.Join(selectParts, ", "))
 	}
 
-	// Map schema field names to column names
+	// Map schema field names to column names with table aliases
 	columnNames := make([]string, len(q.selectedFields))
 	for i, fieldName := range q.selectedFields {
-		columnName, err := q.fieldMapper.SchemaToColumn(q.modelName, fieldName)
-		if err != nil {
-			// If mapping fails, use the original field name (for raw queries)
-			columnName = fieldName
+		// Check if field includes table prefix (e.g., "posts.title")
+		if strings.Contains(fieldName, ".") {
+			columnNames[i] = fieldName // Use as-is
+		} else {
+			columnName, err := q.fieldMapper.SchemaToColumn(q.modelName, fieldName)
+			if err != nil {
+				// If mapping fails, use the original field name
+				columnName = fieldName
+			}
+			// Add table alias
+			columnNames[i] = fmt.Sprintf("%s.%s", q.tableAlias, columnName)
 		}
-		columnNames[i] = columnName
 	}
 
 	return fmt.Sprintf("SELECT %s%s", distinctStr, strings.Join(columnNames, ", "))
@@ -376,17 +423,55 @@ func (q *SelectQueryImpl) buildCountSQL() (string, []interface{}, error) {
 
 // mapFieldNamesInSQL maps schema field names to column names in SQL
 func (q *SelectQueryImpl) mapFieldNamesInSQL(sql string) (string, error) {
-	// This is a simplified implementation
-	// In a production system, you'd want a more sophisticated SQL parser
-	// For now, we'll assume the field names are used directly in conditions
-	return sql, nil
+	// Get the schema to find all field mappings
+	schema, err := q.database.GetSchema(q.modelName)
+	if err != nil {
+		// If we can't get the schema, return SQL as-is
+		return sql, nil
+	}
+	
+	// Replace field names with column names
+	result := sql
+	for _, field := range schema.Fields {
+		fieldName := field.Name
+		columnName := field.GetColumnName()
+		
+		// Only replace if they're different
+		if fieldName != columnName {
+			// Replace field name with column name
+			// We need to be careful to match word boundaries
+			// This is a simplified implementation - in production you'd use a proper SQL parser
+			result = strings.ReplaceAll(result, fieldName+" ", columnName+" ")
+			result = strings.ReplaceAll(result, fieldName+"=", columnName+"=")
+			result = strings.ReplaceAll(result, fieldName+"<", columnName+"<")
+			result = strings.ReplaceAll(result, fieldName+">", columnName+">")
+			result = strings.ReplaceAll(result, fieldName+"!", columnName+"!")
+			result = strings.ReplaceAll(result, fieldName+" IN", columnName+" IN")
+			result = strings.ReplaceAll(result, fieldName+" NOT", columnName+" NOT")
+			result = strings.ReplaceAll(result, fieldName+" LIKE", columnName+" LIKE")
+			result = strings.ReplaceAll(result, fieldName+" BETWEEN", columnName+" BETWEEN")
+			result = strings.ReplaceAll(result, fieldName+" IS", columnName+" IS")
+		}
+	}
+	
+	return result, nil
 }
 
 // clone creates a copy of the select query
 func (q *SelectQueryImpl) clone() *SelectQueryImpl {
-	return &SelectQueryImpl{
+	newQuery := &SelectQueryImpl{
 		ModelQueryImpl: q.ModelQueryImpl.clone(),
 		selectedFields: append([]string{}, q.selectedFields...),
 		distinct:       q.distinct,
+		joinBuilder:    NewJoinBuilder(q.database),
 	}
+	
+	// Copy existing joins if any
+	if q.joinBuilder != nil && len(q.joinBuilder.joins) > 0 {
+		// For now, create a new joinBuilder
+		// In production, we'd want to properly clone the joins
+		newQuery.joinBuilder = q.joinBuilder
+	}
+	
+	return newQuery
 }

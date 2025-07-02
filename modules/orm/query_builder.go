@@ -9,19 +9,65 @@ import (
 
 // applyWhereConditions applies where conditions to a query
 func (m *ModelsModule) applyWhereConditions(query interface{}, where interface{}) error {
-	condition := m.buildCondition(where)
+	// Build conditions with proper field name resolution
+	var conditions []types.Condition
 	
-	switch q := query.(type) {
-	case types.SelectQuery:
-		q.WhereCondition(condition)
-	case types.UpdateQuery:
-		q.WhereCondition(condition)
-	case types.DeleteQuery:
-		q.WhereCondition(condition)
-	case types.ModelQuery:
-		q.WhereCondition(condition)
-	default:
-		return fmt.Errorf("unsupported query type for where conditions")
+	// Check if it's a simple field map
+	if whereMap, ok := where.(map[string]interface{}); ok {
+		for field, value := range whereMap {
+			// Check if it's a simple field equality (not an operator object)
+			if _, isOperator := value.(map[string]interface{}); !isOperator {
+				// Get a field condition builder based on query type
+				var fieldCond types.FieldCondition
+				switch q := query.(type) {
+				case types.SelectQuery:
+					fieldCond = q.Where(field)
+				case types.UpdateQuery:
+					fieldCond = q.Where(field)
+				case types.DeleteQuery:
+					fieldCond = q.Where(field)
+				case types.ModelQuery:
+					fieldCond = q.Where(field)
+				default:
+					return fmt.Errorf("unsupported query type for where conditions")
+				}
+				
+				// Build the condition
+				condition := fieldCond.Equals(value)
+				conditions = append(conditions, condition)
+			} else {
+				// For complex conditions, use the existing buildCondition
+				condition := m.buildCondition(map[string]interface{}{field: value})
+				conditions = append(conditions, condition)
+			}
+		}
+	} else {
+		// For non-map where clauses, use buildCondition
+		condition := m.buildCondition(where)
+		if condition != nil {
+			conditions = append(conditions, condition)
+		}
+	}
+	
+	// Apply the conditions
+	if len(conditions) > 0 {
+		var finalCondition types.Condition
+		if len(conditions) == 1 {
+			finalCondition = conditions[0]
+		} else {
+			finalCondition = types.NewAndCondition(conditions...)
+		}
+		
+		switch q := query.(type) {
+		case types.SelectQuery:
+			q.WhereCondition(finalCondition)
+		case types.UpdateQuery:
+			q.WhereCondition(finalCondition)
+		case types.DeleteQuery:
+			q.WhereCondition(finalCondition)
+		case types.ModelQuery:
+			q.WhereCondition(finalCondition)
+		}
 	}
 	
 	return nil

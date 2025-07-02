@@ -29,3 +29,4 @@ module.exports = {
 
 // Export individual functions too
 module.exports.ok = module.exports.assert;
+module.exports.equal = module.exports.strictEqual;

@@ -290,6 +290,42 @@ func (s *Schema) GetRelation(relationName string) (Relation, error) {
 	return relation, nil
 }
 
+// GetRelationByFieldName finds a relation that uses the specified field
+func (s *Schema) GetRelationByFieldName(fieldName string) (*Relation, error) {
+	for name, relation := range s.Relations {
+		if name == fieldName {
+			return &relation, nil
+		}
+	}
+	return nil, fmt.Errorf("no relation found for field %s", fieldName)
+}
+
+// GetRelationsToModel returns all relations that point to the specified model
+func (s *Schema) GetRelationsToModel(modelName string) []Relation {
+	var relations []Relation
+	for _, relation := range s.Relations {
+		if relation.Model == modelName {
+			relations = append(relations, relation)
+		}
+	}
+	return relations
+}
+
+// ValidateRelations validates all relations in the schema
+func (s *Schema) ValidateRelations(schemas map[string]*Schema) error {
+	for name, relation := range s.Relations {
+		relatedSchema, exists := schemas[relation.Model]
+		if !exists {
+			return fmt.Errorf("relation %s references unknown model %s", name, relation.Model)
+		}
+		
+		if err := ValidateRelation(&relation, s, relatedSchema); err != nil {
+			return fmt.Errorf("invalid relation %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 func FieldTypeFromGo(t reflect.Type) FieldType {
 	switch t.Kind() {
 	case reflect.String:

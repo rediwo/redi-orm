@@ -24,6 +24,14 @@ Tests fundamental CRUD structure:
 - Validates method signatures
 **Note: Actual CRUD operations require struct handling improvements**
 
+### `simple_test.js`
+Tests the basic fromUri functionality:
+- Creating database from URI
+- Connection and ping operations
+- Schema loading from string and file
+- Model availability after sync
+- Error handling for invalid URIs and schemas
+
 ### `schema_test.js`
 Tests schema loading and synchronization:
 - Loading schema from string (`loadSchema`)
@@ -53,6 +61,14 @@ Comprehensive raw query tests:
 - Aggregate queries
 - Error handling
 
+### `relation_test.js`
+Tests relation functionality:
+- Schema with relations (one-to-many, many-to-one)
+- Creating records with foreign keys
+- Querying with relation filters (where clause on foreign keys)
+- Counting related records
+- Include/eager loading (placeholder for future implementation)
+
 ## Running Tests
 
 ### Run all tests:
@@ -67,12 +83,10 @@ cd modules/orm/tests
 go test -v -run TestSuite/basic_test.js
 ```
 
-### Run JavaScript tests directly:
+### Run tests through make:
 ```bash
-node basic_test.js
-node schema_test.js
-node transaction_test.js
-node query_test.js
+# From project root
+make test-orm
 ```
 
 ## Test Database
@@ -108,18 +122,32 @@ await db.models.User.create({ data: { name: 'John' } });
 ## Adding New Tests
 
 1. Create a new JavaScript test file following the naming pattern `*_test.js`
-2. Add the test file name to the `testFiles` array in `orm_test.go`
+2. The test will be automatically discovered by the test runner
 3. Follow the existing test structure:
-   - Setup database connection
+   - Setup database connection using `fromUri()`
    - Load and sync schemas
    - Run test cases with assertions
-   - Clean up resources
+   - Clean up resources with `db.close()`
 
 ## Test Utilities
 
-Common patterns used across tests:
-- `assert` module for validations
+### `assert.js`
+Custom assertion module with methods:
+- `assert(condition, message)` - Basic assertion
+- `strictEqual(actual, expected, message)` - Strict equality check
+- `equal(actual, expected, message)` - Alias for strictEqual
+- `deepEqual(actual, expected, message)` - Deep object comparison
+- `fail(message)` - Explicit test failure
+
+### Common patterns:
 - `fromUri` for database connections
 - Schema definition using Prisma syntax
 - Async/await for database operations
 - Console logging for test progress
+
+## Recent Updates
+
+- Added relation support in schemas
+- Field name to column name mapping is now properly handled in where clauses
+- Junction table names are generated with alphabetical ordering for consistency
+- String utility functions moved from internal package to utils package

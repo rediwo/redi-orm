@@ -284,7 +284,34 @@ func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQue
 func (m *ModelsModule) executeCount(ctx context.Context, model types.ModelQuery, options map[string]interface{}) (interface{}, error) {
 	// Apply where conditions if provided
 	if where, ok := options["where"]; ok {
-		model = model.WhereCondition(m.buildCondition(where))
+		// For simple field equality, use the model's Where method which handles field resolution
+		if whereMap, ok := where.(map[string]interface{}); ok {
+			var conditions []types.Condition
+			for field, value := range whereMap {
+				// Check if it's a simple field equality (not an operator object)
+				if _, isOperator := value.(map[string]interface{}); !isOperator {
+					// Use the model's Where method which will handle field name resolution
+					condition := model.Where(field).Equals(value)
+					conditions = append(conditions, condition)
+				} else {
+					// For complex conditions, use the existing buildCondition
+					condition := m.buildCondition(map[string]interface{}{field: value})
+					conditions = append(conditions, condition)
+				}
+			}
+			// Combine all conditions with AND
+			if len(conditions) > 0 {
+				var finalCondition types.Condition
+				if len(conditions) == 1 {
+					finalCondition = conditions[0]
+				} else {
+					finalCondition = types.NewAndCondition(conditions...)
+				}
+				model = model.WhereCondition(finalCondition)
+			}
+		} else {
+			model = model.WhereCondition(m.buildCondition(where))
+		}
 	}
 
 	count, err := model.Count(ctx)

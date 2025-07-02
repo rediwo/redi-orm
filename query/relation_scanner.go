@@ -1,0 +1,235 @@
+package query
+
+import (
+	"database/sql"
+	"fmt"
+	"reflect"
+	"strings"
+
+	"github.com/rediwo/redi-orm/schema"
+)
+
+// RelationScanner handles scanning results from queries with joins
+type RelationScanner struct {
+	mainSchema     *schema.Schema
+	joinedSchemas  map[string]*schema.Schema // alias -> schema
+	relations      map[string]*schema.Relation
+}
+
+// NewRelationScanner creates a new relation scanner
+func NewRelationScanner(mainSchema *schema.Schema) *RelationScanner {
+	return &RelationScanner{
+		mainSchema:    mainSchema,
+		joinedSchemas: make(map[string]*schema.Schema),
+		relations:     make(map[string]*schema.Relation),
+	}
+}
+
+// AddJoinedTable adds information about a joined table
+func (rs *RelationScanner) AddJoinedTable(alias string, schema *schema.Schema, relation *schema.Relation) {
+	rs.joinedSchemas[alias] = schema
+	rs.relations[alias] = relation
+}
+
+// ScanRowsWithRelations scans rows that include joined data
+func (rs *RelationScanner) ScanRowsWithRelations(rows *sql.Rows, dest interface{}) error {
+	destValue := reflect.ValueOf(dest)
+	if destValue.Kind() != reflect.Ptr || destValue.Elem().Kind() != reflect.Slice {
+		return fmt.Errorf("dest must be a pointer to slice")
+	}
+
+	sliceValue := destValue.Elem()
+	elementType := sliceValue.Type().Elem()
+	
+	// Check if destination is []map[string]interface{}
+	if elementType.Kind() == reflect.Map && 
+		elementType.Key().Kind() == reflect.String && 
+		elementType.Elem().Kind() == reflect.Interface &&
+		elementType.Elem().NumMethod() == 0 {
+		return rs.scanRowsToMapsWithRelations(rows, dest)
+	}
+	
+	// For struct scanning, we'd need more complex logic
+	// For now, return an error
+	return fmt.Errorf("struct scanning with relations not yet implemented")
+}
+
+// scanRowsToMapsWithRelations scans rows with joins into maps
+func (rs *RelationScanner) scanRowsToMapsWithRelations(rows *sql.Rows, dest interface{}) error {
+	columns, err := rows.Columns()
+	if err != nil {
+		return fmt.Errorf("failed to get columns: %w", err)
+	}
+	
+	// Parse column names to determine which table they belong to
+	columnInfo := rs.parseColumns(columns)
+	
+	// Track main records by ID to handle one-to-many relations
+	mainRecords := make(map[interface{}]map[string]interface{})
+	var recordOrder []interface{} // Maintain order
+	
+	// Create value holders
+	values := make([]interface{}, len(columns))
+	valuePtrs := make([]interface{}, len(columns))
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+	
+	// Scan all rows
+	for rows.Next() {
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+		
+		// Build record maps for each table
+		recordMaps := make(map[string]map[string]interface{})
+		
+		for i, col := range columns {
+			val := values[i]
+			// Handle byte arrays
+			if b, ok := val.([]byte); ok {
+				val = string(b)
+			}
+			
+			// Determine which table this column belongs to
+			tableAlias, fieldName := rs.parseColumnName(col, columnInfo)
+			
+			if _, exists := recordMaps[tableAlias]; !exists {
+				recordMaps[tableAlias] = make(map[string]interface{})
+			}
+			
+			// Map column back to schema field name
+			if tableAlias == "main" {
+				if rs.mainSchema != nil {
+					if mapped, err := rs.mainSchema.GetFieldNameByColumnName(fieldName); err == nil {
+						fieldName = mapped
+					}
+				}
+			} else if schema, exists := rs.joinedSchemas[tableAlias]; exists {
+				if mapped, err := schema.GetFieldNameByColumnName(fieldName); err == nil {
+					fieldName = mapped
+				}
+			}
+			
+			recordMaps[tableAlias][fieldName] = val
+		}
+		
+		// Get main record
+		mainRecord := recordMaps["main"]
+		mainID := mainRecord["id"] // Assume "id" field exists
+		
+		// Check if we've seen this main record before (for one-to-many)
+		if existingMain, exists := mainRecords[mainID]; exists {
+			mainRecord = existingMain
+		} else {
+			mainRecords[mainID] = mainRecord
+			recordOrder = append(recordOrder, mainID)
+			
+			// Initialize relation fields as empty slices/maps
+			for alias, relation := range rs.relations {
+				if relation.Type == schema.RelationOneToMany {
+					mainRecord[getRelationFieldName(alias, relation)] = []interface{}{}
+				}
+			}
+		}
+		
+		// Add related records
+		for alias, relatedRecord := range recordMaps {
+			if alias == "main" {
+				continue
+			}
+			
+			relation, exists := rs.relations[alias]
+			if !exists {
+				continue
+			}
+			
+			// Skip if related record is null (LEFT JOIN with no match)
+			if isNullRecord(relatedRecord) {
+				continue
+			}
+			
+			fieldName := getRelationFieldName(alias, relation)
+			
+			switch relation.Type {
+			case schema.RelationOneToMany:
+				// Append to array
+				if arr, ok := mainRecord[fieldName].([]interface{}); ok {
+					mainRecord[fieldName] = append(arr, relatedRecord)
+				}
+				
+			case schema.RelationManyToOne, schema.RelationOneToOne:
+				// Set single value
+				mainRecord[fieldName] = relatedRecord
+			}
+		}
+	}
+	
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating rows: %w", err)
+	}
+	
+	// Build final result array in original order
+	results := make([]map[string]interface{}, 0, len(recordOrder))
+	for _, id := range recordOrder {
+		results = append(results, mainRecords[id])
+	}
+	
+	// Set results to destination
+	destValue := reflect.ValueOf(dest).Elem()
+	destValue.Set(reflect.ValueOf(results))
+	
+	return nil
+}
+
+// parseColumns analyzes column names to determine table aliases
+func (rs *RelationScanner) parseColumns(columns []string) map[string]string {
+	info := make(map[string]string)
+	
+	for _, col := range columns {
+		// Try to parse table.column format
+		if parts := strings.Split(col, "."); len(parts) == 2 {
+			info[col] = parts[0]
+		} else {
+			// Assume main table if no prefix
+			info[col] = "main"
+		}
+	}
+	
+	return info
+}
+
+// parseColumnName extracts table alias and field name from a column
+func (rs *RelationScanner) parseColumnName(column string, columnInfo map[string]string) (tableAlias, fieldName string) {
+	if alias, exists := columnInfo[column]; exists {
+		tableAlias = alias
+	} else {
+		tableAlias = "main"
+	}
+	
+	// Remove table prefix if present
+	if parts := strings.Split(column, "."); len(parts) == 2 {
+		fieldName = parts[1]
+	} else {
+		fieldName = column
+	}
+	
+	return tableAlias, fieldName
+}
+
+// getRelationFieldName determines the field name for a relation
+func getRelationFieldName(_ string, relation *schema.Relation) string {
+	// For now, use a simple naming convention based on the model name
+	// In production, this should be configurable or use the actual relation field name
+	return strings.ToLower(relation.Model) + "s"
+}
+
+// isNullRecord checks if all fields in a record are null
+func isNullRecord(record map[string]interface{}) bool {
+	for _, val := range record {
+		if val != nil {
+			return false
+		}
+	}
+	return true
+}
