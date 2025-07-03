@@ -12,23 +12,28 @@ import (
 // RelationScanner handles scanning results from queries with joins
 type RelationScanner struct {
 	mainSchema    *schema.Schema
-	joinedSchemas map[string]*schema.Schema // alias -> schema
-	relations     map[string]*schema.Relation
+	mainAlias     string                      // alias of the main table
+	joinedSchemas map[string]*schema.Schema   // alias -> schema
+	relations     map[string]*schema.Relation // alias -> relation
+	relationNames map[string]string           // alias -> relation field name
 }
 
 // NewRelationScanner creates a new relation scanner
-func NewRelationScanner(mainSchema *schema.Schema) *RelationScanner {
+func NewRelationScanner(mainSchema *schema.Schema, mainAlias string) *RelationScanner {
 	return &RelationScanner{
 		mainSchema:    mainSchema,
+		mainAlias:     mainAlias,
 		joinedSchemas: make(map[string]*schema.Schema),
 		relations:     make(map[string]*schema.Relation),
+		relationNames: make(map[string]string),
 	}
 }
 
 // AddJoinedTable adds information about a joined table
-func (rs *RelationScanner) AddJoinedTable(alias string, schema *schema.Schema, relation *schema.Relation) {
+func (rs *RelationScanner) AddJoinedTable(alias string, schema *schema.Schema, relation *schema.Relation, relationName string) {
 	rs.joinedSchemas[alias] = schema
 	rs.relations[alias] = relation
+	rs.relationNames[alias] = relationName
 }
 
 // ScanRowsWithRelations scans rows that include joined data
@@ -99,7 +104,7 @@ func (rs *RelationScanner) scanRowsToMapsWithRelations(rows *sql.Rows, dest any)
 			}
 
 			// Map column back to schema field name
-			if tableAlias == "main" {
+			if tableAlias == rs.mainAlias {
 				if rs.mainSchema != nil {
 					if mapped, err := rs.mainSchema.GetFieldNameByColumnName(fieldName); err == nil {
 						fieldName = mapped
@@ -115,7 +120,11 @@ func (rs *RelationScanner) scanRowsToMapsWithRelations(rows *sql.Rows, dest any)
 		}
 
 		// Get main record
-		mainRecord := recordMaps["main"]
+		mainRecord := recordMaps[rs.mainAlias]
+		if mainRecord == nil {
+			// Skip this row if no main record
+			continue
+		}
 		mainID := mainRecord["id"] // Assume "id" field exists
 
 		// Check if we've seen this main record before (for one-to-many)
@@ -127,15 +136,16 @@ func (rs *RelationScanner) scanRowsToMapsWithRelations(rows *sql.Rows, dest any)
 
 			// Initialize relation fields as empty slices/maps
 			for alias, relation := range rs.relations {
+				relationName := rs.relationNames[alias]
 				if relation.Type == schema.RelationOneToMany {
-					mainRecord[getRelationFieldName(alias, relation)] = []any{}
+					mainRecord[relationName] = []any{}
 				}
 			}
 		}
 
 		// Add related records
 		for alias, relatedRecord := range recordMaps {
-			if alias == "main" {
+			if alias == rs.mainAlias {
 				continue
 			}
 
@@ -149,18 +159,18 @@ func (rs *RelationScanner) scanRowsToMapsWithRelations(rows *sql.Rows, dest any)
 				continue
 			}
 
-			fieldName := getRelationFieldName(alias, relation)
+			relationName := rs.relationNames[alias]
 
 			switch relation.Type {
 			case schema.RelationOneToMany:
 				// Append to array
-				if arr, ok := mainRecord[fieldName].([]any); ok {
-					mainRecord[fieldName] = append(arr, relatedRecord)
+				if arr, ok := mainRecord[relationName].([]any); ok {
+					mainRecord[relationName] = append(arr, relatedRecord)
 				}
 
 			case schema.RelationManyToOne, schema.RelationOneToOne:
 				// Set single value
-				mainRecord[fieldName] = relatedRecord
+				mainRecord[relationName] = relatedRecord
 			}
 		}
 	}
@@ -187,12 +197,16 @@ func (rs *RelationScanner) parseColumns(columns []string) map[string]string {
 	info := make(map[string]string)
 
 	for _, col := range columns {
-		// Try to parse table.column format
-		if parts := strings.Split(col, "."); len(parts) == 2 {
+		// Try to parse table_column format (from aliased columns)
+		if parts := strings.Split(col, "_"); len(parts) >= 2 {
+			// First part is table alias
+			info[col] = parts[0]
+		} else if parts := strings.Split(col, "."); len(parts) == 2 {
+			// Try to parse table.column format
 			info[col] = parts[0]
 		} else {
 			// Assume main table if no prefix
-			info[col] = "main"
+			info[col] = rs.mainAlias
 		}
 	}
 
@@ -204,11 +218,15 @@ func (rs *RelationScanner) parseColumnName(column string, columnInfo map[string]
 	if alias, exists := columnInfo[column]; exists {
 		tableAlias = alias
 	} else {
-		tableAlias = "main"
+		tableAlias = rs.mainAlias
 	}
 
 	// Remove table prefix if present
-	if parts := strings.Split(column, "."); len(parts) == 2 {
+	if parts := strings.Split(column, "_"); len(parts) >= 2 && parts[0] == tableAlias {
+		// Handle aliased format: tableAlias_columnName
+		fieldName = strings.Join(parts[1:], "_")
+	} else if parts := strings.Split(column, "."); len(parts) == 2 {
+		// Handle dot format: table.column
 		fieldName = parts[1]
 	} else {
 		fieldName = column
@@ -217,12 +235,6 @@ func (rs *RelationScanner) parseColumnName(column string, columnInfo map[string]
 	return tableAlias, fieldName
 }
 
-// getRelationFieldName determines the field name for a relation
-func getRelationFieldName(_ string, relation *schema.Relation) string {
-	// For now, use a simple naming convention based on the model name
-	// In production, this should be configurable or use the actual relation field name
-	return strings.ToLower(relation.Model) + "s"
-}
 
 // isNullRecord checks if all fields in a record are null
 func isNullRecord(record map[string]any) bool {

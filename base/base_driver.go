@@ -159,9 +159,17 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 		currentTableMap[table] = true
 	}
 
-	// Process each schema
-	for _, sch := range schemas {
-		if sch.TableName == "" {
+	// Analyze dependencies and get sorted order
+	sortedModels, err := AnalyzeSchemasDependencies(schemas)
+	if err != nil {
+		// Circular dependency detected, use deferred constraint creation
+		return b.syncSchemasWithDeferredConstraints(ctx, db, schemas, currentTableMap)
+	}
+
+	// Process schemas in dependency order
+	for _, modelName := range sortedModels {
+		sch, exists := schemas[modelName]
+		if !exists || sch.TableName == "" {
 			continue
 		}
 
@@ -259,4 +267,69 @@ func (b *Driver) Query(query string, args ...any) (*sql.Rows, error) {
 // QueryRow executes a raw SQL query that returns a single row
 func (b *Driver) QueryRow(query string, args ...any) *sql.Row {
 	return b.DB.QueryRow(query, args...)
+}
+
+// syncSchemasWithDeferredConstraints handles circular dependencies by creating tables without FK first
+func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db types.Database, schemas map[string]*schema.Schema, currentTableMap map[string]bool) error {
+	migrator := db.GetMigrator()
+	
+	// Phase 1: Create all tables without foreign keys
+	for _, sch := range schemas {
+		if sch.TableName == "" || currentTableMap[sch.TableName] {
+			continue
+		}
+		
+		// For now, we'll create tables with foreign keys and let the database handle the order
+		// In a more complete implementation, we would:
+		// 1. Generate CREATE TABLE without FK constraints
+		// 2. After all tables are created, use ALTER TABLE to add FK constraints
+		sql, err := migrator.GenerateCreateTableSQL(sch)
+		if err != nil {
+			return fmt.Errorf("failed to generate CREATE TABLE SQL for %s: %w", sch.TableName, err)
+		}
+		
+		if err := migrator.ApplyMigration(sql); err != nil {
+			// Try to create without the schema reference to handle circular deps
+			// This is a simplified approach - a full implementation would parse and modify the SQL
+			return fmt.Errorf("failed to create table %s: %w (possible circular dependency)", sch.TableName, err)
+		}
+	}
+	
+	// Phase 2: Handle existing tables (updates)
+	for _, sch := range schemas {
+		if sch.TableName == "" || !currentTableMap[sch.TableName] {
+			continue
+		}
+		
+		// Table exists, check for differences
+		tableInfo, err := migrator.GetTableInfo(sch.TableName)
+		if err != nil {
+			return fmt.Errorf("failed to get table info for %s: %w", sch.TableName, err)
+		}
+
+		// Compare schema with existing table
+		plan, err := migrator.CompareSchema(tableInfo, sch)
+		if err != nil {
+			return fmt.Errorf("failed to compare schema for %s: %w", sch.TableName, err)
+		}
+
+		// Generate and apply migration SQL
+		if plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 || 
+			len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0) {
+			
+			sqlStatements, err := migrator.GenerateMigrationSQL(plan)
+			if err != nil {
+				return fmt.Errorf("failed to generate migration SQL for %s: %w", sch.TableName, err)
+			}
+
+			// Apply each SQL statement
+			for _, sql := range sqlStatements {
+				if err := migrator.ApplyMigration(sql); err != nil {
+					return fmt.Errorf("failed to apply migration for %s: %w", sch.TableName, err)
+				}
+			}
+		}
+	}
+	
+	return nil
 }

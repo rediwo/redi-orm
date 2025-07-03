@@ -58,6 +58,11 @@ func (c *Converter) Convert(prismaSchema *PrismaSchema) (map[string]*schema.Sche
 		}
 	}
 
+	// Fourth pass: fix foreign keys in inverse relations
+	if err := c.fixInverseRelationForeignKeys(); err != nil {
+		return nil, fmt.Errorf("failed to fix inverse relation foreign keys: %v", err)
+	}
+
 	return c.schemas, nil
 }
 
@@ -558,5 +563,39 @@ func (c *Converter) extractCompositeKey(attrs []*BlockAttribute) []string {
 			}
 		}
 	}
+	return nil
+}
+
+// fixInverseRelationForeignKeys updates foreign keys in OneToMany relations
+// by looking at the corresponding ManyToOne relations
+func (c *Converter) fixInverseRelationForeignKeys() error {
+	// For each schema
+	for modelName, currentSchema := range c.schemas {
+		// For each OneToMany relation
+		for relationName, relation := range currentSchema.Relations {
+			if relation.Type == schema.RelationOneToMany {
+				// Find the related model's schema
+				relatedSchema, exists := c.schemas[relation.Model]
+				if !exists {
+					continue
+				}
+				
+				// Look for the inverse ManyToOne relation
+				for _, relatedRelation := range relatedSchema.Relations {
+					if relatedRelation.Type == schema.RelationManyToOne && 
+					   relatedRelation.Model == modelName {
+						// Found the inverse relation - copy its foreign key
+						if relatedRelation.ForeignKey != "" {
+							relation.ForeignKey = relatedRelation.ForeignKey
+							// Update the relation in the schema
+							currentSchema.AddRelation(relationName, relation)
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+	
 	return nil
 }

@@ -20,13 +20,14 @@ const (
 
 // JoinClause represents a single join operation
 type JoinClause struct {
-	Type        JoinType
-	Table       string           // Table to join
-	Alias       string           // Table alias
-	Condition   string           // Join condition
-	Schema      *schema.Schema   // Schema of joined table
-	Relation    *schema.Relation // Relation definition
-	NestedJoins []JoinClause     // Nested joins for this table
+	Type         JoinType
+	Table        string           // Table to join
+	Alias        string           // Table alias
+	Condition    string           // Join condition
+	Schema       *schema.Schema   // Schema of joined table
+	Relation     *schema.Relation // Relation definition
+	RelationName string           // Name of the relation field (e.g., "posts")
+	NestedJoins  []JoinClause     // Nested joins for this table
 }
 
 // JoinBuilder handles building SQL joins from relations
@@ -84,12 +85,13 @@ func (b *JoinBuilder) AddRelationJoin(
 
 	// Create join clause
 	join := JoinClause{
-		Type:      joinType,
-		Table:     relatedTable,
-		Alias:     alias,
-		Condition: condition,
-		Schema:    relatedSchema,
-		Relation:  &relation,
+		Type:         joinType,
+		Table:        relatedTable,
+		Alias:        alias,
+		Condition:    condition,
+		Schema:       relatedSchema,
+		Relation:     &relation,
+		RelationName: relationName,
 	}
 
 	b.joins = append(b.joins, join)

@@ -96,7 +96,9 @@ type PostgreSQLTransactionRawQuery struct {
 
 // Exec executes the query within the transaction
 func (q *PostgreSQLTransactionRawQuery) Exec(ctx context.Context) (types.Result, error) {
-	result, err := q.tx.ExecContext(ctx, q.sql, q.args...)
+	// Convert ? placeholders to $1, $2, etc.
+	sql := convertPlaceholders(q.sql)
+	result, err := q.tx.ExecContext(ctx, sql, q.args...)
 	if err != nil {
 		return types.Result{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -112,7 +114,9 @@ func (q *PostgreSQLTransactionRawQuery) Exec(ctx context.Context) (types.Result,
 
 // Find executes the query and scans multiple rows into dest
 func (q *PostgreSQLTransactionRawQuery) Find(ctx context.Context, dest any) error {
-	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
+	// Convert ? placeholders to $1, $2, etc.
+	sql := convertPlaceholders(q.sql)
+	rows, err := q.tx.QueryContext(ctx, sql, q.args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -123,7 +127,9 @@ func (q *PostgreSQLTransactionRawQuery) Find(ctx context.Context, dest any) erro
 
 // FindOne executes the query and scans a single row into dest
 func (q *PostgreSQLTransactionRawQuery) FindOne(ctx context.Context, dest any) error {
-	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
+	// Convert ? placeholders to $1, $2, etc.
+	sql := convertPlaceholders(q.sql)
+	return utils.ScanRowContext(q.tx, ctx, sql, q.args, dest)
 }
 
 // PostgreSQLTransactionDB wraps PostgreSQLDB for transaction context

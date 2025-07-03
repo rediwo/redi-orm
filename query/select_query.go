@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/rediwo/redi-orm/types"
@@ -116,6 +117,11 @@ func (q *SelectQueryImpl) FindMany(ctx context.Context, dest any) error {
 		return fmt.Errorf("failed to build SQL: %w", err)
 	}
 
+	// Check if we have includes - if so, we need to use relation scanner
+	if len(q.includes) > 0 && q.joinBuilder != nil && len(q.joinBuilder.GetJoinedTables()) > 0 {
+		return q.findManyWithRelations(ctx, sql, args, dest)
+	}
+
 	// Execute the query using the database
 	rawQuery := q.database.Raw(sql, args...)
 	return rawQuery.Find(ctx, dest)
@@ -123,16 +129,57 @@ func (q *SelectQueryImpl) FindMany(ctx context.Context, dest any) error {
 
 // FindFirst executes the query and returns the first result
 func (q *SelectQueryImpl) FindFirst(ctx context.Context, dest any) error {
-	// Ensure limit is 1 for FindFirst
-	limitedQuery := q.Limit(1)
-	sql, args, err := limitedQuery.BuildSQL()
-	if err != nil {
-		return fmt.Errorf("failed to build SQL: %w", err)
+	// Don't add LIMIT 1 if we have includes, as we might need multiple rows
+	var sql string
+	var args []any
+	var err error
+	
+	if len(q.includes) > 0 && q.joinBuilder != nil && len(q.joinBuilder.GetJoinedTables()) > 0 {
+		// For includes, we need to get all rows for the first main record
+		// We'll add a subquery or handle it differently
+		sql, args, err = q.BuildSQL()
+		if err != nil {
+			return fmt.Errorf("failed to build SQL: %w", err)
+		}
+		
+		// Use a slice to collect results
+		destType := reflect.TypeOf(dest)
+		if destType.Kind() != reflect.Ptr {
+			return fmt.Errorf("dest must be a pointer")
+		}
+		
+		// Create a slice of the same type
+		elemType := destType.Elem()
+		sliceType := reflect.SliceOf(elemType)
+		slicePtr := reflect.New(sliceType)
+		
+		// Find all results
+		err = q.findManyWithRelations(ctx, sql, args, slicePtr.Interface())
+		if err != nil {
+			return err
+		}
+		
+		// Get the first result if any
+		sliceValue := slicePtr.Elem()
+		if sliceValue.Len() == 0 {
+			return fmt.Errorf("no records found")
+		}
+		
+		// Set the first element to dest
+		reflect.ValueOf(dest).Elem().Set(sliceValue.Index(0))
+		return nil
+	} else {
+		// Normal case without includes
+		limitedQuery := q.Limit(1)
+		sql, args, err = limitedQuery.BuildSQL()
+		if err != nil {
+			return fmt.Errorf("failed to build SQL: %w", err)
+		}
+		
+		// Execute the query using the database
+		rawQuery := q.database.Raw(sql, args...)
+		return rawQuery.FindOne(ctx, dest)
 	}
-
-	// Execute the query using the database
-	rawQuery := q.database.Raw(sql, args...)
-	return rawQuery.FindOne(ctx, dest)
 }
 
 // Count returns the count of matching records
@@ -240,18 +287,46 @@ func (q *SelectQueryImpl) buildSelectClause(tableName string) string {
 
 	// If no specific fields selected, select all from main table and joined tables
 	if len(q.selectedFields) == 0 {
-		selectParts := []string{fmt.Sprintf("%s.*", q.tableAlias)}
+		// Check if we have joins - if so, we need to be more careful about column naming
+		if q.joinBuilder != nil && len(q.joinBuilder.GetJoinedTables()) > 0 {
+			// Build explicit column list to avoid ambiguity
+			selectParts := []string{}
+			
+			// Get main table schema
+			mainSchema, err := q.database.GetModelSchema(q.modelName)
+			if err == nil {
+				// Add main table columns with aliases
+				for _, field := range mainSchema.Fields {
+					columnName := field.GetColumnName()
+					// Alias format: tableAlias.column AS tableAlias_column
+					selectParts = append(selectParts, fmt.Sprintf("%s.%s AS %s_%s", 
+						q.tableAlias, columnName, q.tableAlias, columnName))
+				}
+			} else {
+				// Fallback to wildcard if schema not available
+				selectParts = append(selectParts, fmt.Sprintf("%s.*", q.tableAlias))
+			}
 
-		// Add fields from joined tables if includes are specified
-		if q.joinBuilder != nil {
+			// Add columns from joined tables
 			for _, join := range q.joinBuilder.GetJoinedTables() {
 				if join.Schema != nil {
+					for _, field := range join.Schema.Fields {
+						columnName := field.GetColumnName()
+						// Alias format: joinAlias.column AS joinAlias_column
+						selectParts = append(selectParts, fmt.Sprintf("%s.%s AS %s_%s", 
+							join.Alias, columnName, join.Alias, columnName))
+					}
+				} else {
+					// Fallback to wildcard if schema not available
 					selectParts = append(selectParts, fmt.Sprintf("%s.*", join.Alias))
 				}
 			}
+			
+			return fmt.Sprintf("SELECT %s%s", distinctStr, strings.Join(selectParts, ", "))
+		} else {
+			// No joins, simple case
+			return fmt.Sprintf("SELECT %s%s.*", distinctStr, q.tableAlias)
 		}
-
-		return fmt.Sprintf("SELECT %s%s", distinctStr, strings.Join(selectParts, ", "))
 	}
 
 	// Map schema field names to column names with table aliases
@@ -375,6 +450,12 @@ func (q *SelectQueryImpl) buildOffsetClause() string {
 	if q.offset == nil {
 		return ""
 	}
+	// SQLite requires LIMIT when using OFFSET
+	// If no limit is set, use a very large number
+	if q.limit == nil {
+		limit := int(^uint(0) >> 1) // Max int value
+		return fmt.Sprintf("LIMIT %d OFFSET %d", limit, *q.offset)
+	}
 	return fmt.Sprintf("OFFSET %d", *q.offset)
 }
 
@@ -406,7 +487,27 @@ func (q *SelectQueryImpl) buildCountSQL() (string, []any, error) {
 	args = append(args, havingArgs...)
 
 	// Build count query
-	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)
+	var countExpr string
+	if q.distinct && len(q.selectedFields) > 0 {
+		// Handle DISTINCT with specific fields
+		var distinctCols []string
+		for _, field := range q.selectedFields {
+			col, err := q.fieldMapper.SchemaToColumn(q.modelName, field)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to map field %s: %w", field, err)
+			}
+			distinctCols = append(distinctCols, col)
+		}
+		countExpr = fmt.Sprintf("COUNT(DISTINCT %s)", strings.Join(distinctCols, ", "))
+	} else if q.distinct {
+		// DISTINCT without specific fields - count distinct rows
+		countExpr = "COUNT(DISTINCT *)"
+	} else {
+		// Regular count
+		countExpr = "COUNT(*)"
+	}
+	
+	countSQL := fmt.Sprintf("SELECT %s FROM %s", countExpr, tableName)
 
 	if whereClause != "" {
 		countSQL += " " + whereClause
@@ -436,25 +537,88 @@ func (q *SelectQueryImpl) mapFieldNamesInSQL(sql string) (string, error) {
 		fieldName := field.Name
 		columnName := field.GetColumnName()
 
-		// Only replace if they're different
-		if fieldName != columnName {
-			// Replace field name with column name
-			// We need to be careful to match word boundaries
-			// This is a simplified implementation - in production you'd use a proper SQL parser
-			result = strings.ReplaceAll(result, fieldName+" ", columnName+" ")
-			result = strings.ReplaceAll(result, fieldName+"=", columnName+"=")
-			result = strings.ReplaceAll(result, fieldName+"<", columnName+"<")
-			result = strings.ReplaceAll(result, fieldName+">", columnName+">")
-			result = strings.ReplaceAll(result, fieldName+"!", columnName+"!")
-			result = strings.ReplaceAll(result, fieldName+" IN", columnName+" IN")
-			result = strings.ReplaceAll(result, fieldName+" NOT", columnName+" NOT")
-			result = strings.ReplaceAll(result, fieldName+" LIKE", columnName+" LIKE")
-			result = strings.ReplaceAll(result, fieldName+" BETWEEN", columnName+" BETWEEN")
-			result = strings.ReplaceAll(result, fieldName+" IS", columnName+" IS")
+		// Build the replacement based on whether we have joins
+		var replacement string
+		if q.joinBuilder != nil && len(q.joinBuilder.GetJoinedTables()) > 0 {
+			// Add table alias to column references
+			replacement = fmt.Sprintf("%s.%s", q.tableAlias, columnName)
+		} else {
+			// No joins, just use column name
+			replacement = columnName
 		}
+
+		// Replace all occurrences where the field name appears as a complete word
+		// This handles cases like "id = ?", "id > ?", etc.
+		result = replaceFieldReferences(result, fieldName, replacement)
 	}
 
 	return result, nil
+}
+
+// replaceFieldReferences replaces field name references in SQL with the given replacement
+func replaceFieldReferences(sql, fieldName, replacement string) string {
+	// Create a map of all possible operators and delimiters
+	operators := []string{" ", "=", "!=", "<", ">", "<=", ">="}
+	keywords := []string{" IN", " NOT", " LIKE", " BETWEEN", " IS"}
+	
+	result := sql
+	
+	// Replace field at the start of the string
+	if strings.HasPrefix(result, fieldName) {
+		// Check if it's followed by an operator or space
+		for _, op := range operators {
+			if strings.HasPrefix(result, fieldName+op) {
+				result = replacement + result[len(fieldName):]
+				break
+			}
+		}
+		for _, kw := range keywords {
+			if strings.HasPrefix(result, fieldName+kw) {
+				result = replacement + result[len(fieldName):]
+				break
+			}
+		}
+	}
+	
+	// Replace field after spaces or parentheses
+	for _, prefix := range []string{" ", "(", ","} {
+		for _, op := range operators {
+			result = strings.ReplaceAll(result, prefix+fieldName+op, prefix+replacement+op)
+		}
+		for _, kw := range keywords {
+			result = strings.ReplaceAll(result, prefix+fieldName+kw, prefix+replacement+kw)
+		}
+	}
+	
+	return result
+}
+
+// findManyWithRelations executes the query and scans results with relation support
+func (q *SelectQueryImpl) findManyWithRelations(ctx context.Context, sql string, args []any, dest any) error {
+	// Execute query using database's Query method
+	rows, err := q.database.Query(sql, args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer rows.Close()
+
+	// Create relation scanner
+	mainSchema, err := q.database.GetSchema(q.modelName)
+	if err != nil {
+		return fmt.Errorf("failed to get schema for model %s: %w", q.modelName, err)
+	}
+
+	scanner := NewRelationScanner(mainSchema, q.tableAlias)
+
+	// Add joined table information to scanner
+	for _, join := range q.joinBuilder.GetJoinedTables() {
+		if join.Schema != nil && join.Relation != nil {
+			scanner.AddJoinedTable(join.Alias, join.Schema, join.Relation, join.RelationName)
+		}
+	}
+
+	// Use relation scanner to scan rows
+	return scanner.ScanRowsWithRelations(rows, dest)
 }
 
 // clone creates a copy of the select query

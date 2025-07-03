@@ -649,7 +649,10 @@ func TestMySQLMigrator_IndexComparison(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up from previous test
+			// Disable foreign key checks to allow dropping tables with references
+			migrator.ApplyMigration("SET FOREIGN_KEY_CHECKS=0")
 			migrator.ApplyMigration("DROP TABLE IF EXISTS users")
+			migrator.ApplyMigration("SET FOREIGN_KEY_CHECKS=1")
 
 			// Setup table
 			tt.setupTable()

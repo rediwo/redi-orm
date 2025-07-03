@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 
 	_ "github.com/lib/pq"
@@ -195,16 +196,22 @@ func (p *PostgreSQLDB) Begin(ctx context.Context) (types.Transaction, error) {
 
 // Exec executes a raw SQL query
 func (p *PostgreSQLDB) Exec(query string, args ...any) (sql.Result, error) {
+	// Convert ? placeholders to $1, $2, etc.
+	query = convertPlaceholders(query)
 	return p.DB.Exec(query, args...)
 }
 
 // Query executes a raw SQL query and returns rows
 func (p *PostgreSQLDB) Query(query string, args ...any) (*sql.Rows, error) {
+	// Convert ? placeholders to $1, $2, etc.
+	query = convertPlaceholders(query)
 	return p.DB.Query(query, args...)
 }
 
 // QueryRow executes a raw SQL query and returns a single row
 func (p *PostgreSQLDB) QueryRow(query string, args ...any) *sql.Row {
+	// Convert ? placeholders to $1, $2, etc.
+	query = convertPlaceholders(query)
 	return p.DB.QueryRow(query, args...)
 }
 
@@ -232,6 +239,64 @@ func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, er
 
 	if len(primaryKeys) > 0 {
 		columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
+	}
+
+	// Add foreign key constraints
+	for _, relation := range schema.Relations {
+		if relation.Type == "manyToOne" || 
+		   (relation.Type == "oneToOne" && relation.ForeignKey != "") {
+			// Get the referenced table name
+			referencedSchema, err := p.GetSchema(relation.Model)
+			if err != nil {
+				// If we can't find the schema, use the model name as table name (pluralized and lowercased)
+				// This might happen during circular dependencies
+				continue
+			}
+			
+			// Find the actual field to get the column name
+			var foreignKeyColumn string
+			for _, field := range schema.Fields {
+				if field.Name == relation.ForeignKey {
+					foreignKeyColumn = field.GetColumnName()
+					break
+				}
+			}
+			if foreignKeyColumn == "" {
+				// If field not found, use the relation.ForeignKey as is (might be already a column name)
+				foreignKeyColumn = relation.ForeignKey
+			}
+			
+			// Find the referenced column name
+			var referencesColumn string
+			for _, field := range referencedSchema.Fields {
+				if field.Name == relation.References {
+					referencesColumn = field.GetColumnName()
+					break
+				}
+			}
+			if referencesColumn == "" {
+				referencesColumn = relation.References
+			}
+			
+			fkConstraint := fmt.Sprintf(
+				"CONSTRAINT fk_%s_%s FOREIGN KEY (%s) REFERENCES %s(%s)",
+				strings.ReplaceAll(schema.GetTableName(), ".", "_"), // Handle schema prefixes
+				foreignKeyColumn,
+				p.quoteIdentifier(foreignKeyColumn),
+				p.quoteIdentifier(referencedSchema.GetTableName()),
+				p.quoteIdentifier(referencesColumn),
+			)
+			
+			// Add ON DELETE/UPDATE rules if specified
+			if relation.OnDelete != "" {
+				fkConstraint += " ON DELETE " + relation.OnDelete
+			}
+			if relation.OnUpdate != "" {
+				fkConstraint += " ON UPDATE " + relation.OnUpdate
+			}
+			
+			columns = append(columns, fkConstraint)
+		}
 	}
 
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n  %s\n)",
@@ -306,6 +371,10 @@ func (p *PostgreSQLDB) mapFieldTypeToSQL(fieldType schema.FieldType) string {
 func (p *PostgreSQLDB) formatDefaultValue(value any, fieldType schema.FieldType) string {
 	switch v := value.(type) {
 	case string:
+		// Special handling for PostgreSQL functions
+		if v == "CURRENT_TIMESTAMP" || v == "NOW()" || v == "now()" {
+			return v
+		}
 		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
 	case bool:
 		if v {
@@ -322,4 +391,62 @@ func (p *PostgreSQLDB) formatDefaultValue(value any, fieldType schema.FieldType)
 // quoteIdentifier quotes an identifier for PostgreSQL
 func (p *PostgreSQLDB) quoteIdentifier(name string) string {
 	return fmt.Sprintf(`"%s"`, name)
+}
+
+// convertPlaceholders converts ? placeholders to $1, $2, etc. for PostgreSQL
+func convertPlaceholders(sql string) string {
+	var result strings.Builder
+	argIndex := 0
+	inQuote := false
+	escaped := false
+	
+	for i := 0; i < len(sql); i++ {
+		ch := sql[i]
+		
+		// Handle escape sequences
+		if escaped {
+			result.WriteByte(ch)
+			escaped = false
+			continue
+		}
+		
+		// Handle escape character
+		if ch == '\\' {
+			result.WriteByte(ch)
+			escaped = true
+			continue
+		}
+		
+		// Handle quotes
+		if ch == '\'' {
+			result.WriteByte(ch)
+			inQuote = !inQuote
+			continue
+		}
+		
+		// Replace ? with $N when not in quotes
+		if ch == '?' && !inQuote {
+			// Check if this is a PostgreSQL JSON operator (preceded by space and followed by space or quote)
+			isJSONOp := false
+			if i > 0 && i < len(sql)-1 {
+				prevChar := sql[i-1]
+				nextChar := sql[i+1]
+				// PostgreSQL JSON operators: ? (contains) ?& (contains all) ?| (contains any)
+				if prevChar == ' ' && (nextChar == ' ' || nextChar == '\'' || nextChar == '&' || nextChar == '|') {
+					isJSONOp = true
+				}
+			}
+			
+			if !isJSONOp {
+				argIndex++
+				result.WriteString("$" + strconv.Itoa(argIndex))
+			} else {
+				result.WriteByte(ch)
+			}
+		} else {
+			result.WriteByte(ch)
+		}
+	}
+	
+	return result.String()
 }

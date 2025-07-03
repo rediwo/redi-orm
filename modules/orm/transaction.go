@@ -52,6 +52,7 @@ func (m *ModelsModule) createDatabaseTransactionMethod(vm *js.Runtime, db types.
 						ModelsModule: m,
 						tx:           tx,
 						vm:           vm,
+						db:           db,
 					}
 
 					// Register all models for transaction
@@ -157,6 +158,7 @@ type TransactionModelsModule struct {
 	*ModelsModule
 	tx types.Transaction
 	vm *js.Runtime
+	db types.Database
 }
 
 // registerTransactionModel registers a model with transaction context
@@ -249,7 +251,7 @@ func (t *TransactionModelsModule) executeTransactionOperation(modelName, methodN
 	case "aggregate":
 		return t.executeAggregate(ctx, model, options)
 	case "groupBy":
-		return t.executeGroupBy(ctx, model, modelName, options)
+		return t.executeGroupBy(ctx, model, modelName, options, t.db)
 
 	case "update":
 		return t.executeUpdate(ctx, model, options)

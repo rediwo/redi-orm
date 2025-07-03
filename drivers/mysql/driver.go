@@ -234,6 +234,64 @@ func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) 
 		columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
 
+	// Add foreign key constraints
+	for _, relation := range schema.Relations {
+		if relation.Type == "manyToOne" || 
+		   (relation.Type == "oneToOne" && relation.ForeignKey != "") {
+			// Get the referenced table name
+			referencedSchema, err := m.GetSchema(relation.Model)
+			if err != nil {
+				// If we can't find the schema, skip this foreign key
+				// This might happen during circular dependencies
+				continue
+			}
+			
+			// Find the actual field to get the column name
+			var foreignKeyColumn string
+			for _, field := range schema.Fields {
+				if field.Name == relation.ForeignKey {
+					foreignKeyColumn = field.GetColumnName()
+					break
+				}
+			}
+			if foreignKeyColumn == "" {
+				// If field not found, use the relation.ForeignKey as is
+				foreignKeyColumn = relation.ForeignKey
+			}
+			
+			// Find the referenced column name
+			var referencesColumn string
+			for _, field := range referencedSchema.Fields {
+				if field.Name == relation.References {
+					referencesColumn = field.GetColumnName()
+					break
+				}
+			}
+			if referencesColumn == "" {
+				referencesColumn = relation.References
+			}
+			
+			fkConstraint := fmt.Sprintf(
+				"CONSTRAINT `fk_%s_%s` FOREIGN KEY (`%s`) REFERENCES `%s`(`%s`)",
+				strings.ReplaceAll(schema.GetTableName(), ".", "_"),
+				foreignKeyColumn,
+				foreignKeyColumn,
+				referencedSchema.GetTableName(),
+				referencesColumn,
+			)
+			
+			// Add ON DELETE/UPDATE rules if specified
+			if relation.OnDelete != "" {
+				fkConstraint += " ON DELETE " + relation.OnDelete
+			}
+			if relation.OnUpdate != "" {
+				fkConstraint += " ON UPDATE " + relation.OnUpdate
+			}
+			
+			columns = append(columns, fkConstraint)
+		}
+	}
+
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS `%s` (\n  %s\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 		schema.GetTableName(),
 		strings.Join(columns, ",\n  "))
@@ -301,6 +359,10 @@ func (m *MySQLDB) formatDefaultValue(value any) string {
 
 	switch v := value.(type) {
 	case string:
+		// Special handling for MySQL functions
+		if v == "CURRENT_TIMESTAMP" || v == "NOW()" {
+			return v
+		}
 		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
 	case bool:
 		if v {

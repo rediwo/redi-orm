@@ -668,7 +668,8 @@ func TestPostgreSQLMigrator_IndexComparison(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up from previous test
-			migrator.ApplyMigration("DROP TABLE IF EXISTS users")
+			// Use CASCADE to drop tables with foreign key references
+			migrator.ApplyMigration("DROP TABLE IF EXISTS users CASCADE")
 
 			// Setup table
 			tt.setupTable()

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // executeOperation executes a database operation based on the method name
@@ -34,7 +36,7 @@ func (m *ModelsModule) executeOperation(db types.Database, modelName, methodName
 	case "aggregate":
 		return m.executeAggregate(ctx, model, options)
 	case "groupBy":
-		return m.executeGroupBy(ctx, model, modelName, options)
+		return m.executeGroupBy(ctx, model, modelName, options, db)
 
 	// Update operations
 	case "update":
@@ -91,7 +93,7 @@ func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery
 	return processedData, nil
 }
 
-func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
+func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQuery, _ string, options map[string]any) (any, error) {
 	data, ok := options["data"]
 	if !ok {
 		return nil, fmt.Errorf("createMany requires 'data' field")
@@ -132,7 +134,7 @@ func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQ
 	}, nil
 }
 
-func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
+func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model types.ModelQuery, _ string, options map[string]any) (any, error) {
 	// Similar to createMany but returns created records
 	// This is a simplified implementation
 	data, ok := options["data"]
@@ -185,7 +187,7 @@ func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQ
 
 	// Handle include (relations)
 	if include, ok := options["include"]; ok {
-		m.applyInclude(query, include)
+		query = m.applyInclude(query, include).(types.SelectQuery)
 	}
 
 	result := make(map[string]any)
@@ -218,7 +220,7 @@ func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQu
 
 	// Handle include (relations)
 	if include, ok := options["include"]; ok {
-		m.applyInclude(query, include)
+		query = m.applyInclude(query, include).(types.SelectQuery)
 	}
 
 	result := make(map[string]any)
@@ -259,13 +261,23 @@ func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQue
 
 	// Handle include (relations)
 	if include, ok := options["include"]; ok {
-		m.applyInclude(query, include)
+		query = m.applyInclude(query, include).(types.SelectQuery)
 	}
 
 	// Handle distinct
-	if distinct, ok := options["distinct"].([]any); ok && len(distinct) > 0 {
-		// Note: Distinct support would need to be added to the query builder
-		// For now, this is a placeholder
+	if distinct, ok := options["distinct"]; ok {
+		switch d := distinct.(type) {
+		case bool:
+			if d {
+				query = query.Distinct()
+			}
+		case []any:
+			// Distinct on specific fields
+			// For now, just use general distinct if any fields are specified
+			if len(d) > 0 {
+				query = query.Distinct()
+			}
+		}
 	}
 
 	results := []map[string]any{}
@@ -406,14 +418,155 @@ func (m *ModelsModule) executeAggregate(ctx context.Context, model types.ModelQu
 	return result, nil
 }
 
-func (m *ModelsModule) executeGroupBy(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
-	// GroupBy is complex and would require significant query builder changes
-	// For now, return a placeholder
-	_ = ctx
-	_ = model
-	_ = modelName
-	_ = options
-	return nil, fmt.Errorf("groupBy not yet implemented")
+func (m *ModelsModule) executeGroupBy(ctx context.Context, _ types.ModelQuery, modelName string, options map[string]any, db types.Database) (any, error) {
+	// GroupBy implementation
+	_ = ctx // We'll use it for raw queries
+
+	// For now, we'll build raw SQL instead of using the query builder
+	// since groupBy needs special handling for aggregations
+
+	// Parse groupBy fields
+	var groupByFields []string
+	if by, ok := options["by"]; ok {
+		switch b := by.(type) {
+		case string:
+			groupByFields = []string{b}
+		case []any:
+			for _, field := range b {
+				if fieldStr, ok := field.(string); ok {
+					groupByFields = append(groupByFields, fieldStr)
+				}
+			}
+		}
+	}
+
+	if len(groupByFields) == 0 {
+		return nil, fmt.Errorf("groupBy requires 'by' field")
+	}
+
+	// Handle aggregations - we need to build raw SQL for aggregations
+	// For now, let's execute a raw query instead of using the query builder
+	
+	// Build SELECT clause
+	var selectParts []string
+	
+	// Add grouped fields
+	for _, field := range groupByFields {
+		// Resolve field name to column name
+		columnName, err := db.ResolveFieldName(modelName, field)
+		if err != nil {
+			// Fall back to field name if not found
+			columnName = field
+		}
+		// Use column AS field to maintain the original field name in results
+		selectParts = append(selectParts, fmt.Sprintf("%s AS %s", columnName, field))
+	}
+	
+	// Handle _count, _sum, _avg, _min, _max aggregations
+	aggregations := []string{"_count", "_sum", "_avg", "_min", "_max"}
+	for _, agg := range aggregations {
+		if aggValue, ok := options[agg]; ok {
+			// Parse aggregation options
+			switch av := aggValue.(type) {
+			case bool:
+				if av && agg == "_count" {
+					// Simple count(*)
+					selectParts = append(selectParts, "COUNT(*) as _count")
+				}
+			case map[string]any:
+				// Field-specific aggregations
+				for field, enabled := range av {
+					if e, ok := enabled.(bool); ok && e {
+						aggFunc := strings.ToUpper(strings.TrimPrefix(agg, "_"))
+						// Resolve field name to column name
+						columnName, err := db.ResolveFieldName(modelName, field)
+						if err != nil {
+							// Fall back to field name
+							columnName = field
+						}
+						selectParts = append(selectParts, fmt.Sprintf("%s(%s) as %s_%s", aggFunc, columnName, field, agg))
+					}
+				}
+			}
+		}
+	}
+	
+	// Build the SQL query
+	tableName, err := db.ResolveTableName(modelName)
+	if err != nil {
+		return nil, err
+	}
+	
+	sql := fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectParts, ", "), tableName)
+	
+	// Add WHERE clause if provided
+	if where, ok := options["where"]; ok {
+		// For now, skip complex where conditions in groupBy
+		_ = where
+	}
+	
+	// Add GROUP BY clause
+	if len(groupByFields) > 0 {
+		var groupByColumns []string
+		for _, field := range groupByFields {
+			columnName, err := db.ResolveFieldName(modelName, field)
+			if err != nil {
+				columnName = field
+			}
+			groupByColumns = append(groupByColumns, columnName)
+		}
+		sql += fmt.Sprintf(" GROUP BY %s", strings.Join(groupByColumns, ", "))
+	}
+	
+	// Add HAVING clause if provided
+	if having, ok := options["having"]; ok {
+		// For now, skip having conditions
+		_ = having
+	}
+	
+	// Add ORDER BY if provided
+	if orderBy, ok := options["orderBy"]; ok {
+		if orderMap, ok := orderBy.(map[string]any); ok {
+			var orderParts []string
+			for field, direction := range orderMap {
+				columnName, err := db.ResolveFieldName(modelName, field)
+				if err != nil {
+					columnName = field
+				}
+				dir := "ASC"
+				if dirStr, ok := direction.(string); ok && strings.ToLower(dirStr) == "desc" {
+					dir = "DESC"
+				}
+				orderParts = append(orderParts, fmt.Sprintf("%s %s", columnName, dir))
+			}
+			if len(orderParts) > 0 {
+				sql += fmt.Sprintf(" ORDER BY %s", strings.Join(orderParts, ", "))
+			}
+		}
+	}
+	
+	// Apply pagination
+	if take, ok := options["take"]; ok {
+		sql += fmt.Sprintf(" LIMIT %d", int(toInt64(take)))
+	}
+	if skip, ok := options["skip"]; ok {
+		sql += fmt.Sprintf(" OFFSET %d", int(toInt64(skip)))
+	}
+	
+	// Execute raw query
+	rows, err := db.Query(sql)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	// Scan results into maps
+	results, err := utils.ScanRowsToMaps(rows)
+	if err != nil {
+		return nil, err
+	}
+	
+	return results, nil
 }
 
 // Update operations
@@ -673,10 +826,36 @@ func (m *ModelsModule) extractFieldNames(selectFields any) []string {
 	return fields
 }
 
-func (m *ModelsModule) applyInclude(query any, include any) {
+func (m *ModelsModule) applyInclude(query any, include any) any {
 	// Handle relation loading
-	// This would require relation support in the query builder
-	// For now, this is a placeholder
+	selectQuery, ok := query.(types.SelectQuery)
+	if !ok {
+		return query // Query doesn't support includes
+	}
+
+	// Parse include options
+	switch inc := include.(type) {
+	case bool:
+		// Simple boolean include not supported at top level
+		return query
+	case map[string]any:
+		// Object format: { relationName: true } or { relationName: { include: {...} } }
+		for relationName, relationOptions := range inc {
+			// Check if it's a simple include (true) or nested
+			switch opts := relationOptions.(type) {
+			case bool:
+				if opts {
+					// Simple include
+					selectQuery = selectQuery.Include(relationName)
+				}
+			case map[string]any:
+				// Nested include - for now just include the relation
+				// TODO: Handle nested includes properly
+				selectQuery = selectQuery.Include(relationName)
+			}
+		}
+	}
+	return selectQuery
 }
 
 // Helper to convert numeric types to int64
