@@ -78,15 +78,6 @@ func getMySQLTestConfig() types.Config {
 		host = "localhost"
 	}
 
-	portStr := os.Getenv("MYSQL_TEST_PORT")
-	if portStr == "" {
-		portStr = "3306"
-	}
-	port := 3306
-	if p, err := strconv.Atoi(portStr); err == nil {
-		port = p
-	}
-
 	user := os.Getenv("MYSQL_TEST_USER")
 	if user == "" {
 		user = "testuser"
@@ -105,13 +96,52 @@ func getMySQLTestConfig() types.Config {
 	return types.Config{
 		Type:     "mysql",
 		Host:     host,
-		Port:     port,
+		Port:     3306,
 		User:     user,
 		Password: password,
 		Database: database,
 		Options: map[string]string{
 			"parseTime": "true",
 		},
+	}
+}
+
+// cleanupTables removes all non-system tables from the database
+func cleanupTables(t *testing.T, db *MySQLDB) {
+	ctx := context.Background()
+	
+	// Disable foreign key checks
+	_, err := db.Exec("SET FOREIGN_KEY_CHECKS = 0")
+	if err != nil {
+		t.Logf("Failed to disable foreign key checks: %v", err)
+		return
+	}
+	defer db.Exec("SET FOREIGN_KEY_CHECKS = 1")
+
+	// Get all tables
+	rows, err := db.DB.QueryContext(ctx, "SHOW TABLES")
+	if err != nil {
+		t.Logf("Failed to get tables: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			t.Logf("Failed to scan table name: %v", err)
+			continue
+		}
+		tables = append(tables, table)
+	}
+
+	// Drop all tables
+	for _, table := range tables {
+		_, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS `%s`", table))
+		if err != nil {
+			t.Logf("Failed to drop table %s: %v", table, err)
+		}
 	}
 }
 
@@ -122,12 +152,8 @@ func setupTestDB(t *testing.T) *MySQLDB {
 	}
 
 	config := getMySQLTestConfig()
-
-	// First connect without database to create it
-	configWithoutDB := config
-	configWithoutDB.Database = ""
-
-	db, err := NewMySQLDB(configWithoutDB)
+	
+	db, err := NewMySQLDB(config)
 	if err != nil {
 		t.Skipf("Failed to create MySQL connection: %v", err)
 	}
@@ -138,24 +164,8 @@ func setupTestDB(t *testing.T) *MySQLDB {
 		t.Skipf("Failed to connect to MySQL: %v", err)
 	}
 
-	// Create test database
-	_, err = db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", config.Database))
-	require.NoError(t, err)
-
-	// Close and reconnect with database
-	db.Close()
-
-	db, err = NewMySQLDB(config)
-	require.NoError(t, err)
-
-	err = db.Connect(ctx)
-	require.NoError(t, err)
-
-	// Drop existing tables
-	tables := []string{"comments", "posts", "users"}
-	for _, table := range tables {
-		_, _ = db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", table))
-	}
+	// Clean up existing tables
+	cleanupTables(t, db)
 
 	// Create schemas
 	userSchema := schema.New("User").
@@ -164,7 +174,7 @@ func setupTestDB(t *testing.T) *MySQLDB {
 		AddField(schema.Field{Name: "email", Type: schema.FieldTypeString, Unique: true}).
 		AddField(schema.Field{Name: "age", Type: schema.FieldTypeInt}).
 		AddField(schema.Field{Name: "city", Type: schema.FieldTypeString}).
-		AddField(schema.Field{Name: "createdAt", Type: schema.FieldTypeDateTime, Default: "CURRENT_TIMESTAMP"})
+		AddField(schema.Field{Name: "createdAt", Type: schema.FieldTypeDateTime, Default: "now()"})
 
 	postSchema := schema.New("Post").
 		AddField(schema.Field{Name: "id", Type: schema.FieldTypeInt, PrimaryKey: true, AutoIncrement: true}).
@@ -173,14 +183,14 @@ func setupTestDB(t *testing.T) *MySQLDB {
 		AddField(schema.Field{Name: "userId", Type: schema.FieldTypeInt}).
 		AddField(schema.Field{Name: "views", Type: schema.FieldTypeInt, Default: 0}).
 		AddField(schema.Field{Name: "published", Type: schema.FieldTypeBool, Default: false}).
-		AddField(schema.Field{Name: "createdAt", Type: schema.FieldTypeDateTime, Default: "CURRENT_TIMESTAMP"})
+		AddField(schema.Field{Name: "createdAt", Type: schema.FieldTypeDateTime, Default: "now()"})
 
 	commentSchema := schema.New("Comment").
 		AddField(schema.Field{Name: "id", Type: schema.FieldTypeInt, PrimaryKey: true, AutoIncrement: true}).
 		AddField(schema.Field{Name: "content", Type: schema.FieldTypeString}).
 		AddField(schema.Field{Name: "postId", Type: schema.FieldTypeInt}).
 		AddField(schema.Field{Name: "userId", Type: schema.FieldTypeInt}).
-		AddField(schema.Field{Name: "createdAt", Type: schema.FieldTypeDateTime, Default: "CURRENT_TIMESTAMP"})
+		AddField(schema.Field{Name: "createdAt", Type: schema.FieldTypeDateTime, Default: "now()"})
 
 	// Add relations
 	userSchema.AddRelation("posts", schema.Relation{
@@ -236,6 +246,12 @@ func setupTestDB(t *testing.T) *MySQLDB {
 
 	// Insert test data
 	insertTestData(t, db)
+
+	// Add cleanup
+	t.Cleanup(func() {
+		cleanupTables(t, db)
+		db.Close()
+	})
 
 	return db
 }
@@ -850,10 +866,6 @@ func TestMySQLDB_BooleanHandling(t *testing.T) {
 
 func TestMySQLDB_DateTimeHandling(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 

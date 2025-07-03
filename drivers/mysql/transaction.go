@@ -128,6 +128,11 @@ func (tdb *MySQLTransactionDB) GetModelSchema(modelName string) (*schema.Schema,
 	return tdb.db.GetModelSchema(modelName)
 }
 
+// GetDriverType delegates to the main database
+func (tdb *MySQLTransactionDB) GetDriverType() string {
+	return tdb.db.GetDriverType()
+}
+
 // ResolveTableName delegates to the main database
 func (tdb *MySQLTransactionDB) ResolveTableName(modelName string) (string, error) {
 	return tdb.db.ResolveTableName(modelName)

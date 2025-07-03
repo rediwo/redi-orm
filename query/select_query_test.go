@@ -52,6 +52,7 @@ func (m *mockDatabase) Exec(query string, args ...any) (sql.Result, error)      
 func (m *mockDatabase) Query(query string, args ...any) (*sql.Rows, error)        { return nil, nil }
 func (m *mockDatabase) QueryRow(query string, args ...any) *sql.Row               { return nil }
 func (m *mockDatabase) GetMigrator() types.DatabaseMigrator                        { return nil }
+func (m *mockDatabase) GetDriverType() string                                      { return "mock" }
 
 type mockFieldMapper struct{}
 

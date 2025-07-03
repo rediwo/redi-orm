@@ -131,6 +131,11 @@ func setupTestDB(t *testing.T) *SQLiteDB {
 	// Insert test data
 	insertTestData(t, db)
 
+	// Add cleanup
+	t.Cleanup(func() {
+		db.Close()
+	})
+
 	return db
 }
 
@@ -183,7 +188,6 @@ func insertTestData(t *testing.T, db *SQLiteDB) {
 
 func TestSQLiteDB_BasicSelect(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -211,7 +215,6 @@ func TestSQLiteDB_BasicSelect(t *testing.T) {
 
 func TestSQLiteDB_WhereConditions(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -263,7 +266,6 @@ func TestSQLiteDB_WhereConditions(t *testing.T) {
 
 func TestSQLiteDB_OrderBy(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -301,7 +303,6 @@ func TestSQLiteDB_OrderBy(t *testing.T) {
 
 func TestSQLiteDB_LimitOffset(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -341,7 +342,6 @@ func TestSQLiteDB_LimitOffset(t *testing.T) {
 
 func TestSQLiteDB_Distinct(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -373,7 +373,6 @@ func TestSQLiteDB_Distinct(t *testing.T) {
 
 func TestSQLiteDB_GroupBy(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -445,7 +444,6 @@ func TestSQLiteDB_GroupBy(t *testing.T) {
 
 func TestSQLiteDB_Include(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -499,7 +497,6 @@ func TestSQLiteDB_Include(t *testing.T) {
 
 func TestSQLiteDB_ComplexQueries(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -534,7 +531,6 @@ func TestSQLiteDB_ComplexQueries(t *testing.T) {
 
 func TestSQLiteDB_Aggregations(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -573,7 +569,6 @@ func TestSQLiteDB_Aggregations(t *testing.T) {
 
 func TestSQLiteDB_NullValues(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -607,7 +602,6 @@ func TestSQLiteDB_NullValues(t *testing.T) {
 
 func TestSQLiteDB_FieldNameMapping(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 
@@ -628,7 +622,6 @@ func TestSQLiteDB_FieldNameMapping(t *testing.T) {
 
 func TestSQLiteDB_ErrorHandling(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	ctx := context.Background()
 

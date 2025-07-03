@@ -104,18 +104,16 @@ func (q *DeleteQueryImpl) buildWhereClause(conditions []types.Condition) (string
 		return "", nil, nil
 	}
 
+	// Create condition context (no table alias for DELETE)
+	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, "")
+
 	var conditionSQLs []string
 	var args []any
 
 	for _, condition := range conditions {
-		sql, condArgs := condition.ToSQL()
+		sql, condArgs := condition.ToSQL(ctx)
 		if sql != "" {
-			// Map field names in the condition SQL
-			mappedSQL, err := q.mapFieldNamesInSQL(sql)
-			if err != nil {
-				return "", nil, fmt.Errorf("failed to map field names in condition: %w", err)
-			}
-			conditionSQLs = append(conditionSQLs, mappedSQL)
+			conditionSQLs = append(conditionSQLs, sql)
 			args = append(args, condArgs...)
 		}
 	}
@@ -128,12 +126,6 @@ func (q *DeleteQueryImpl) buildWhereClause(conditions []types.Condition) (string
 	return whereSQL, args, nil
 }
 
-// mapFieldNamesInSQL maps schema field names to column names in SQL
-func (q *DeleteQueryImpl) mapFieldNamesInSQL(sql string) (string, error) {
-	// This is a simplified implementation
-	// In a production system, you'd want a more sophisticated SQL parser
-	return sql, nil
-}
 
 // clone creates a copy of the delete query
 func (q *DeleteQueryImpl) clone() *DeleteQueryImpl {

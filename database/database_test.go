@@ -99,6 +99,10 @@ func (m *mockDatabase) GetFieldMapper() types.FieldMapper {
 	return nil
 }
 
+func (m *mockDatabase) GetDriverType() string {
+	return "mock"
+}
+
 func (m *mockDatabase) Exec(query string, args ...any) (sql.Result, error) {
 	return nil, fmt.Errorf("not implemented")
 }

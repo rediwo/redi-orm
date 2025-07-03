@@ -11,7 +11,7 @@ type BaseCondition struct {
 	Args []any
 }
 
-func (c BaseCondition) ToSQL() (string, []any) {
+func (c BaseCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 	return c.SQL, c.Args
 }
 
@@ -36,7 +36,7 @@ func NewAndCondition(conditions ...Condition) *AndCondition {
 	return &AndCondition{Conditions: conditions}
 }
 
-func (c *AndCondition) ToSQL() (string, []any) {
+func (c *AndCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 	if len(c.Conditions) == 0 {
 		return "", nil
 	}
@@ -45,7 +45,7 @@ func (c *AndCondition) ToSQL() (string, []any) {
 	var args []any
 
 	for _, condition := range c.Conditions {
-		sql, condArgs := condition.ToSQL()
+		sql, condArgs := condition.ToSQL(ctx)
 		if sql != "" {
 			parts = append(parts, fmt.Sprintf("(%s)", sql))
 			args = append(args, condArgs...)
@@ -80,7 +80,7 @@ func NewOrCondition(conditions ...Condition) *OrCondition {
 	return &OrCondition{Conditions: conditions}
 }
 
-func (c *OrCondition) ToSQL() (string, []any) {
+func (c *OrCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 	if len(c.Conditions) == 0 {
 		return "", nil
 	}
@@ -89,7 +89,7 @@ func (c *OrCondition) ToSQL() (string, []any) {
 	var args []any
 
 	for _, condition := range c.Conditions {
-		sql, condArgs := condition.ToSQL()
+		sql, condArgs := condition.ToSQL(ctx)
 		if sql != "" {
 			parts = append(parts, fmt.Sprintf("(%s)", sql))
 			args = append(args, condArgs...)
@@ -124,8 +124,8 @@ func NewNotCondition(condition Condition) *NotCondition {
 	return &NotCondition{Condition: condition}
 }
 
-func (c *NotCondition) ToSQL() (string, []any) {
-	sql, args := c.Condition.ToSQL()
+func (c *NotCondition) ToSQL(ctx *ConditionContext) (string, []any) {
+	sql, args := c.Condition.ToSQL(ctx)
 	if sql == "" {
 		return "", nil
 	}
@@ -164,6 +164,60 @@ type FieldConditionImpl struct {
 	FieldName string
 }
 
+// MappedFieldCondition wraps a base condition with field mapping support
+type MappedFieldCondition struct {
+	BaseCondition
+	fieldName string
+	modelName string
+	operator  string
+}
+
+// ToSQL generates SQL with proper field mapping
+func (f *MappedFieldCondition) ToSQL(ctx *ConditionContext) (string, []any) {
+	// If no context, use the base SQL as-is
+	if ctx == nil || ctx.FieldMapper == nil {
+		return f.BaseCondition.ToSQL(ctx)
+	}
+
+	// Use the context with proper model name if needed
+	mappingCtx := ctx
+	if f.modelName != "" && ctx.ModelName != f.modelName {
+		// Create a new context with the field's model name for correct mapping
+		mappingCtx = &ConditionContext{
+			FieldMapper:  ctx.FieldMapper,
+			ModelName:    f.modelName,
+			TableAlias:   ctx.TableAlias,
+			JoinedTables: ctx.JoinedTables,
+		}
+	}
+
+	// Map field to column
+	columnRef, err := mappingCtx.MapFieldToColumn(f.fieldName)
+	if err != nil {
+		// If mapping fails, use original field name
+		columnRef = f.fieldName
+	}
+
+	// Replace field name with column reference in SQL
+	sql := strings.Replace(f.SQL, f.fieldName, columnRef, 1)
+	return sql, f.Args
+}
+
+// And combines this condition with another using AND logic
+func (f *MappedFieldCondition) And(condition Condition) Condition {
+	return NewAndCondition(f, condition)
+}
+
+// Or combines this condition with another using OR logic
+func (f *MappedFieldCondition) Or(condition Condition) Condition {
+	return NewOrCondition(f, condition)
+}
+
+// Not negates this condition
+func (f *MappedFieldCondition) Not() Condition {
+	return NewNotCondition(f)
+}
+
 func NewFieldCondition(modelName, fieldName string) *FieldConditionImpl {
 	return &FieldConditionImpl{
 		ModelName: modelName,
@@ -180,27 +234,27 @@ func (f *FieldConditionImpl) GetModelName() string {
 }
 
 func (f *FieldConditionImpl) Equals(value any) Condition {
-	return NewBaseCondition(f.FieldName+" = ?", value)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" = ?", value), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) NotEquals(value any) Condition {
-	return NewBaseCondition(f.FieldName+" != ?", value)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" != ?", value), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) GreaterThan(value any) Condition {
-	return NewBaseCondition(f.FieldName+" > ?", value)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" > ?", value), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) GreaterThanOrEqual(value any) Condition {
-	return NewBaseCondition(f.FieldName+" >= ?", value)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" >= ?", value), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) LessThan(value any) Condition {
-	return NewBaseCondition(f.FieldName+" < ?", value)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" < ?", value), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) LessThanOrEqual(value any) Condition {
-	return NewBaseCondition(f.FieldName+" <= ?", value)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" <= ?", value), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) In(values ...any) Condition {
@@ -212,7 +266,7 @@ func (f *FieldConditionImpl) In(values ...any) Condition {
 	placeholders = placeholders[:len(placeholders)-1] // Remove trailing comma
 
 	sql := fmt.Sprintf("%s IN (%s)", f.FieldName, placeholders)
-	return NewBaseCondition(sql, values...)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(sql, values...), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) NotIn(values ...any) Condition {
@@ -224,35 +278,35 @@ func (f *FieldConditionImpl) NotIn(values ...any) Condition {
 	placeholders = placeholders[:len(placeholders)-1] // Remove trailing comma
 
 	sql := fmt.Sprintf("%s NOT IN (%s)", f.FieldName, placeholders)
-	return NewBaseCondition(sql, values...)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(sql, values...), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) Contains(value string) Condition {
-	return NewBaseCondition(f.FieldName+" LIKE ?", "%"+value+"%")
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" LIKE ?", "%"+value+"%"), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) StartsWith(value string) Condition {
-	return NewBaseCondition(f.FieldName+" LIKE ?", value+"%")
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" LIKE ?", value+"%"), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) EndsWith(value string) Condition {
-	return NewBaseCondition(f.FieldName+" LIKE ?", "%"+value)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" LIKE ?", "%"+value), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) Like(pattern string) Condition {
-	return NewBaseCondition(f.FieldName+" LIKE ?", pattern)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" LIKE ?", pattern), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) IsNull() Condition {
-	return NewBaseCondition(f.FieldName + " IS NULL")
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName + " IS NULL"), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) IsNotNull() Condition {
-	return NewBaseCondition(f.FieldName + " IS NOT NULL")
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName + " IS NOT NULL"), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 func (f *FieldConditionImpl) Between(min, max any) Condition {
-	return NewBaseCondition(f.FieldName+" BETWEEN ? AND ?", min, max)
+	return &MappedFieldCondition{BaseCondition: *NewBaseCondition(f.FieldName+" BETWEEN ? AND ?", min, max), fieldName: f.FieldName, modelName: f.ModelName}
 }
 
 // Helper function to create BaseCondition

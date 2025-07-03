@@ -361,39 +361,45 @@ func (m *PostgreSQLMigrator) GenerateModifyColumnSQL(change types.ColumnChange) 
 		sqls = append(sqls, sql)
 	}
 
-	// Change column type
+	// Change column type - skip if trying to change to SERIAL/BIGSERIAL
 	newType := change.NewColumn.Type
-	sql := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s", tableName, columnName, newType)
-	sqls = append(sqls, sql)
+	if newType != "SERIAL" && newType != "BIGSERIAL" {
+		sql := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s", tableName, columnName, newType)
+		sqls = append(sqls, sql)
+	}
 
 	// Change NULL/NOT NULL
 	if change.NewColumn.Nullable {
-		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL", tableName, columnName)
+		sql := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL", tableName, columnName)
+		sqls = append(sqls, sql)
 	} else {
-		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", tableName, columnName)
+		sql := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", tableName, columnName)
+		sqls = append(sqls, sql)
 	}
-	sqls = append(sqls, sql)
 
 	// Change default value
-	if change.NewColumn.Default != "" {
-		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s",
-			tableName, columnName, change.NewColumn.Default)
-	} else {
-		sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT", tableName, columnName)
+	if change.NewColumn.Default != nil && change.NewColumn.Default != "" {
+		defaultStr := m.FormatDefaultValue(change.NewColumn.Default)
+		sql := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s",
+			tableName, columnName, defaultStr)
+		sqls = append(sqls, sql)
+	} else if !change.NewColumn.AutoIncrement {
+		// Only drop default if not auto-increment (serial columns have implicit defaults)
+		sql := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT", tableName, columnName)
+		sqls = append(sqls, sql)
 	}
-	sqls = append(sqls, sql)
 
 	// Handle UNIQUE constraint
 	if change.OldColumn != nil && change.OldColumn.Unique != change.NewColumn.Unique {
 		if change.NewColumn.Unique {
 			// Add unique constraint
 			constraintName := fmt.Sprintf("uk_%s_%s", change.TableName, change.NewColumn.Name)
-			sql = fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s UNIQUE (%s)",
+			sql := fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s UNIQUE (%s)",
 				tableName, m.quote(constraintName), columnName)
+			sqls = append(sqls, sql)
 		} else {
 			// Drop unique constraint - need to find the constraint name
-			sql = fmt.Sprintf(`
-				DO $$
+			sql := fmt.Sprintf(`DO $$
 				DECLARE
 					constraint_name text;
 				BEGIN
@@ -414,8 +420,8 @@ func (m *PostgreSQLMigrator) GenerateModifyColumnSQL(change types.ColumnChange) 
 					END IF;
 				END $$;
 			`, change.TableName, change.NewColumn.Name, tableName)
+			sqls = append(sqls, sql)
 		}
-		sqls = append(sqls, sql)
 	}
 
 	return sqls, nil
@@ -514,6 +520,20 @@ func (m *PostgreSQLMigrator) IsSystemIndex(indexName string) bool {
 		strings.Contains(lower, "primary")
 }
 
+// IsSystemTable checks if a table is a system table in PostgreSQL
+func (m *PostgreSQLMigrator) IsSystemTable(tableName string) bool {
+	lower := strings.ToLower(tableName)
+
+	// PostgreSQL system table patterns:
+	// - pg_* tables are system catalogs
+	// - information_schema.* tables
+	// - Tables in pg_catalog schema
+	return strings.HasPrefix(lower, "pg_") ||
+		strings.HasPrefix(lower, "sql_") ||
+		lower == "information_schema" ||
+		lower == "pg_catalog"
+}
+
 // ApplyMigration applies a migration SQL statement
 func (m *PostgreSQLMigrator) ApplyMigration(sql string) error {
 	_, err := m.db.Exec(sql)
@@ -548,9 +568,13 @@ func (m *PostgreSQLMigrator) FormatDefaultValue(value any) string {
 
 // ConvertFieldToColumnInfo converts a schema field to column info
 func (m *PostgreSQLMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.ColumnInfo {
+	// For PostgreSQL, use the actual column type, not SERIAL
+	// SERIAL is only used during CREATE TABLE
+	colType := m.postgresqlDB.mapFieldTypeToSQL(field.Type)
+	
 	return &types.ColumnInfo{
 		Name:          field.GetColumnName(),
-		Type:          m.MapFieldType(field),
+		Type:          colType,
 		Nullable:      field.Nullable,
 		Default:       field.Default,
 		PrimaryKey:    field.PrimaryKey,
@@ -582,4 +606,9 @@ func (w *PostgreSQLMigratorWrapper) CompareSchema(existingTable *types.TableInfo
 		return nil, fmt.Errorf("expected *schema.Schema, got %T", desiredSchema)
 	}
 	return w.BaseMigrator.CompareSchema(existingTable, s)
+}
+
+// IsSystemTable delegates to the specific implementation
+func (w *PostgreSQLMigratorWrapper) IsSystemTable(tableName string) bool {
+	return w.specific.IsSystemTable(tableName)
 }

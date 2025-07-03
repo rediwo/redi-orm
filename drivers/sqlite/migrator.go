@@ -491,6 +491,21 @@ func (m *SQLiteMigrator) IsSystemIndex(indexName string) bool {
 		strings.Contains(lower, "primary")
 }
 
+// IsSystemTable checks if a table is a system table in SQLite
+func (m *SQLiteMigrator) IsSystemTable(tableName string) bool {
+	lower := strings.ToLower(tableName)
+
+	// SQLite system table patterns:
+	// - sqlite_* tables are system tables
+	// - Tables that store SQLite's internal data
+	return strings.HasPrefix(lower, "sqlite_") ||
+		lower == "sqlite_sequence" ||
+		lower == "sqlite_stat1" ||
+		lower == "sqlite_stat2" ||
+		lower == "sqlite_stat3" ||
+		lower == "sqlite_stat4"
+}
+
 // Additional wrapper methods to satisfy the types.DatabaseMigrator interface
 
 // GenerateCreateTableSQL wraps to match the DatabaseMigrator interface
@@ -514,4 +529,9 @@ func (w *SQLiteMigratorWrapper) CompareSchema(existingTable *types.TableInfo, de
 		return nil, fmt.Errorf("expected *schema.Schema, got %T", desiredSchema)
 	}
 	return w.BaseMigrator.CompareSchema(existingTable, s)
+}
+
+// IsSystemTable delegates to the specific implementation
+func (w *SQLiteMigratorWrapper) IsSystemTable(tableName string) bool {
+	return w.specific.IsSystemTable(tableName)
 }

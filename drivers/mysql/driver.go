@@ -363,6 +363,10 @@ func (m *MySQLDB) formatDefaultValue(value any) string {
 		if v == "CURRENT_TIMESTAMP" || v == "NOW()" {
 			return v
 		}
+		// Convert "now()" to MySQL's CURRENT_TIMESTAMP
+		if v == "now()" {
+			return "CURRENT_TIMESTAMP"
+		}
 		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
 	case bool:
 		if v {
@@ -375,6 +379,11 @@ func (m *MySQLDB) formatDefaultValue(value any) string {
 }
 
 // GetMigrator returns a migrator for MySQL
+// GetDriverType returns the database driver type
+func (m *MySQLDB) GetDriverType() string {
+	return "mysql"
+}
+
 func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {
 	return NewMySQLMigrator(m.DB, m)
 }

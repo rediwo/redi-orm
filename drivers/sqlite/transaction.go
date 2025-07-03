@@ -152,6 +152,10 @@ func (td *SQLiteTransactionDB) GetModelSchema(modelName string) (*schema.Schema,
 	return td.database.GetModelSchema(modelName)
 }
 
+func (td *SQLiteTransactionDB) GetDriverType() string {
+	return td.database.GetDriverType()
+}
+
 func (td *SQLiteTransactionDB) ResolveTableName(modelName string) (string, error) {
 	return td.database.ResolveTableName(modelName)
 }

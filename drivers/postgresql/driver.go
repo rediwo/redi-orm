@@ -198,6 +198,7 @@ func (p *PostgreSQLDB) Begin(ctx context.Context) (types.Transaction, error) {
 func (p *PostgreSQLDB) Exec(query string, args ...any) (sql.Result, error) {
 	// Convert ? placeholders to $1, $2, etc.
 	query = convertPlaceholders(query)
+	// fmt.Printf("[DEBUG] Exec query: %s, args: %v\n", query, args)
 	return p.DB.Exec(query, args...)
 }
 
@@ -205,6 +206,7 @@ func (p *PostgreSQLDB) Exec(query string, args ...any) (sql.Result, error) {
 func (p *PostgreSQLDB) Query(query string, args ...any) (*sql.Rows, error) {
 	// Convert ? placeholders to $1, $2, etc.
 	query = convertPlaceholders(query)
+	// fmt.Printf("[DEBUG] Converted query: %s\n", query)
 	return p.DB.Query(query, args...)
 }
 
@@ -372,8 +374,12 @@ func (p *PostgreSQLDB) formatDefaultValue(value any, fieldType schema.FieldType)
 	switch v := value.(type) {
 	case string:
 		// Special handling for PostgreSQL functions
-		if v == "CURRENT_TIMESTAMP" || v == "NOW()" || v == "now()" {
+		if v == "CURRENT_TIMESTAMP" || v == "NOW()" {
 			return v
+		}
+		// Convert "now()" to PostgreSQL's NOW()
+		if v == "now()" {
+			return "NOW()"
 		}
 		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
 	case bool:
@@ -426,14 +432,29 @@ func convertPlaceholders(sql string) string {
 		
 		// Replace ? with $N when not in quotes
 		if ch == '?' && !inQuote {
-			// Check if this is a PostgreSQL JSON operator (preceded by space and followed by space or quote)
+			// Check if this is a PostgreSQL JSON operator
 			isJSONOp := false
-			if i > 0 && i < len(sql)-1 {
-				prevChar := sql[i-1]
+			
+			// Look ahead for JSON operators: ?& ?| or single ? preceded by JSON ops
+			if i < len(sql)-1 {
 				nextChar := sql[i+1]
-				// PostgreSQL JSON operators: ? (contains) ?& (contains all) ?| (contains any)
-				if prevChar == ' ' && (nextChar == ' ' || nextChar == '\'' || nextChar == '&' || nextChar == '|') {
+				if nextChar == '&' || nextChar == '|' {
 					isJSONOp = true
+				}
+			}
+			
+			// Also check if preceded by JSON path operators -> or ->> 
+			if i >= 1 && !isJSONOp {
+				prevChar := sql[i-1]
+				if prevChar == ' ' && i >= 2 {
+					// Check for -> or ->> operators specifically (not just >)
+					if i >= 3 && sql[i-3] == '-' && sql[i-2] == '>' {
+						// This is -> operator
+						isJSONOp = true
+					} else if i >= 4 && sql[i-4] == '-' && sql[i-3] == '>' && sql[i-2] == '>' {
+						// This is ->> operator
+						isJSONOp = true
+					}
 				}
 			}
 			

@@ -122,6 +122,18 @@ func (q *SelectQueryImpl) FindMany(ctx context.Context, dest any) error {
 		return q.findManyWithRelations(ctx, sql, args, dest)
 	}
 
+	// Check if dest is []map[string]any - if so, we need field mapping
+	destType := reflect.TypeOf(dest)
+	if destType.Kind() == reflect.Ptr && destType.Elem().Kind() == reflect.Slice {
+		elemType := destType.Elem().Elem()
+		if elemType.Kind() == reflect.Map &&
+			elemType.Key().Kind() == reflect.String &&
+			elemType.Elem().Kind() == reflect.Interface {
+			// Scanning into []map[string]any, use field mapping
+			return q.findManyMapsWithFieldMapping(ctx, sql, args, dest)
+		}
+	}
+
 	// Execute the query using the database
 	rawQuery := q.database.Raw(sql, args...)
 	return rawQuery.Find(ctx, dest)
@@ -176,6 +188,15 @@ func (q *SelectQueryImpl) FindFirst(ctx context.Context, dest any) error {
 			return fmt.Errorf("failed to build SQL: %w", err)
 		}
 		
+		// Check if dest is map[string]any - if so, we need field mapping
+		destType := reflect.TypeOf(dest)
+		if destType.Kind() == reflect.Ptr && destType.Elem().Kind() == reflect.Map &&
+			destType.Elem().Key().Kind() == reflect.String &&
+			destType.Elem().Elem().Kind() == reflect.Interface {
+			// Scanning into map[string]any, use field mapping
+			return q.Limit(1).(*SelectQueryImpl).findOneMapsWithFieldMapping(ctx, sql, args, dest)
+		}
+		
 		// Execute the query using the database
 		rawQuery := q.database.Raw(sql, args...)
 		return rawQuery.FindOne(ctx, dest)
@@ -210,7 +231,7 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 	}
 
 	// Build SELECT clause (with table alias support)
-	selectClause := q.buildSelectClause(tableName)
+	selectClause := q.buildSelectClause()
 
 	// Build FROM clause with alias
 	fromClause := fmt.Sprintf("FROM %s AS %s", tableName, q.tableAlias)
@@ -279,7 +300,7 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 }
 
 // buildSelectClause builds the SELECT part of the query
-func (q *SelectQueryImpl) buildSelectClause(tableName string) string {
+func (q *SelectQueryImpl) buildSelectClause() string {
 	distinctStr := ""
 	if q.distinct {
 		distinctStr = "DISTINCT "
@@ -355,19 +376,17 @@ func (q *SelectQueryImpl) buildWhereClause() (string, []any, error) {
 		return "", nil, nil
 	}
 
+	// Create condition context
+	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, q.tableAlias)
+
 	// Combine all conditions with AND
 	var conditionSQLs []string
 	var args []any
 
 	for _, condition := range q.conditions {
-		sql, condArgs := condition.ToSQL()
+		sql, condArgs := condition.ToSQL(ctx)
 		if sql != "" {
-			// Map field names in the condition SQL
-			mappedSQL, err := q.mapFieldNamesInSQL(sql)
-			if err != nil {
-				return "", nil, fmt.Errorf("failed to map field names in condition: %w", err)
-			}
-			conditionSQLs = append(conditionSQLs, mappedSQL)
+			conditionSQLs = append(conditionSQLs, sql)
 			args = append(args, condArgs...)
 		}
 	}
@@ -394,11 +413,26 @@ func (q *SelectQueryImpl) buildOrderByClause() (string, error) {
 		}
 
 		direction := "ASC"
+		nullsClause := ""
 		if order.Direction == types.DESC {
 			direction = "DESC"
+			// PostgreSQL sorts NULL values first in DESC order by default
+			// We want consistent behavior across all databases, so add NULLS LAST for PostgreSQL
+			if q.database.GetDriverType() == "postgresql" {
+				nullsClause = " NULLS LAST"
+			}
+		} else {
+			// For ASC order, PostgreSQL sorts NULL values last by default, which is what we want
+			// No need to add NULLS clause for ASC
 		}
 
-		orderParts = append(orderParts, fmt.Sprintf("%s %s", columnName, direction))
+		// Add table alias if present to avoid ambiguity
+		fullColumnName := columnName
+		if q.tableAlias != "" {
+			fullColumnName = fmt.Sprintf("%s.%s", q.tableAlias, columnName)
+		}
+
+		orderParts = append(orderParts, fmt.Sprintf("%s %s%s", fullColumnName, direction, nullsClause))
 	}
 
 	return fmt.Sprintf("ORDER BY %s", strings.Join(orderParts, ", ")), nil
@@ -424,17 +458,15 @@ func (q *SelectQueryImpl) buildHavingClause() (string, []any, error) {
 		return "", nil, nil
 	}
 
-	sql, args := q.having.ToSQL()
+	// Create condition context
+	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, q.tableAlias)
+
+	sql, args := q.having.ToSQL(ctx)
 	if sql == "" {
 		return "", nil, nil
 	}
 
-	mappedSQL, err := q.mapFieldNamesInSQL(sql)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to map field names in having clause: %w", err)
-	}
-
-	return fmt.Sprintf("HAVING %s", mappedSQL), args, nil
+	return fmt.Sprintf("HAVING %s", sql), args, nil
 }
 
 // buildLimitClause builds the LIMIT part of the query
@@ -467,8 +499,12 @@ func (q *SelectQueryImpl) buildCountSQL() (string, []any, error) {
 		return "", nil, fmt.Errorf("failed to resolve table name: %w", err)
 	}
 
-	// Build WHERE clause
-	whereClause, args, err := q.buildWhereClause()
+	// Create a temporary query without table alias for count
+	countQuery := q.clone()
+	countQuery.tableAlias = "" // Remove table alias for count queries
+
+	// Build WHERE clause without table alias
+	whereClause, args, err := countQuery.buildWhereClause()
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to build WHERE clause: %w", err)
 	}
@@ -479,8 +515,8 @@ func (q *SelectQueryImpl) buildCountSQL() (string, []any, error) {
 		return "", nil, fmt.Errorf("failed to build GROUP BY clause: %w", err)
 	}
 
-	// Build HAVING clause
-	havingClause, havingArgs, err := q.buildHavingClause()
+	// Build HAVING clause without table alias
+	havingClause, havingArgs, err := countQuery.buildHavingClause()
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to build HAVING clause: %w", err)
 	}
@@ -522,79 +558,9 @@ func (q *SelectQueryImpl) buildCountSQL() (string, []any, error) {
 	return countSQL, args, nil
 }
 
-// mapFieldNamesInSQL maps schema field names to column names in SQL
-func (q *SelectQueryImpl) mapFieldNamesInSQL(sql string) (string, error) {
-	// Get the schema to find all field mappings
-	schema, err := q.database.GetSchema(q.modelName)
-	if err != nil {
-		// If we can't get the schema, return SQL as-is
-		return sql, nil
-	}
-
-	// Replace field names with column names
-	result := sql
-	for _, field := range schema.Fields {
-		fieldName := field.Name
-		columnName := field.GetColumnName()
-
-		// Build the replacement based on whether we have joins
-		var replacement string
-		if q.joinBuilder != nil && len(q.joinBuilder.GetJoinedTables()) > 0 {
-			// Add table alias to column references
-			replacement = fmt.Sprintf("%s.%s", q.tableAlias, columnName)
-		} else {
-			// No joins, just use column name
-			replacement = columnName
-		}
-
-		// Replace all occurrences where the field name appears as a complete word
-		// This handles cases like "id = ?", "id > ?", etc.
-		result = replaceFieldReferences(result, fieldName, replacement)
-	}
-
-	return result, nil
-}
-
-// replaceFieldReferences replaces field name references in SQL with the given replacement
-func replaceFieldReferences(sql, fieldName, replacement string) string {
-	// Create a map of all possible operators and delimiters
-	operators := []string{" ", "=", "!=", "<", ">", "<=", ">="}
-	keywords := []string{" IN", " NOT", " LIKE", " BETWEEN", " IS"}
-	
-	result := sql
-	
-	// Replace field at the start of the string
-	if strings.HasPrefix(result, fieldName) {
-		// Check if it's followed by an operator or space
-		for _, op := range operators {
-			if strings.HasPrefix(result, fieldName+op) {
-				result = replacement + result[len(fieldName):]
-				break
-			}
-		}
-		for _, kw := range keywords {
-			if strings.HasPrefix(result, fieldName+kw) {
-				result = replacement + result[len(fieldName):]
-				break
-			}
-		}
-	}
-	
-	// Replace field after spaces or parentheses
-	for _, prefix := range []string{" ", "(", ","} {
-		for _, op := range operators {
-			result = strings.ReplaceAll(result, prefix+fieldName+op, prefix+replacement+op)
-		}
-		for _, kw := range keywords {
-			result = strings.ReplaceAll(result, prefix+fieldName+kw, prefix+replacement+kw)
-		}
-	}
-	
-	return result
-}
 
 // findManyWithRelations executes the query and scans results with relation support
-func (q *SelectQueryImpl) findManyWithRelations(ctx context.Context, sql string, args []any, dest any) error {
+func (q *SelectQueryImpl) findManyWithRelations(_ context.Context, sql string, args []any, dest any) error {
 	// Execute query using database's Query method
 	rows, err := q.database.Query(sql, args...)
 	if err != nil {
@@ -619,6 +585,149 @@ func (q *SelectQueryImpl) findManyWithRelations(ctx context.Context, sql string,
 
 	// Use relation scanner to scan rows
 	return scanner.ScanRowsWithRelations(rows, dest)
+}
+
+// findManyMapsWithFieldMapping executes the query and scans results into maps with field name mapping
+func (q *SelectQueryImpl) findManyMapsWithFieldMapping(_ context.Context, sql string, args []any, dest any) error {
+	// Execute query using database's Query method
+	rows, err := q.database.Query(sql, args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer rows.Close()
+
+	// Get schema for field mapping
+	mainSchema, err := q.database.GetSchema(q.modelName)
+	if err != nil {
+		return fmt.Errorf("failed to get schema for model %s: %w", q.modelName, err)
+	}
+
+	// Get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		return fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	// Prepare result slice
+	var results []map[string]any
+
+	// Create value holders
+	values := make([]any, len(columns))
+	valuePtrs := make([]any, len(columns))
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+
+	// Scan all rows
+	for rows.Next() {
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Create map for this row
+		rowMap := make(map[string]any)
+		for i, col := range columns {
+			val := values[i]
+			// Handle byte arrays (convert to string)
+			if b, ok := val.([]byte); ok {
+				val = string(b)
+			}
+
+			// Map column name back to field name
+			fieldName := col
+			// Remove table alias prefix if present (e.g., "t.first_name" -> "first_name")
+			if strings.Contains(col, ".") {
+				parts := strings.Split(col, ".")
+				fieldName = parts[len(parts)-1]
+			}
+
+			// Try to map column name to field name
+			if mapped, err := mainSchema.GetFieldNameByColumnName(fieldName); err == nil {
+				fieldName = mapped
+			}
+
+			rowMap[fieldName] = val
+		}
+		results = append(results, rowMap)
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	// Set results to destination
+	destValue := reflect.ValueOf(dest).Elem()
+	destValue.Set(reflect.ValueOf(results))
+
+	return nil
+}
+
+// findOneMapsWithFieldMapping executes the query and scans a single result into a map with field name mapping
+func (q *SelectQueryImpl) findOneMapsWithFieldMapping(_ context.Context, sql string, args []any, dest any) error {
+	// Execute query using database's Query method
+	rows, err := q.database.Query(sql, args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return fmt.Errorf("no rows found")
+	}
+
+	// Get schema for field mapping
+	mainSchema, err := q.database.GetSchema(q.modelName)
+	if err != nil {
+		return fmt.Errorf("failed to get schema for model %s: %w", q.modelName, err)
+	}
+
+	// Get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		return fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	// Create value holders
+	values := make([]any, len(columns))
+	valuePtrs := make([]any, len(columns))
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+
+	if err := rows.Scan(valuePtrs...); err != nil {
+		return fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	// Create map for this row
+	rowMap := make(map[string]any)
+	for i, col := range columns {
+		val := values[i]
+		// Handle byte arrays (convert to string)
+		if b, ok := val.([]byte); ok {
+			val = string(b)
+		}
+
+		// Map column name back to field name
+		fieldName := col
+		// Remove table alias prefix if present (e.g., "t.first_name" -> "first_name")
+		if strings.Contains(col, ".") {
+			parts := strings.Split(col, ".")
+			fieldName = parts[len(parts)-1]
+		}
+
+		// Try to map column name to field name
+		if mapped, err := mainSchema.GetFieldNameByColumnName(fieldName); err == nil {
+			fieldName = mapped
+		}
+
+		rowMap[fieldName] = val
+	}
+
+	// Set the map to the destination
+	destValue := reflect.ValueOf(dest).Elem()
+	destValue.Set(reflect.ValueOf(rowMap))
+
+	return nil
 }
 
 // clone creates a copy of the select query

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -49,15 +48,6 @@ func getPostgreSQLTestConfig() types.Config {
 		host = "localhost"
 	}
 
-	portStr := os.Getenv("POSTGRES_TEST_PORT")
-	if portStr == "" {
-		portStr = "5432"
-	}
-	port := 5432
-	if p, err := strconv.Atoi(portStr); err == nil {
-		port = p
-	}
-
 	user := os.Getenv("POSTGRES_TEST_USER")
 	if user == "" {
 		user = "testuser"
@@ -76,13 +66,48 @@ func getPostgreSQLTestConfig() types.Config {
 	return types.Config{
 		Type:     "postgresql",
 		Host:     host,
-		Port:     port,
+		Port:     5432,
 		User:     user,
 		Password: password,
 		Database: database,
 		Options: map[string]string{
 			"sslmode": "disable",
 		},
+	}
+}
+
+// cleanupTables removes all non-system tables from the database
+func cleanupTables(t *testing.T, db *PostgreSQLDB) {
+	ctx := context.Background()
+	
+	// Get all tables in public schema
+	rows, err := db.DB.QueryContext(ctx, `
+		SELECT tablename 
+		FROM pg_tables 
+		WHERE schemaname = 'public'
+	`)
+	if err != nil {
+		t.Logf("Failed to get tables: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			t.Logf("Failed to scan table name: %v", err)
+			continue
+		}
+		tables = append(tables, table)
+	}
+
+	// Drop all tables with CASCADE
+	for _, table := range tables {
+		_, err := db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS "%s" CASCADE`, table))
+		if err != nil {
+			t.Logf("Failed to drop table %s: %v", table, err)
+		}
 	}
 }
 
@@ -93,12 +118,8 @@ func setupTestDB(t *testing.T) *PostgreSQLDB {
 	}
 
 	config := getPostgreSQLTestConfig()
-
-	// First connect without database to create it
-	configWithoutDB := config
-	configWithoutDB.Database = "postgres" // Use default postgres database
-
-	db, err := NewPostgreSQLDB(configWithoutDB)
+	
+	db, err := NewPostgreSQLDB(config)
 	if err != nil {
 		t.Skipf("Failed to create PostgreSQL connection: %v", err)
 	}
@@ -109,25 +130,8 @@ func setupTestDB(t *testing.T) *PostgreSQLDB {
 		t.Skipf("Failed to connect to PostgreSQL: %v", err)
 	}
 
-	// Drop and create test database
-	_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", config.Database))
-	_, err = db.Exec(fmt.Sprintf("CREATE DATABASE %s", config.Database))
-	require.NoError(t, err)
-
-	// Close and reconnect with database
-	db.Close()
-
-	db, err = NewPostgreSQLDB(config)
-	require.NoError(t, err)
-
-	err = db.Connect(ctx)
-	require.NoError(t, err)
-
-	// Drop existing tables
-	tables := []string{"comments", "posts", "users"}
-	for _, table := range tables {
-		_, _ = db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", table))
-	}
+	// Clean up existing tables
+	cleanupTables(t, db)
 
 	// Create schemas
 	userSchema := schema.New("User").
@@ -209,6 +213,12 @@ func setupTestDB(t *testing.T) *PostgreSQLDB {
 	// Insert test data
 	insertTestData(t, db)
 
+	// Add cleanup
+	t.Cleanup(func() {
+		cleanupTables(t, db)
+		db.Close()
+	})
+
 	return db
 }
 
@@ -261,10 +271,6 @@ func insertTestData(t *testing.T, db *PostgreSQLDB) {
 
 func TestPostgreSQLDB_BasicSelect(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -292,10 +298,6 @@ func TestPostgreSQLDB_BasicSelect(t *testing.T) {
 
 func TestPostgreSQLDB_WhereConditions(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -363,10 +365,6 @@ func TestPostgreSQLDB_WhereConditions(t *testing.T) {
 
 func TestPostgreSQLDB_OrderBy(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -404,10 +402,6 @@ func TestPostgreSQLDB_OrderBy(t *testing.T) {
 
 func TestPostgreSQLDB_LimitOffset(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -447,10 +441,6 @@ func TestPostgreSQLDB_LimitOffset(t *testing.T) {
 
 func TestPostgreSQLDB_Distinct(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -493,10 +483,6 @@ func TestPostgreSQLDB_Distinct(t *testing.T) {
 
 func TestPostgreSQLDB_GroupBy(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -581,10 +567,6 @@ func TestPostgreSQLDB_GroupBy(t *testing.T) {
 
 func TestPostgreSQLDB_Include(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -658,10 +640,6 @@ func TestPostgreSQLDB_Include(t *testing.T) {
 
 func TestPostgreSQLDB_ComplexQueries(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -714,10 +692,6 @@ func TestPostgreSQLDB_ComplexQueries(t *testing.T) {
 
 func TestPostgreSQLDB_Aggregations(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -768,10 +742,6 @@ func TestPostgreSQLDB_Aggregations(t *testing.T) {
 
 func TestPostgreSQLDB_NullValues(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -810,10 +780,6 @@ func TestPostgreSQLDB_NullValues(t *testing.T) {
 
 func TestPostgreSQLDB_FieldNameMapping(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -834,10 +800,6 @@ func TestPostgreSQLDB_FieldNameMapping(t *testing.T) {
 
 func TestPostgreSQLDB_ErrorHandling(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -874,10 +836,6 @@ func TestPostgreSQLDB_ErrorHandling(t *testing.T) {
 
 func TestPostgreSQLDB_ArrayTypes(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -900,10 +858,6 @@ func TestPostgreSQLDB_ArrayTypes(t *testing.T) {
 
 func TestPostgreSQLDB_JSONTypes(t *testing.T) {
 	db := setupTestDB(t)
-	defer func() {
-		_, _ = db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db.Config.Database))
-		db.Close()
-	}()
 
 	ctx := context.Background()
 
@@ -925,8 +879,8 @@ func TestPostgreSQLDB_JSONTypes(t *testing.T) {
 	assert.Len(t, results, 1)
 	assert.Equal(t, "Ivy", results[0]["name"])
 
-	// Query JSON array contains
-	err = db.Raw("SELECT * FROM users WHERE metadata->'permissions' ? 'delete'").Find(ctx, &results)
+	// Query JSON array contains - use @> operator instead of ? to avoid placeholder conflict
+	err = db.Raw("SELECT * FROM users WHERE metadata->'permissions' @> '\"delete\"'::jsonb").Find(ctx, &results)
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
 }

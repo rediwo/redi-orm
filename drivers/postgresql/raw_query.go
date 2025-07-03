@@ -20,6 +20,7 @@ type PostgreSQLRawQuery struct {
 func (q *PostgreSQLRawQuery) Exec(ctx context.Context) (types.Result, error) {
 	// Convert ? placeholders to $1, $2, etc.
 	sql := convertPlaceholders(q.sql)
+	// fmt.Printf("[DEBUG] Raw Exec query: %s, args: %v\n", sql, q.args)
 	result, err := q.db.ExecContext(ctx, sql, q.args...)
 	if err != nil {
 		return types.Result{}, fmt.Errorf("failed to execute query: %w", err)

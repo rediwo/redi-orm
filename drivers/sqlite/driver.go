@@ -147,6 +147,11 @@ func (s *SQLiteDB) Transaction(ctx context.Context, fn func(tx types.Transaction
 	return nil
 }
 
+// GetDriverType returns the database driver type
+func (s *SQLiteDB) GetDriverType() string {
+	return "sqlite"
+}
+
 // GetMigrator returns a migrator for SQLite
 func (s *SQLiteDB) GetMigrator() types.DatabaseMigrator {
 	return NewSQLiteMigrator(s.DB, s)

@@ -423,6 +423,25 @@ func (m *MySQLMigrator) IsSystemIndex(indexName string) bool {
 		strings.Contains(lower, "primary_key")
 }
 
+// IsSystemTable checks if a table is a system table in MySQL
+func (m *MySQLMigrator) IsSystemTable(tableName string) bool {
+	lower := strings.ToLower(tableName)
+
+	// MySQL system table patterns:
+	// - mysql.* schema tables
+	// - information_schema.* tables
+	// - performance_schema.* tables
+	// - sys.* schema tables
+	return strings.HasPrefix(lower, "mysql.") ||
+		strings.HasPrefix(lower, "information_schema.") ||
+		strings.HasPrefix(lower, "performance_schema.") ||
+		strings.HasPrefix(lower, "sys.") ||
+		lower == "mysql" ||
+		lower == "information_schema" ||
+		lower == "performance_schema" ||
+		lower == "sys"
+}
+
 // Additional wrapper methods to satisfy the types.DatabaseMigrator interface
 
 // GenerateCreateTableSQL wraps to match the DatabaseMigrator interface
@@ -446,4 +465,9 @@ func (w *MySQLMigratorWrapper) CompareSchema(existingTable *types.TableInfo, des
 		return nil, fmt.Errorf("expected *schema.Schema, got %T", desiredSchema)
 	}
 	return w.BaseMigrator.CompareSchema(existingTable, s)
+}
+
+// IsSystemTable delegates to the specific implementation
+func (w *MySQLMigratorWrapper) IsSystemTable(tableName string) bool {
+	return w.specific.IsSystemTable(tableName)
 }

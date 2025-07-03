@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi-orm/utils"
@@ -55,9 +56,12 @@ func (t *PostgreSQLTransaction) ReleaseSavepoint(ctx context.Context, name strin
 
 // Model creates a model query within the transaction
 func (t *PostgreSQLTransaction) Model(modelName string) types.ModelQuery {
-	// This would need to be implemented with a transaction-aware model query
-	// For now, return nil as we need to implement ModelQuery first
-	panic("Model query not implemented for transactions")
+	// Create a transaction-aware database wrapper
+	txDB := &PostgreSQLTransactionDB{
+		PostgreSQLDB: t.db,
+		tx:           t.tx,
+	}
+	return query.NewModelQuery(modelName, txDB, t.db.GetFieldMapper())
 }
 
 // CreateMany creates multiple records within the transaction
@@ -190,4 +194,85 @@ func (t *PostgreSQLTransactionDB) LoadSchemaFrom(ctx context.Context, filename s
 // SyncSchemas is not supported within a transaction
 func (t *PostgreSQLTransactionDB) SyncSchemas(ctx context.Context) error {
 	return fmt.Errorf("cannot sync schemas within a transaction")
+}
+
+// Model creates a model query within the transaction
+func (t *PostgreSQLTransactionDB) Model(modelName string) types.ModelQuery {
+	// Create a new transaction that wraps this one
+	txWrapper := &PostgreSQLTransaction{
+		tx: t.tx,
+		db: t.PostgreSQLDB,
+	}
+	return txWrapper.Model(modelName)
+}
+
+// GetModels returns all registered model names
+func (t *PostgreSQLTransactionDB) GetModels() []string {
+	return t.PostgreSQLDB.GetModels()
+}
+
+// ResolveTableName resolves model name to table name
+func (t *PostgreSQLTransactionDB) ResolveTableName(modelName string) (string, error) {
+	return t.PostgreSQLDB.ResolveTableName(modelName)
+}
+
+// ResolveFieldName resolves schema field name to column name
+func (t *PostgreSQLTransactionDB) ResolveFieldName(modelName, fieldName string) (string, error) {
+	return t.PostgreSQLDB.ResolveFieldName(modelName, fieldName)
+}
+
+// ResolveFieldNames resolves multiple schema field names to column names
+func (t *PostgreSQLTransactionDB) ResolveFieldNames(modelName string, fieldNames []string) ([]string, error) {
+	return t.PostgreSQLDB.ResolveFieldNames(modelName, fieldNames)
+}
+
+// CreateModel is not supported within a transaction
+func (t *PostgreSQLTransactionDB) CreateModel(ctx context.Context, modelName string) error {
+	return fmt.Errorf("cannot create model within a transaction")
+}
+
+// DropModel is not supported within a transaction
+func (t *PostgreSQLTransactionDB) DropModel(ctx context.Context, modelName string) error {
+	return fmt.Errorf("cannot drop model within a transaction")
+}
+
+// GetMigrator is not supported within a transaction
+func (t *PostgreSQLTransactionDB) GetMigrator() types.DatabaseMigrator {
+	return nil
+}
+
+// Exec executes a raw SQL statement within the transaction
+func (t *PostgreSQLTransactionDB) Exec(query string, args ...any) (sql.Result, error) {
+	// Convert ? placeholders to $1, $2, etc.
+	query = convertPlaceholders(query)
+	return t.tx.Exec(query, args...)
+}
+
+// Query executes a raw SQL query that returns rows within the transaction
+func (t *PostgreSQLTransactionDB) Query(query string, args ...any) (*sql.Rows, error) {
+	// Convert ? placeholders to $1, $2, etc.
+	query = convertPlaceholders(query)
+	return t.tx.Query(query, args...)
+}
+
+// QueryRow executes a raw SQL query that returns a single row within the transaction
+func (t *PostgreSQLTransactionDB) QueryRow(query string, args ...any) *sql.Row {
+	// Convert ? placeholders to $1, $2, etc.
+	query = convertPlaceholders(query)
+	return t.tx.QueryRow(query, args...)
+}
+
+// Connect is not supported within a transaction
+func (t *PostgreSQLTransactionDB) Connect(ctx context.Context) error {
+	return fmt.Errorf("cannot connect within a transaction")
+}
+
+// Close is not supported within a transaction
+func (t *PostgreSQLTransactionDB) Close() error {
+	return fmt.Errorf("cannot close within a transaction")
+}
+
+// Ping is not supported within a transaction  
+func (t *PostgreSQLTransactionDB) Ping(ctx context.Context) error {
+	return fmt.Errorf("cannot ping within a transaction")
 }

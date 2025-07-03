@@ -115,6 +115,7 @@ type Database interface {
 	// Metadata
 	GetModels() []string
 	GetModelSchema(modelName string) (*schema.Schema, error)
+	GetDriverType() string
 
 	// Internal field mapping (used by driver implementations)
 	ResolveTableName(modelName string) (string, error)
@@ -254,7 +255,7 @@ type RawQuery interface {
 
 // Condition interface for query conditions
 type Condition interface {
-	ToSQL() (string, []any)
+	ToSQL(ctx *ConditionContext) (string, []any)
 	And(condition Condition) Condition
 	Or(condition Condition) Condition
 	Not() Condition
@@ -413,6 +414,9 @@ type DatabaseSpecificMigrator interface {
 
 	// Index management
 	IsSystemIndex(indexName string) bool
+	
+	// Table management
+	IsSystemTable(tableName string) bool
 }
 
 type DatabaseMigrator interface {
