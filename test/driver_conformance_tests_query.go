@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -689,6 +690,129 @@ func (dct *DriverConformanceTests) TestAggregations(t *testing.T) {
 		WHERE published = ?
 	`, true).FindOne(ctx, &result)
 	assert.NoError(t, err)
-	assert.Equal(t, int64(3), result["count"])
-	assert.Greater(t, result["total_views"], int64(0))
+	
+	// MySQL returns aggregation results as strings, so use conversion utilities
+	countResult := utils.ToInt64(result["count"])
+	totalViews := utils.ToInt64(result["total_views"])
+	avgViews := utils.ToFloat64(result["avg_views"])
+	minViews := utils.ToInt64(result["min_views"])
+	maxViews := utils.ToInt64(result["max_views"])
+	
+	assert.Equal(t, int64(3), countResult)
+	assert.Equal(t, int64(1150), totalViews) // 100 + 50 + 1000
+	assert.InDelta(t, float64(383.33), avgViews, 0.5) // Average of 100, 50, 1000
+	assert.Equal(t, int64(50), minViews)
+	assert.Equal(t, int64(1000), maxViews)
 }
+
+// ===== Include/Join Tests =====
+
+func (dct *DriverConformanceTests) TestInclude(t *testing.T) {
+	if dct.shouldSkip("TestInclude") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	err = td.InsertStandardTestData()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test 1: Include posts for user (one-to-many)
+	t.Run("Include posts for user", func(t *testing.T) {
+		User := td.DB.Model("User")
+		var user map[string]any
+		err := User.Select().
+			WhereCondition(User.Where("id").Equals(1)).
+			Include("posts").
+			FindFirst(ctx, &user)
+
+		// Include should work correctly
+		require.NoError(t, err)
+		assert.Equal(t, "Alice", user["name"])
+		posts, ok := user["posts"].([]any)
+		assert.True(t, ok)
+		assert.Len(t, posts, 2)
+
+		// Verify post data
+		if len(posts) >= 2 {
+			post1 := posts[0].(map[string]any)
+			post2 := posts[1].(map[string]any)
+			assert.Equal(t, "First Post", post1["title"])
+			assert.Equal(t, "Second Post", post2["title"])
+		}
+	})
+
+	// Test 2: Manual join query (workaround for drivers that don't support Include)
+	t.Run("Manual join for user posts", func(t *testing.T) {
+		var results []map[string]any
+		sql := `
+			SELECT u.id as user_id, u.name, u.email,
+			       p.id as post_id, p.title, p.views
+			FROM users u
+			LEFT JOIN posts p ON p.user_id = u.id
+			WHERE u.id = ?
+			ORDER BY p.id
+		`
+		err := td.DB.Raw(sql, 1).Find(ctx, &results)
+		require.NoError(t, err)
+		assert.Len(t, results, 2) // Alice has 2 posts
+		assert.Equal(t, "Alice", results[0]["name"])
+		assert.Equal(t, "First Post", results[0]["title"])
+	})
+}
+
+// ===== Complex Query Tests =====
+
+func (dct *DriverConformanceTests) TestComplexQueries(t *testing.T) {
+	if dct.shouldSkip("TestComplexQueries") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	err = td.InsertStandardTestData()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test 1: Complex WHERE with AND/OR
+	Post := td.DB.Model("Post")
+	var posts []TestPost
+	err = Post.Select().WhereCondition(
+		Post.Where("published").Equals(true).And(
+			Post.Where("views").GreaterThan(100).Or(
+				Post.Where("userId").Equals(3),
+			),
+		),
+	).FindMany(ctx, &posts)
+	require.NoError(t, err)
+	assert.Len(t, posts, 1) // Only "Popular Post" matches (views=1000 > 100)
+
+	// Test 2: Subquery-like operation using raw SQL
+	var results []map[string]any
+	sql := `
+		SELECT u.name, COUNT(p.id) as post_count
+		FROM users u
+		LEFT JOIN posts p ON p.user_id = u.id
+		GROUP BY u.id, u.name
+		HAVING COUNT(p.id) > 0
+		ORDER BY post_count DESC
+	`
+	err = td.DB.Raw(sql).Find(ctx, &results)
+	require.NoError(t, err)
+	// Both Alice and Bob have 2 posts, so accept either one
+	firstName := results[0]["name"].(string)
+	assert.True(t, firstName == "Alice" || firstName == "Bob", "Expected Alice or Bob but got %s", firstName)
+	assert.Equal(t, int64(2), utils.ToInt64(results[0]["post_count"]))
+}
+

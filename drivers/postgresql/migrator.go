@@ -470,8 +470,11 @@ func (m *PostgreSQLMigrator) GenerateColumnDefinitionFromColumnInfo(column types
 		parts = append(parts, "UNIQUE")
 	}
 
-	if column.Default != "" && !column.AutoIncrement {
-		parts = append(parts, fmt.Sprintf("DEFAULT %s", column.Default))
+	if column.Default != nil && !column.AutoIncrement {
+		// Default should already be a formatted string if it was set
+		if defaultStr, ok := column.Default.(string); ok && defaultStr != "" {
+			parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultStr))
+		}
 	}
 
 	return strings.Join(parts, " ")
@@ -489,7 +492,9 @@ func (m *PostgreSQLMigrator) GenerateColumnDefinition(field schema.Field) string
 	}
 
 	if field.Default != nil {
-		column.Default = m.postgresqlDB.formatDefaultValue(field.Default, field.Type)
+		// Store the formatted default value as a string in the any field
+		formattedDefault := m.postgresqlDB.formatDefaultValue(field.Default, field.Type)
+		column.Default = formattedDefault
 	}
 
 	// Handle SERIAL types for auto increment

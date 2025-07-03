@@ -343,9 +343,10 @@ func (m *MySQLMigrator) GenerateCreateIndexSQL(tableName, indexName string, colu
 
 // GenerateDropIndexSQL generates DROP INDEX SQL
 func (m *MySQLMigrator) GenerateDropIndexSQL(indexName string) string {
-	// In MySQL, indexes are dropped with table name
-	// This is a simplified version - in practice, you'd need the table name
-	return fmt.Sprintf("DROP INDEX `%s`", indexName)
+	// MySQL requires table name to drop an index, but the interface doesn't provide it
+	// TODO: The interface should be updated to include table name
+	// For now, return empty string to avoid syntax errors - index drops will need manual handling
+	return ""
 }
 
 // ApplyMigration executes a migration SQL

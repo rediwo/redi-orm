@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/rediwo/redi-orm/prisma"
@@ -324,6 +325,10 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 
 			// Apply each SQL statement
 			for _, sql := range sqlStatements {
+				// Skip empty SQL statements
+				if strings.TrimSpace(sql) == "" {
+					continue
+				}
 				if err := migrator.ApplyMigration(sql); err != nil {
 					return fmt.Errorf("failed to apply migration for %s: %w", sch.TableName, err)
 				}

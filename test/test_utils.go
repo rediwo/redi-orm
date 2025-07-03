@@ -22,14 +22,12 @@ type TestDatabase struct {
 }
 
 // NewTestDatabase creates a new test database instance
-func NewTestDatabase(t *testing.T, db types.Database, config types.Config) *TestDatabase {
+func NewTestDatabase(t *testing.T, db types.Database, config types.Config, cleanup func()) *TestDatabase {
 	return &TestDatabase{
 		DB:     db,
 		Config: config,
 		T:      t,
-		Cleanup: func() {
-			db.Close()
-		},
+		Cleanup: cleanup,
 	}
 }
 
@@ -199,7 +197,8 @@ func (td *TestDatabase) CreateStandardSchemasWithCleanup(cleanupData bool) error
 
 	// Optionally clean up any existing data
 	if cleanupData {
-		td.TruncateAllTables()
+		// Cleanup should be handled by each driver's specific cleanup function
+		td.T.Log("Data cleanup should be handled by driver-specific cleanupTables function")
 	}
 
 	return nil
@@ -209,10 +208,7 @@ func (td *TestDatabase) CreateStandardSchemasWithCleanup(cleanupData bool) error
 func (td *TestDatabase) InsertStandardTestData() error {
 	ctx := context.Background()
 
-	// First truncate all tables to ensure clean state
-	if err := td.TruncateAllTables(); err != nil {
-		td.T.Logf("Warning: failed to truncate tables before inserting test data: %v", err)
-	}
+	// Driver-specific cleanup should be done before calling this function
 
 	// Insert users
 	User := td.DB.Model("User")
@@ -295,108 +291,11 @@ func (td *TestDatabase) InsertStandardTestData() error {
 	return nil
 }
 
-// CleanupAllTables drops all test tables
-func (td *TestDatabase) CleanupAllTables() error {
-	ctx := context.Background()
-	
-	// Get migrator to access database tables
-	migrator := td.DB.GetMigrator()
-	if migrator != nil {
-		// Check if migrator supports IsSystemTable
-		if specificMigrator, ok := migrator.(interface{ IsSystemTable(string) bool }); ok {
-			// Get all existing tables from the database
-			tables, err := migrator.GetTables()
-			if err == nil && len(tables) > 0 {
-				// Drop tables in reverse order (in case of foreign key constraints)
-				for i := len(tables) - 1; i >= 0; i-- {
-					tableName := tables[i]
-					// Skip system tables - let the driver decide what's a system table
-					if !specificMigrator.IsSystemTable(tableName) {
-						dropSQL := migrator.GenerateDropTableSQL(tableName)
-						if err := migrator.ApplyMigration(dropSQL); err != nil {
-							td.T.Logf("Warning: failed to drop table %s: %v", tableName, err)
-						}
-					}
-				}
-				return nil
-			}
-		}
-	}
-	
-	// Fallback: try to drop known test models if they're registered
-	tables := []string{"PostTag", "Comment", "Tag", "Post", "User"}
-	
-	for _, table := range tables {
-		if err := td.DB.DropModel(ctx, table); err != nil {
-			// Log but don't fail if table doesn't exist
-			td.T.Logf("Warning: failed to drop table %s: %v", table, err)
-		}
-	}
-	
-	return nil
-}
 
 
 
 
 
-// TruncateAllTables clears data from all test tables
-func (td *TestDatabase) TruncateAllTables() error {
-	// Get all registered model names from the database
-	allModels := td.DB.GetModels()
-	if len(allModels) == 0 {
-		// No models registered, nothing to truncate
-		// This is expected in some test scenarios
-		return nil
-	}
-	
-	// Sort models in reverse dependency order for safe truncation
-	// Tables with foreign keys should be cleared before their referenced tables
-	preferredOrder := []string{"PostTag", "Comment", "Tag", "Post", "User"}
-	
-	// Build ordered list of models to clear
-	var orderedModels []string
-	
-	// First add models in our preferred order if they exist
-	for _, modelName := range preferredOrder {
-		for _, registeredModel := range allModels {
-			if registeredModel == modelName {
-				orderedModels = append(orderedModels, modelName)
-				break
-			}
-		}
-	}
-	
-	// Then add any additional registered models
-	for _, registeredModel := range allModels {
-		found := false
-		for _, existing := range orderedModels {
-			if existing == registeredModel {
-				found = true
-				break
-			}
-		}
-		if !found {
-			orderedModels = append(orderedModels, registeredModel)
-		}
-	}
-	
-	// Clear each model by dropping and recreating (ensures clean state)
-	ctx := context.Background()
-	for _, modelName := range orderedModels {
-		// Drop the model's table
-		if err := td.DB.DropModel(ctx, modelName); err != nil {
-			td.T.Logf("Info: failed to drop model %s: %v", modelName, err)
-		}
-		
-		// Recreate the model's table
-		if err := td.DB.CreateModel(ctx, modelName); err != nil {
-			td.T.Logf("Info: failed to recreate model %s: %v", modelName, err)
-		}
-	}
-	
-	return nil
-}
 
 // AssertCount asserts the count of records in a model
 func (td *TestDatabase) AssertCount(modelName string, expected int64) {

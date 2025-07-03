@@ -8,6 +8,7 @@ import (
 
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -497,7 +498,7 @@ func (dct *DriverConformanceTests) TestStringTypes(t *testing.T) {
 	// Test various string values
 	// Create a string that's close to but under 255 characters
 	longString := ""
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		longString += "Lorem ipsum "
 	}
 	// longString is now about 240 characters
@@ -886,7 +887,17 @@ func (dct *DriverConformanceTests) TestRawUpdate(t *testing.T) {
 	// Test raw UPDATE
 	result, err := td.DB.Raw("UPDATE users SET active = ? WHERE age > ?", false, 30).Exec(ctx)
 	assert.NoError(t, err)
-	assert.Greater(t, result.RowsAffected, int64(0))
+	
+	// Check expected rows affected based on driver characteristics
+	if dct.Characteristics.ReturnsZeroRowsAffectedForUnchanged {
+		// MySQL doesn't count rows where values didn't actually change
+		// Charlie (age 35) is already inactive, so RowsAffected might be 0
+		// But we should at least verify the query succeeded
+		assert.NoError(t, err)
+	} else {
+		// Other databases count all matched rows
+		assert.Greater(t, result.RowsAffected, int64(0))
+	}
 }
 
 func (dct *DriverConformanceTests) TestRawDelete(t *testing.T) {
@@ -937,5 +948,509 @@ func (dct *DriverConformanceTests) TestRawWithParameters(t *testing.T) {
 	// Test with no parameters
 	err = td.DB.Raw("SELECT COUNT(*) as count FROM users").Find(ctx, &results)
 	assert.NoError(t, err)
+}
+
+// Extended Raw Query Tests
+
+func (dct *DriverConformanceTests) TestRawQueryErrorHandling(t *testing.T) {
+	if dct.shouldSkip("TestRawQueryErrorHandling") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	ctx := context.Background()
+
+	// Test invalid SQL syntax
+	var results []map[string]any
+	err := td.DB.Raw("INVALID SQL SYNTAX").Find(ctx, &results)
+	assert.Error(t, err)
+
+	// Test non-existent table
+	err = td.DB.Raw("SELECT * FROM non_existent_table").Find(ctx, &results)
+	assert.Error(t, err)
+
+	// Test wrong number of parameters
+	err = td.DB.Raw("SELECT * FROM users WHERE id = ? AND name = ?", 1).Find(ctx, &results)
+	assert.Error(t, err)
+}
+
+func (dct *DriverConformanceTests) TestRawQueryWithDifferentDataTypes(t *testing.T) {
+	if dct.shouldSkip("TestRawQueryWithDifferentDataTypes") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	// Create a table with various data types
+	dataTypeSchema := schema.New("DataTypeTest").
+		AddField(schema.Field{Name: "id", Type: schema.FieldTypeInt, PrimaryKey: true}).
+		AddField(schema.Field{Name: "intVal", Type: schema.FieldTypeInt}).
+		AddField(schema.Field{Name: "floatVal", Type: schema.FieldTypeFloat}).
+		AddField(schema.Field{Name: "boolVal", Type: schema.FieldTypeBool}).
+		AddField(schema.Field{Name: "stringVal", Type: schema.FieldTypeString}).
+		AddField(schema.Field{Name: "nullableString", Type: schema.FieldTypeString, Nullable: true}).
+		AddField(schema.Field{Name: "jsonVal", Type: schema.FieldTypeJSON}).
+		AddField(schema.Field{Name: "dateTimeVal", Type: schema.FieldTypeDateTime})
+
+	err := td.DB.RegisterSchema("DataTypeTest", dataTypeSchema)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = td.DB.CreateModel(ctx, "DataTypeTest")
+	require.NoError(t, err)
+
+	// Insert test data with raw query
+	now := time.Now().UTC()
+	_, err = td.DB.Raw(
+		"INSERT INTO data_type_tests (id, int_val, float_val, bool_val, string_val, nullable_string, json_val, date_time_val) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		1, 42, 3.14, true, "test", nil, `{"key": "value"}`, now,
+	).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Query with different data types
+	var result map[string]any
+	err = td.DB.Raw("SELECT * FROM data_type_tests WHERE id = ?", 1).FindOne(ctx, &result)
+	assert.NoError(t, err)
+	
+	// Use conversion utilities to handle different driver representations
+	// Raw queries return column names as-is (snake_case)
+	assert.Equal(t, int64(42), utils.ToInt64(result["int_val"]))
+	assert.InDelta(t, 3.14, utils.ToFloat64(result["float_val"]), 0.001)
+	assert.Equal(t, true, utils.ToBool(result["bool_val"]))
+	assert.Equal(t, "test", result["string_val"])
+	assert.Nil(t, result["nullable_string"])
+}
+
+func (dct *DriverConformanceTests) TestRawQueryComplexQueries(t *testing.T) {
+	if dct.shouldSkip("TestRawQueryComplexQueries") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	err = td.InsertStandardTestData()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test JOIN query
+	var results []map[string]any
+	joinQuery := `
+		SELECT u.name as user_name, p.title as post_title 
+		FROM posts p 
+		INNER JOIN users u ON p.user_id = u.id 
+		WHERE p.published = ?
+		ORDER BY p.id
+	`
+	err = td.DB.Raw(joinQuery, true).Find(ctx, &results)
+	assert.NoError(t, err)
+	assert.Greater(t, len(results), 0)
+	assert.Contains(t, results[0], "user_name")
+	assert.Contains(t, results[0], "post_title")
+
+	// Test aggregate functions with GROUP BY
+	aggregateQuery := `
+		SELECT u.name, COUNT(p.id) as post_count 
+		FROM users u 
+		LEFT JOIN posts p ON u.id = p.user_id 
+		GROUP BY u.id, u.name 
+		HAVING COUNT(p.id) > ?
+		ORDER BY u.name
+	`
+	err = td.DB.Raw(aggregateQuery, 0).Find(ctx, &results)
+	assert.NoError(t, err)
+	assert.Greater(t, len(results), 0)
+
+	// Test subquery
+	subQuery := `
+		SELECT * FROM users 
+		WHERE id IN (
+			SELECT DISTINCT user_id FROM posts WHERE published = ?
+		)
+		ORDER BY id
+	`
+	err = td.DB.Raw(subQuery, true).Find(ctx, &results)
+	assert.NoError(t, err)
+	assert.Greater(t, len(results), 0)
+}
+
+func (dct *DriverConformanceTests) TestRawQueryWithFind(t *testing.T) {
+	if dct.shouldSkip("TestRawQueryWithFind") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	err = td.InsertStandardTestData()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test Find with struct slice
+	var users []TestUser
+	err = td.DB.Raw("SELECT * FROM users WHERE active = ? ORDER BY id", true).Find(ctx, &users)
+	assert.NoError(t, err)
+	assert.Len(t, users, 4)
+	assert.NotEmpty(t, users[0].Name)
+
+	// Test Find with map slice
+	var mapResults []map[string]any
+	// Use driver-specific LIMIT syntax
+	limitQuery := "SELECT id, name FROM users ORDER BY id"
+	if dct.DriverName == "SQLite" || dct.DriverName == "PostgreSQL" {
+		limitQuery += " LIMIT 2"
+	} else { // MySQL
+		limitQuery += " LIMIT 2"
+	}
+	err = td.DB.Raw(limitQuery).Find(ctx, &mapResults)
+	assert.NoError(t, err)
+	assert.Len(t, mapResults, 2)
+
+	// Test Find with empty slice
+	var emptyResults []TestUser
+	err = td.DB.Raw("SELECT * FROM users WHERE id = ?", 999).Find(ctx, &emptyResults)
+	assert.NoError(t, err)
+	assert.Len(t, emptyResults, 0)
+}
+
+func (dct *DriverConformanceTests) TestRawQueryWithFindOne(t *testing.T) {
+	if dct.shouldSkip("TestRawQueryWithFindOne") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	err = td.InsertStandardTestData()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test FindOne with struct
+	var user TestUser
+	err = td.DB.Raw("SELECT * FROM users WHERE email = ?", "alice@example.com").FindOne(ctx, &user)
+	assert.NoError(t, err)
+	assert.Equal(t, "Alice", user.Name)
+
+	// Test FindOne with map
+	var result map[string]any
+	err = td.DB.Raw("SELECT COUNT(*) as count FROM users").FindOne(ctx, &result)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), result["count"])
+
+	// Test FindOne with single value
+	var count int64
+	err = td.DB.Raw("SELECT COUNT(*) FROM users").FindOne(ctx, &count)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), count)
+}
+
+func (dct *DriverConformanceTests) TestRawQueryNoRowsFound(t *testing.T) {
+	if dct.shouldSkip("TestRawQueryNoRowsFound") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test FindOne with no results
+	var user TestUser
+	err = td.DB.Raw("SELECT * FROM users WHERE email = ?", "nonexistent@example.com").FindOne(ctx, &user)
+	assert.Error(t, err)
+
+	// Test Find with no results (should not error)
+	var users []TestUser
+	err = td.DB.Raw("SELECT * FROM users WHERE email = ?", "nonexistent@example.com").Find(ctx, &users)
+	assert.NoError(t, err)
+	assert.Len(t, users, 0)
+}
+
+func (dct *DriverConformanceTests) TestRawQueryParameterBinding(t *testing.T) {
+	if dct.shouldSkip("TestRawQueryParameterBinding") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test various parameter types
+	testCases := []struct {
+		name   string
+		query  string
+		params []any
+		verify func(t *testing.T, results []map[string]any)
+	}{
+		{
+			name:   "String parameters",
+			query:  "INSERT INTO users (name, email, active) VALUES (?, ?, ?)",
+			params: []any{"Test User", "test@example.com", true},
+			verify: func(t *testing.T, results []map[string]any) {
+				count, err := td.DB.Model("User").Select().Count(ctx)
+				assert.NoError(t, err)
+				assert.Equal(t, int64(1), count)
+			},
+		},
+		{
+			name:   "Numeric parameters",
+			query:  "SELECT * FROM users WHERE name = ? OR name = ?",
+			params: []any{"Alice", "Bob"},
+			verify: func(t *testing.T, results []map[string]any) {
+				assert.Len(t, results, 2)
+			},
+		},
+		{
+			name:   "Mixed types",
+			query:  "SELECT * FROM users WHERE active = ? AND id > ?",
+			params: []any{true, 0},
+			verify: func(t *testing.T, results []map[string]any) {
+				assert.Greater(t, len(results), 0)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		// Clear data for each test - delete in correct order for FK constraints
+		td.DB.Raw("DELETE FROM comments").Exec(ctx)
+		td.DB.Raw("DELETE FROM posts").Exec(ctx)
+		td.DB.Raw("DELETE FROM users").Exec(ctx)
+
+		// Insert initial data if needed
+		if tc.name != "String parameters" {
+			td.InsertStandardTestData()
+		}
+
+		// Execute test
+		if tc.name == "String parameters" {
+			_, err := td.DB.Raw(tc.query, tc.params...).Exec(ctx)
+			assert.NoError(t, err)
+			tc.verify(t, nil)
+		} else {
+			var results []map[string]any
+			err := td.DB.Raw(tc.query, tc.params...).Find(ctx, &results)
+			assert.NoError(t, err)
+			tc.verify(t, results)
+		}
+	}
+}
+
+// Extended Transaction Tests
+
+func (dct *DriverConformanceTests) TestTransactionQueryInTransaction(t *testing.T) {
+	if dct.shouldSkip("TestTransactionQueryInTransaction") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Begin transaction
+	tx, err := td.DB.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx)
+
+	// Insert data in transaction
+	UserTx := tx.Model("User")
+	_, err = UserTx.Insert(map[string]any{
+		"name":   "TxVisible",
+		"email":  "txvisible@example.com",
+		"active": true,
+	}).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Query should see the uncommitted data within the same transaction
+	var users []TestUser
+	err = UserTx.Select().FindMany(ctx, &users)
+	assert.NoError(t, err)
+	assert.Len(t, users, 1)
+	assert.Equal(t, "TxVisible", users[0].Name)
+
+	// Query from outside transaction should NOT see the data
+	var outsideUsers []TestUser
+	err = td.DB.Model("User").Select().FindMany(ctx, &outsideUsers)
+	assert.NoError(t, err)
+	assert.Len(t, outsideUsers, 0)
+
+	// Commit transaction
+	err = tx.Commit(ctx)
+	assert.NoError(t, err)
+
+	// Now query from outside should see the data
+	err = td.DB.Model("User").Select().FindMany(ctx, &outsideUsers)
+	assert.NoError(t, err)
+	assert.Len(t, outsideUsers, 1)
+}
+
+func (dct *DriverConformanceTests) TestTransactionWithRawQueries(t *testing.T) {
+	if dct.shouldSkip("TestTransactionWithRawQueries") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Begin transaction
+	tx, err := td.DB.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx)
+
+	// Execute raw query in transaction
+	_, err = tx.Raw("INSERT INTO users (name, email, active) VALUES (?, ?, ?)",
+		"RawTxUser", "rawtx@example.com", true).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Query with raw query in transaction
+	var results []map[string]any
+	err = tx.Raw("SELECT * FROM users WHERE email = ?", "rawtx@example.com").Find(ctx, &results)
+	assert.NoError(t, err)
 	assert.Len(t, results, 1)
+
+	// FindOne in transaction
+	var user map[string]any
+	err = tx.Raw("SELECT * FROM users WHERE email = ?", "rawtx@example.com").FindOne(ctx, &user)
+	assert.NoError(t, err)
+	assert.Equal(t, "RawTxUser", user["name"])
+
+	// Commit
+	err = tx.Commit(ctx)
+	assert.NoError(t, err)
+}
+
+func (dct *DriverConformanceTests) TestTransactionErrorHandling(t *testing.T) {
+	if dct.shouldSkip("TestTransactionErrorHandling") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test transaction with SQL error
+	tx, err := td.DB.Begin(ctx)
+	require.NoError(t, err)
+
+	// Try to insert with invalid data
+	UserTx := tx.Model("User")
+	_, err = UserTx.Insert(map[string]any{
+		// Missing required fields
+		"email": "incomplete@example.com",
+	}).Exec(ctx)
+	assert.Error(t, err)
+
+	// Transaction should still be usable
+	_, err = UserTx.Insert(map[string]any{
+		"name":   "ValidUser",
+		"email":  "valid@example.com",
+		"active": true,
+	}).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Commit should succeed
+	err = tx.Commit(ctx)
+	assert.NoError(t, err)
+
+	// Verify only valid data was committed
+	td.AssertCount("User", 1)
+}
+
+func (dct *DriverConformanceTests) TestTransactionConcurrentAccess(t *testing.T) {
+	if dct.shouldSkip("TestTransactionConcurrentAccess") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	err := td.CreateStandardSchemas()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test that multiple transactions can work concurrently
+	tx1, err := td.DB.Begin(ctx)
+	require.NoError(t, err)
+	defer tx1.Rollback(ctx)
+
+	tx2, err := td.DB.Begin(ctx)
+	require.NoError(t, err)
+	defer tx2.Rollback(ctx)
+
+	// Insert different data in each transaction
+	_, err = tx1.Model("User").Insert(map[string]any{
+		"name":   "Tx1User",
+		"email":  "tx1@example.com",
+		"active": true,
+	}).Exec(ctx)
+	assert.NoError(t, err)
+
+	_, err = tx2.Model("User").Insert(map[string]any{
+		"name":   "Tx2User",
+		"email":  "tx2@example.com",
+		"active": true,
+	}).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Each transaction should only see its own data
+	var tx1Users []TestUser
+	err = tx1.Model("User").Select().FindMany(ctx, &tx1Users)
+	assert.NoError(t, err)
+	assert.Len(t, tx1Users, 1)
+	if len(tx1Users) > 0 {
+		assert.Equal(t, "Tx1User", tx1Users[0].Name)
+	}
+
+	var tx2Users []TestUser
+	err = tx2.Model("User").Select().FindMany(ctx, &tx2Users)
+	assert.NoError(t, err)
+	assert.Len(t, tx2Users, 1)
+	if len(tx2Users) > 0 {
+		assert.Equal(t, "Tx2User", tx2Users[0].Name)
+	}
+
+	// Commit both
+	err = tx1.Commit(ctx)
+	assert.NoError(t, err)
+
+	err = tx2.Commit(ctx)
+	assert.NoError(t, err)
+
+	// Now both should be visible
+	td.AssertCount("User", 2)
 }

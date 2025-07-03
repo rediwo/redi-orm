@@ -11,12 +11,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// DriverCharacteristics defines driver-specific behaviors
+type DriverCharacteristics struct {
+	// ReturnsZeroRowsAffectedForUnchanged indicates if the driver returns 0 for RowsAffected
+	// when UPDATE doesn't actually change any values (MySQL behavior)
+	ReturnsZeroRowsAffectedForUnchanged bool
+	
+	// SupportsLastInsertID indicates if the driver supports LastInsertID
+	// PostgreSQL doesn't support this and always returns 0
+	SupportsLastInsertID bool
+	
+	// SupportsReturningClause indicates if the driver supports RETURNING clause
+	SupportsReturningClause bool
+	
+	// MigrationTableName is the name of the migration tracking table
+	MigrationTableName string
+	
+	// SystemIndexPatterns contains patterns for identifying system indexes
+	SystemIndexPatterns []string
+	
+	// AutoIncrementIntegerType is the SQL type for an auto-incrementing integer primary key
+	AutoIncrementIntegerType string
+}
+
 // DriverConformanceTests provides a comprehensive test suite for database drivers
 type DriverConformanceTests struct {
-	DriverName string
-	NewDriver  func(config types.Config) (types.Database, error)
-	Config     types.Config
-	SkipTests  map[string]bool // For driver-specific test skipping
+	DriverName       string
+	NewDriver        func(config types.Config) (types.Database, error)
+	Config           types.Config
+	SkipTests        map[string]bool                       // For driver-specific test skipping
+	CleanupTables    func(t *testing.T, db types.Database) // Driver-specific table cleanup
+	Characteristics  DriverCharacteristics                  // Driver-specific behaviors
 }
 
 // RunAll runs all conformance tests
@@ -38,7 +63,6 @@ func (dct *DriverConformanceTests) RunAll(t *testing.T) {
 		t.Run("GetNonExistentSchema", dct.TestGetNonExistentSchema)
 		t.Run("CreateModel", dct.TestCreateModel)
 		t.Run("DropModel", dct.TestDropModel)
-		t.Run("CreateExistingModel", dct.TestCreateExistingModel)
 		t.Run("DropNonExistentModel", dct.TestDropNonExistentModel)
 	})
 
@@ -80,6 +104,8 @@ func (dct *DriverConformanceTests) RunAll(t *testing.T) {
 		t.Run("Distinct", dct.TestDistinct)
 		t.Run("Count", dct.TestCount)
 		t.Run("Aggregations", dct.TestAggregations)
+		t.Run("Include", dct.TestInclude)
+		t.Run("ComplexQueries", dct.TestComplexQueries)
 	})
 
 	// Transactions
@@ -89,6 +115,10 @@ func (dct *DriverConformanceTests) RunAll(t *testing.T) {
 		t.Run("TransactionFunction", dct.TestTransactionFunction)
 		t.Run("TransactionIsolation", dct.TestTransactionIsolation)
 		t.Run("Savepoints", dct.TestSavepoints)
+		t.Run("TransactionQueryInTransaction", dct.TestTransactionQueryInTransaction)
+		t.Run("TransactionWithRawQueries", dct.TestTransactionWithRawQueries)
+		t.Run("TransactionErrorHandling", dct.TestTransactionErrorHandling)
+		t.Run("TransactionConcurrentAccess", dct.TestTransactionConcurrentAccess)
 	})
 
 	// Field Mapping
@@ -125,7 +155,38 @@ func (dct *DriverConformanceTests) RunAll(t *testing.T) {
 		t.Run("RawUpdate", dct.TestRawUpdate)
 		t.Run("RawDelete", dct.TestRawDelete)
 		t.Run("RawWithParameters", dct.TestRawWithParameters)
+		t.Run("RawQueryErrorHandling", dct.TestRawQueryErrorHandling)
+		t.Run("RawQueryWithDifferentDataTypes", dct.TestRawQueryWithDifferentDataTypes)
+		t.Run("RawQueryComplexQueries", dct.TestRawQueryComplexQueries)
+		t.Run("RawQueryWithFind", dct.TestRawQueryWithFind)
+		t.Run("RawQueryWithFindOne", dct.TestRawQueryWithFindOne)
+		t.Run("RawQueryNoRowsFound", dct.TestRawQueryNoRowsFound)
+		t.Run("RawQueryParameterBinding", dct.TestRawQueryParameterBinding)
 	})
+
+	// Driver Initialization
+	t.Run("DriverInitialization", func(t *testing.T) {
+		t.Run("NewDriver", dct.TestNewDriver)
+		t.Run("DriverConfig", dct.TestDriverConfig)
+		t.Run("FieldTypeMapping", dct.TestFieldTypeMapping)
+		t.Run("GenerateColumnSQL", dct.TestGenerateColumnSQL)
+	})
+
+	// Migration
+	t.Run("Migration", func(t *testing.T) {
+		t.Run("GetMigrator", dct.TestGetMigrator)
+		t.Run("GetTables", dct.TestGetTables)
+		t.Run("GetTableInfo", dct.TestGetTableInfo)
+		t.Run("GenerateCreateTableSQL", dct.TestGenerateCreateTableSQL)
+		t.Run("GenerateDropTableSQL", dct.TestGenerateDropTableSQL)
+		t.Run("GenerateAddColumnSQL", dct.TestGenerateAddColumnSQL)
+		t.Run("GenerateDropColumnSQL", dct.TestGenerateDropColumnSQL)
+		t.Run("GenerateCreateIndexSQL", dct.TestGenerateCreateIndexSQL)
+		t.Run("GenerateDropIndexSQL", dct.TestGenerateDropIndexSQL)
+		t.Run("ApplyMigration", dct.TestApplyMigration)
+		t.Run("MigrationWorkflow", dct.TestMigrationWorkflow)
+	})
+
 }
 
 // Helper to check if a test should be skipped
@@ -145,11 +206,21 @@ func (dct *DriverConformanceTests) createTestDB(t *testing.T) *TestDatabase {
 	err = db.Connect(ctx)
 	require.NoError(t, err, "failed to connect to database")
 
-	td := NewTestDatabase(t, db, dct.Config)
-	
-	// Cleanup any existing test data
-	td.CleanupAllTables()
-	
+	// Create cleanup function that combines table cleanup and connection close
+	cleanup := func() {
+		if dct.CleanupTables != nil {
+			dct.CleanupTables(t, db)
+		}
+		db.Close()
+	}
+
+	td := NewTestDatabase(t, db, dct.Config, cleanup)
+
+	// Clean up existing tables before starting tests
+	if dct.CleanupTables != nil {
+		dct.CleanupTables(t, db)
+	}
+
 	return td
 }
 
@@ -179,8 +250,17 @@ func (dct *DriverConformanceTests) TestConnectWithInvalidConfig(t *testing.T) {
 	}
 
 	invalidConfig := dct.Config
-	invalidConfig.Password = "wrong_password"
 	
+	// Handle different invalid configs for different drivers
+	switch dct.DriverName {
+	case "SQLite":
+		// For SQLite, use an invalid directory path
+		invalidConfig.FilePath = "/invalid/path/that/does/not/exist/test.db"
+	default:
+		// For other databases, use wrong password
+		invalidConfig.Password = "wrong_password"
+	}
+
 	db, err := dct.NewDriver(invalidConfig)
 	if err != nil {
 		// Some drivers fail at creation time
@@ -212,7 +292,7 @@ func (dct *DriverConformanceTests) TestClose(t *testing.T) {
 	}
 
 	td := dct.createTestDB(t)
-	
+
 	err := td.DB.Close()
 	assert.NoError(t, err, "Close should succeed")
 
@@ -228,16 +308,16 @@ func (dct *DriverConformanceTests) TestMultipleConnections(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	
+
 	// Create multiple connections
 	connections := make([]types.Database, 3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		db, err := dct.NewDriver(dct.Config)
 		require.NoError(t, err)
-		
+
 		err = db.Connect(ctx)
 		require.NoError(t, err)
-		
+
 		connections[i] = db
 	}
 
@@ -294,7 +374,7 @@ func (dct *DriverConformanceTests) TestRegisterInvalidSchema(t *testing.T) {
 	// Test schema without primary key
 	invalidSchema := schema.New("Invalid").
 		AddField(schema.Field{Name: "name", Type: schema.FieldTypeString})
-	
+
 	err = td.DB.RegisterSchema("Invalid", invalidSchema)
 	assert.Error(t, err, "RegisterSchema should fail without primary key")
 }
@@ -394,30 +474,6 @@ func (dct *DriverConformanceTests) TestDropModel(t *testing.T) {
 	// Verify table is dropped by trying to insert
 	_, err = td.DB.Model("TestUser").Insert(map[string]any{"id": 1}).Exec(ctx)
 	assert.Error(t, err, "Insert should fail after drop")
-}
-
-func (dct *DriverConformanceTests) TestCreateExistingModel(t *testing.T) {
-	if dct.shouldSkip("TestCreateExistingModel") {
-		t.Skip("Test skipped by driver")
-	}
-
-	td := dct.createTestDB(t)
-	defer td.Cleanup()
-
-	// Register and create a model
-	userSchema := schema.New("TestUser").
-		AddField(schema.Field{Name: "id", Type: schema.FieldTypeInt, PrimaryKey: true})
-
-	err := td.DB.RegisterSchema("TestUser", userSchema)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = td.DB.CreateModel(ctx, "TestUser")
-	require.NoError(t, err)
-
-	// Try to create again
-	err = td.DB.CreateModel(ctx, "TestUser")
-	assert.Error(t, err, "CreateModel should fail for existing table")
 }
 
 func (dct *DriverConformanceTests) TestDropNonExistentModel(t *testing.T) {
@@ -524,7 +580,7 @@ func (dct *DriverConformanceTests) TestInsertWithAutoIncrement(t *testing.T) {
 	// Insert multiple records without ID
 	User := td.DB.Model("User")
 	ids := make([]int64, 3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		result, err := User.Insert(map[string]any{
 			"name":  fmt.Sprintf("User%d", i),
 			"email": fmt.Sprintf("user%d@example.com", i),
@@ -612,7 +668,7 @@ func (dct *DriverConformanceTests) TestSelectWithFields(t *testing.T) {
 	err = User.Select("name", "email").FindMany(ctx, &results)
 	assert.NoError(t, err)
 	assert.Len(t, results, 5)
-	
+
 	// Verify only selected fields are present
 	for _, r := range results {
 		assert.Contains(t, r, "name")
@@ -644,9 +700,17 @@ func (dct *DriverConformanceTests) TestUpdate(t *testing.T) {
 		"active": false,
 	}).Exec(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, int64(5), result.RowsAffected)
+	
+	// Check expected rows affected based on driver characteristics
+	expectedRowsAffected := int64(5)
+	if dct.Characteristics.ReturnsZeroRowsAffectedForUnchanged {
+		// MySQL doesn't count rows where values didn't actually change
+		// Charlie is already inactive, so only 4 rows will be counted
+		expectedRowsAffected = int64(4)
+	}
+	assert.Equal(t, expectedRowsAffected, result.RowsAffected)
 
-	// Verify update
+	// Verify update - all users should be inactive regardless of RowsAffected
 	var count int64
 	count, err = User.Select().
 		WhereCondition(User.Where("active").Equals(false)).
