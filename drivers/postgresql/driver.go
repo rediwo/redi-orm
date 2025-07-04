@@ -47,6 +47,14 @@ func (p *PostgreSQLDB) GetDriverType() string {
 	return "postgresql"
 }
 
+// GetBooleanLiteral returns PostgreSQL-specific boolean literal
+func (p *PostgreSQLDB) GetBooleanLiteral(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
+}
+
 // Connect establishes a connection to the PostgreSQL database
 func (p *PostgreSQLDB) Connect(ctx context.Context) error {
 	if p.DB != nil {
@@ -245,8 +253,8 @@ func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, er
 
 	// Add foreign key constraints
 	for _, relation := range schema.Relations {
-		if relation.Type == "manyToOne" || 
-		   (relation.Type == "oneToOne" && relation.ForeignKey != "") {
+		if relation.Type == "manyToOne" ||
+			(relation.Type == "oneToOne" && relation.ForeignKey != "") {
 			// Get the referenced table name
 			referencedSchema, err := p.GetSchema(relation.Model)
 			if err != nil {
@@ -254,7 +262,7 @@ func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, er
 				// This might happen during circular dependencies
 				continue
 			}
-			
+
 			// Find the actual field to get the column name
 			var foreignKeyColumn string
 			for _, field := range schema.Fields {
@@ -267,7 +275,7 @@ func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, er
 				// If field not found, use the relation.ForeignKey as is (might be already a column name)
 				foreignKeyColumn = relation.ForeignKey
 			}
-			
+
 			// Find the referenced column name
 			var referencesColumn string
 			for _, field := range referencedSchema.Fields {
@@ -279,7 +287,7 @@ func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, er
 			if referencesColumn == "" {
 				referencesColumn = relation.References
 			}
-			
+
 			fkConstraint := fmt.Sprintf(
 				"CONSTRAINT fk_%s_%s FOREIGN KEY (%s) REFERENCES %s(%s)",
 				strings.ReplaceAll(schema.GetTableName(), ".", "_"), // Handle schema prefixes
@@ -288,7 +296,7 @@ func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, er
 				p.quoteIdentifier(referencedSchema.GetTableName()),
 				p.quoteIdentifier(referencesColumn),
 			)
-			
+
 			// Add ON DELETE/UPDATE rules if specified
 			if relation.OnDelete != "" {
 				fkConstraint += " ON DELETE " + relation.OnDelete
@@ -296,7 +304,7 @@ func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, er
 			if relation.OnUpdate != "" {
 				fkConstraint += " ON UPDATE " + relation.OnUpdate
 			}
-			
+
 			columns = append(columns, fkConstraint)
 		}
 	}
@@ -405,36 +413,36 @@ func convertPlaceholders(sql string) string {
 	argIndex := 0
 	inQuote := false
 	escaped := false
-	
+
 	for i := 0; i < len(sql); i++ {
 		ch := sql[i]
-		
+
 		// Handle escape sequences
 		if escaped {
 			result.WriteByte(ch)
 			escaped = false
 			continue
 		}
-		
+
 		// Handle escape character
 		if ch == '\\' {
 			result.WriteByte(ch)
 			escaped = true
 			continue
 		}
-		
+
 		// Handle quotes
 		if ch == '\'' {
 			result.WriteByte(ch)
 			inQuote = !inQuote
 			continue
 		}
-		
+
 		// Replace ? with $N when not in quotes
 		if ch == '?' && !inQuote {
 			// Check if this is a PostgreSQL JSON operator
 			isJSONOp := false
-			
+
 			// Look ahead for JSON operators: ?& ?| or single ? preceded by JSON ops
 			if i < len(sql)-1 {
 				nextChar := sql[i+1]
@@ -442,8 +450,8 @@ func convertPlaceholders(sql string) string {
 					isJSONOp = true
 				}
 			}
-			
-			// Also check if preceded by JSON path operators -> or ->> 
+
+			// Also check if preceded by JSON path operators -> or ->>
 			if i >= 1 && !isJSONOp {
 				prevChar := sql[i-1]
 				if prevChar == ' ' && i >= 2 {
@@ -457,7 +465,7 @@ func convertPlaceholders(sql string) string {
 					}
 				}
 			}
-			
+
 			if !isJSONOp {
 				argIndex++
 				result.WriteString("$" + strconv.Itoa(argIndex))
@@ -468,6 +476,6 @@ func convertPlaceholders(sql string) string {
 			result.WriteByte(ch)
 		}
 	}
-	
+
 	return result.String()
 }

@@ -10,17 +10,18 @@ import (
 
 // ModelQueryImpl implements the ModelQuery interface
 type ModelQueryImpl struct {
-	modelName   string
-	database    types.Database
-	fieldMapper types.FieldMapper
-	conditions  []types.Condition
-	includes    []string
-	orderBy     []OrderClause
-	groupBy     []string
-	having      types.Condition
-	limit       *int
-	offset      *int
-	tableAlias  string
+	modelName      string
+	database       types.Database
+	fieldMapper    types.FieldMapper
+	conditions     []types.Condition
+	includes       []string // Deprecated: for backward compatibility
+	includeOptions types.IncludeOptions
+	orderBy        []OrderClause
+	groupBy        []string
+	having         types.Condition
+	limit          *int
+	offset         *int
+	tableAlias     string
 }
 
 type OrderClause struct {
@@ -37,14 +38,15 @@ func NewModelQuery(modelName string, database types.Database, fieldMapper types.
 	}
 
 	return &ModelQueryImpl{
-		modelName:   modelName,
-		database:    database,
-		fieldMapper: fieldMapper,
-		conditions:  []types.Condition{},
-		includes:    []string{},
-		orderBy:     []OrderClause{},
-		groupBy:     []string{},
-		tableAlias:  tableAlias,
+		modelName:      modelName,
+		database:       database,
+		fieldMapper:    fieldMapper,
+		conditions:     []types.Condition{},
+		includes:       []string{},
+		includeOptions: make(types.IncludeOptions),
+		orderBy:        []OrderClause{},
+		groupBy:        []string{},
+		tableAlias:     tableAlias,
 	}
 }
 
@@ -96,6 +98,14 @@ func (q *ModelQueryImpl) WhereRaw(sql string, args ...any) types.ModelQuery {
 func (q *ModelQueryImpl) Include(relations ...string) types.ModelQuery {
 	newQuery := q.clone()
 	newQuery.includes = append(newQuery.includes, relations...)
+	// Also add to includeOptions for backward compatibility
+	for _, relation := range relations {
+		if _, exists := newQuery.includeOptions[relation]; !exists {
+			newQuery.includeOptions[relation] = &types.IncludeOption{
+				Path: relation,
+			}
+		}
+	}
 	return newQuery
 }
 
@@ -196,21 +206,38 @@ func (q *ModelQueryImpl) Min(ctx context.Context, fieldName string) (any, error)
 // clone creates a copy of the query
 func (q *ModelQueryImpl) clone() *ModelQueryImpl {
 	newQuery := &ModelQueryImpl{
-		modelName:   q.modelName,
-		database:    q.database,
-		fieldMapper: q.fieldMapper,
-		conditions:  make([]types.Condition, len(q.conditions)),
-		includes:    make([]string, len(q.includes)),
-		orderBy:     make([]OrderClause, len(q.orderBy)),
-		groupBy:     make([]string, len(q.groupBy)),
-		having:      q.having,
-		tableAlias:  q.tableAlias,
+		modelName:      q.modelName,
+		database:       q.database,
+		fieldMapper:    q.fieldMapper,
+		conditions:     make([]types.Condition, len(q.conditions)),
+		includes:       make([]string, len(q.includes)),
+		includeOptions: make(types.IncludeOptions),
+		orderBy:        make([]OrderClause, len(q.orderBy)),
+		groupBy:        make([]string, len(q.groupBy)),
+		having:         q.having,
+		tableAlias:     q.tableAlias,
 	}
 
 	copy(newQuery.conditions, q.conditions)
 	copy(newQuery.includes, q.includes)
 	copy(newQuery.orderBy, q.orderBy)
 	copy(newQuery.groupBy, q.groupBy)
+
+	// Deep copy includeOptions
+	for k, v := range q.includeOptions {
+		newOpt := &types.IncludeOption{
+			Path:   v.Path,
+			Select: append([]string{}, v.Select...),
+			Where:  v.Where,
+			Limit:  v.Limit,
+			Offset: v.Offset,
+		}
+		if v.OrderBy != nil {
+			newOpt.OrderBy = make([]types.OrderByOption, len(v.OrderBy))
+			copy(newOpt.OrderBy, v.OrderBy)
+		}
+		newQuery.includeOptions[k] = newOpt
+	}
 
 	if q.limit != nil {
 		limit := *q.limit
@@ -232,6 +259,11 @@ func (q *ModelQueryImpl) GetConditions() []types.Condition {
 // GetIncludes returns includes (for internal use)
 func (q *ModelQueryImpl) GetIncludes() []string {
 	return q.includes
+}
+
+// GetIncludeOptions returns include options (for internal use)
+func (q *ModelQueryImpl) GetIncludeOptions() types.IncludeOptions {
+	return q.includeOptions
 }
 
 // GetOrderBy returns order by clauses (for internal use)

@@ -1,0 +1,192 @@
+name: CI
+"on":
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+permissions:
+  contents: read
+  security-events: write
+env:
+  GO_VERSION: '1.21'
+jobs:
+  test-basic:
+    name: Basic Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Download dependencies
+        run: go mod download
+      - name: Run go vet
+        run: go vet ./...
+      - name: Run basic tests (SQLite + core packages)
+        run: go test -v -race -coverprofile=coverage.out ./database ./schema ./types ./utils ./registry ./migration ./query ./modules/orm ./engine ./prisma ./base ./drivers/sqlite
+      - name: Generate coverage report
+        run: |
+          echo "=== Coverage Report ==="
+          if [ -f coverage.out ]; then
+            go tool cover -func=coverage.out | tail -1
+          else
+            echo "No coverage file found"
+          fi
+  test-databases:
+    name: Database Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: testdb
+          MYSQL_USER: testuser
+          MYSQL_PASSWORD: testpass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=10s
+          --health-retries=5
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U testuser -d testdb"
+          --health-interval=10s
+          --health-timeout=10s
+          --health-retries=5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Download dependencies
+        run: go mod download
+      - name: Wait for MySQL
+        run: |
+          until mysqladmin ping -h 127.0.0.1 -P 3306 -u root -ptestpass --silent; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          mysql -h 127.0.0.1 -P 3306 -u root -ptestpass -e "
+            ALTER USER 'testuser'@'%' IDENTIFIED WITH mysql_native_password BY 'testpass';
+            FLUSH PRIVILEGES;"
+          until mysqladmin ping -h 127.0.0.1 -P 3306 -u testuser -ptestpass --silent; do
+            echo "Waiting for testuser..."
+            sleep 2
+          done
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h 127.0.0.1 -p 5432 -U testuser -d testdb; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+      - name: Run database integration tests
+        run: go test -v -race -coverprofile=database-coverage.out ./drivers/mysql ./drivers/postgresql
+        env:
+          TEST_MYSQL_URI: "mysql://testuser:testpass@127.0.0.1:3306/testdb"
+          TEST_POSTGRESQL_URI: "postgresql://testuser:testpass@127.0.0.1:5432/testdb"
+      - name: Generate database coverage report
+        run: |
+          echo "=== Database Integration Coverage Report ==="
+          if [ -f database-coverage.out ]; then
+            go tool cover -func=database-coverage.out | tail -1
+          else
+            echo "No database coverage file found"
+          fi
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [test-basic]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Download dependencies
+        run: go mod download
+      - name: Build CLI
+        run: |
+          go build -o redi-orm ./cmd/redi-orm
+          ./redi-orm version
+      - name: Test CLI basic functionality
+        run: |
+          ./redi-orm version
+          ./redi-orm --help
+          ./redi-orm || true
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: [test-basic]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Download dependencies
+        run: go mod download
+      - name: Run make vet
+        run: make vet
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [test-basic]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Download dependencies
+        run: go mod download
+      - name: Install Gosec
+        run: |
+          curl -sfL https://raw.githubusercontent.com/securecodewarrior/gosec/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.19.0
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+      - name: Run Gosec Security Scanner
+        run: |
+          gosec -fmt json -out gosec-results.json ./... || true
+          gosec -fmt sarif -out results.sarif ./... || true
+          if [ ! -f results.sarif ]; then
+            echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec"}},"results":[]}]}' > results.sarif
+          fi
+        continue-on-error: true
+      - name: Display security scan results
+        run: |
+          echo "=== Security Scan Results ==="
+          if [ -f gosec-results.json ]; then
+            ISSUE_COUNT=$(jq '.Issues | length' gosec-results.json 2>/dev/null || echo "0")
+            echo "Security issues found: $ISSUE_COUNT"
+            if [ "$ISSUE_COUNT" -gt 0 ]; then
+              echo "Issues found:"
+              jq -r '.Issues[] | "- \(.severity): \(.what) in \(.file):\(.line)"' gosec-results.json 2>/dev/null || true
+            else
+              echo "✅ No security issues found!"
+            fi
+          else
+            echo "No detailed results available"
+          fi
+        continue-on-error: true
+      - name: Upload SARIF file (optional)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+        continue-on-error: true
+        if: always()

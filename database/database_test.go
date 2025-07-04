@@ -103,6 +103,13 @@ func (m *mockDatabase) GetDriverType() string {
 	return "mock"
 }
 
+func (m *mockDatabase) GetBooleanLiteral(value bool) string {
+	if value {
+		return "1"
+	}
+	return "0"
+}
+
 func (m *mockDatabase) Exec(query string, args ...any) (sql.Result, error) {
 	return nil, fmt.Errorf("not implemented")
 }

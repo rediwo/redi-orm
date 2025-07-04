@@ -43,11 +43,11 @@ func TestMySQLConformance(t *testing.T) {
 		},
 		Characteristics: test.DriverCharacteristics{
 			ReturnsZeroRowsAffectedForUnchanged: true,
-			SupportsLastInsertID: true,
-			SupportsReturningClause: false,
-			MigrationTableName: "_migrations",
-			SystemIndexPatterns: []string{"PRIMARY", "fk_*", "mysql_*"},
-			AutoIncrementIntegerType: "INT AUTO_INCREMENT",
+			SupportsLastInsertID:                true,
+			SupportsReturningClause:             false,
+			MigrationTableName:                  "_migrations",
+			SystemIndexPatterns:                 []string{"PRIMARY", "fk_*", "mysql_*"},
+			AutoIncrementIntegerType:            "INT AUTO_INCREMENT",
 		},
 	}
 

@@ -180,7 +180,7 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 			if err != nil {
 				return fmt.Errorf("failed to generate CREATE TABLE SQL for %s: %w", sch.TableName, err)
 			}
-			
+
 			if err := migrator.ApplyMigration(sql); err != nil {
 				return fmt.Errorf("failed to create table %s: %w", sch.TableName, err)
 			}
@@ -198,9 +198,9 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 			}
 
 			// Generate and apply migration SQL
-			if plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 || 
+			if plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 ||
 				len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0) {
-				
+
 				sqlStatements, err := migrator.GenerateMigrationSQL(plan)
 				if err != nil {
 					return fmt.Errorf("failed to generate migration SQL for %s: %w", sch.TableName, err)
@@ -270,16 +270,26 @@ func (b *Driver) QueryRow(query string, args ...any) *sql.Row {
 	return b.DB.QueryRow(query, args...)
 }
 
+// GetBooleanLiteral returns the database-specific boolean literal
+// This default implementation returns "1" or "0" which works for SQLite and MySQL
+// PostgreSQL driver should override this to return "true" or "false"
+func (b *Driver) GetBooleanLiteral(value bool) string {
+	if value {
+		return "1"
+	}
+	return "0"
+}
+
 // syncSchemasWithDeferredConstraints handles circular dependencies by creating tables without FK first
 func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db types.Database, schemas map[string]*schema.Schema, currentTableMap map[string]bool) error {
 	migrator := db.GetMigrator()
-	
+
 	// Phase 1: Create all tables without foreign keys
 	for _, sch := range schemas {
 		if sch.TableName == "" || currentTableMap[sch.TableName] {
 			continue
 		}
-		
+
 		// For now, we'll create tables with foreign keys and let the database handle the order
 		// In a more complete implementation, we would:
 		// 1. Generate CREATE TABLE without FK constraints
@@ -288,20 +298,20 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 		if err != nil {
 			return fmt.Errorf("failed to generate CREATE TABLE SQL for %s: %w", sch.TableName, err)
 		}
-		
+
 		if err := migrator.ApplyMigration(sql); err != nil {
 			// Try to create without the schema reference to handle circular deps
 			// This is a simplified approach - a full implementation would parse and modify the SQL
 			return fmt.Errorf("failed to create table %s: %w (possible circular dependency)", sch.TableName, err)
 		}
 	}
-	
+
 	// Phase 2: Handle existing tables (updates)
 	for _, sch := range schemas {
 		if sch.TableName == "" || !currentTableMap[sch.TableName] {
 			continue
 		}
-		
+
 		// Table exists, check for differences
 		tableInfo, err := migrator.GetTableInfo(sch.TableName)
 		if err != nil {
@@ -315,9 +325,9 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 		}
 
 		// Generate and apply migration SQL
-		if plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 || 
+		if plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 ||
 			len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0) {
-			
+
 			sqlStatements, err := migrator.GenerateMigrationSQL(plan)
 			if err != nil {
 				return fmt.Errorf("failed to generate migration SQL for %s: %w", sch.TableName, err)
@@ -335,6 +345,6 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 			}
 		}
 	}
-	
+
 	return nil
 }

@@ -148,6 +148,11 @@ func (t *PostgreSQLTransactionDB) GetDriverType() string {
 	return t.PostgreSQLDB.GetDriverType()
 }
 
+// GetBooleanLiteral returns PostgreSQL-specific boolean literal
+func (t *PostgreSQLTransactionDB) GetBooleanLiteral(value bool) string {
+	return t.PostgreSQLDB.GetBooleanLiteral(value)
+}
+
 // Raw creates a raw query within the transaction
 func (t *PostgreSQLTransactionDB) Raw(query string, args ...any) types.RawQuery {
 	return &PostgreSQLTransactionRawQuery{
@@ -273,7 +278,7 @@ func (t *PostgreSQLTransactionDB) Close() error {
 	return fmt.Errorf("cannot close within a transaction")
 }
 
-// Ping is not supported within a transaction  
+// Ping is not supported within a transaction
 func (t *PostgreSQLTransactionDB) Ping(ctx context.Context) error {
 	return fmt.Errorf("cannot ping within a transaction")
 }

@@ -48,19 +48,19 @@ func TestSQLiteCaseSensitivity(t *testing.T) {
 	err = db.Raw("SELECT * FROM users WHERE name = ?", "alice").Find(ctx, &rawResults)
 	require.NoError(t, err)
 	t.Logf("Raw SQL query for name='alice' found %d results", len(rawResults))
-	
+
 	// Now test with our query builder
 	User := db.Model("User")
 	var users []test.TestUser
-	
+
 	// Test with = operator
 	err = User.Select().
 		WhereCondition(User.Where("name").Equals("alice")). // lowercase
 		FindMany(ctx, &users)
-	
+
 	require.NoError(t, err)
 	t.Logf("Query builder for name='alice' found %d results", len(users))
-	
+
 	// SQLite's behavior depends on the column collation
 	// If the query builder finds 0 results, it means it's case-sensitive
 	// If it finds 1 result, it means it's case-insensitive
@@ -79,16 +79,16 @@ func TestSQLiteCaseSensitivity(t *testing.T) {
 	err = User.Select().
 		WhereCondition(User.Where("name").Like("alice%")). // lowercase
 		FindMany(ctx, &users)
-	
+
 	require.NoError(t, err)
 	t.Logf("LIKE 'alice%%' found %d results", len(users))
-	
+
 	// Now test with raw SQL LIKE
 	rawResults = []map[string]any{}
 	err = db.Raw("SELECT * FROM users WHERE name LIKE ?", "alice%").Find(ctx, &rawResults)
 	require.NoError(t, err)
 	t.Logf("Raw SQL LIKE 'alice%%' found %d results", len(rawResults))
-	
+
 	// SQLite LIKE is case-insensitive by default unless PRAGMA case_sensitive_like is ON
 	// So we should handle both cases
 	if len(users) == 0 {
@@ -104,7 +104,7 @@ func TestSQLiteCaseSensitivity(t *testing.T) {
 	err = User.Select().
 		WhereCondition(User.Where("name").Equals("Alice")). // correct case
 		FindMany(ctx, &users)
-	
+
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
 	assert.Equal(t, "Alice", users[0].Name)

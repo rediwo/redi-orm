@@ -58,34 +58,34 @@ func TestConditionContext_MapFieldToColumn(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		ctx        *ConditionContext
-		fieldName  string
-		want       string
+		name      string
+		ctx       *ConditionContext
+		fieldName string
+		want      string
 	}{
 		{
-			name: "with table alias",
-			ctx: NewConditionContext(mapper, "User", "u"),
+			name:      "with table alias",
+			ctx:       NewConditionContext(mapper, "User", "u"),
 			fieldName: "firstName",
-			want: "u.first_name",
+			want:      "u.first_name",
 		},
 		{
-			name: "without table alias",
-			ctx: NewConditionContext(mapper, "User", ""),
+			name:      "without table alias",
+			ctx:       NewConditionContext(mapper, "User", ""),
 			fieldName: "firstName",
-			want: "first_name",
+			want:      "first_name",
 		},
 		{
-			name: "unmapped field",
-			ctx: NewConditionContext(mapper, "User", "u"),
+			name:      "unmapped field",
+			ctx:       NewConditionContext(mapper, "User", "u"),
 			fieldName: "email",
-			want: "u.email",
+			want:      "u.email",
 		},
 		{
-			name: "nil mapper",
-			ctx: NewConditionContext(nil, "User", "u"),
+			name:      "nil mapper",
+			ctx:       NewConditionContext(nil, "User", "u"),
 			fieldName: "firstName",
-			want: "firstName",
+			want:      "firstName",
 		},
 	}
 

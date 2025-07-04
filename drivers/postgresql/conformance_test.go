@@ -30,7 +30,7 @@ func TestPostgreSQLConformance(t *testing.T) {
 		NewDriver: func(cfg types.Config) (types.Database, error) {
 			return NewPostgreSQLDB(cfg)
 		},
-		Config:    config,
+		Config: config,
 		SkipTests: map[string]bool{
 			// PostgreSQL-specific skips
 			"TestTransactionErrorHandling": true, // PostgreSQL aborts transaction on error
@@ -43,11 +43,11 @@ func TestPostgreSQLConformance(t *testing.T) {
 		},
 		Characteristics: test.DriverCharacteristics{
 			ReturnsZeroRowsAffectedForUnchanged: false,
-			SupportsLastInsertID: false,
-			SupportsReturningClause: true,
-			MigrationTableName: "_migrations",
-			SystemIndexPatterns: []string{"_pkey", "_key", "_fkey", "pg_*"},
-			AutoIncrementIntegerType: "SERIAL",
+			SupportsLastInsertID:                false,
+			SupportsReturningClause:             true,
+			MigrationTableName:                  "_migrations",
+			SystemIndexPatterns:                 []string{"_pkey", "_key", "_fkey", "pg_*"},
+			AutoIncrementIntegerType:            "SERIAL",
 		},
 	}
 

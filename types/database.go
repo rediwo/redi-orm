@@ -127,6 +127,9 @@ type Database interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryRow(query string, args ...any) *sql.Row
 
+	// Database-specific literals
+	GetBooleanLiteral(value bool) string
+
 	// Migration support (legacy)
 	GetMigrator() DatabaseMigrator
 }
@@ -178,6 +181,7 @@ type SelectQuery interface {
 	Where(fieldName string) FieldCondition
 	WhereCondition(condition Condition) SelectQuery
 	Include(relations ...string) SelectQuery
+	IncludeWithOptions(path string, opt *IncludeOption) SelectQuery
 	OrderBy(fieldName string, direction Order) SelectQuery
 	GroupBy(fieldNames ...string) SelectQuery
 	Having(condition Condition) SelectQuery
@@ -414,7 +418,7 @@ type DatabaseSpecificMigrator interface {
 
 	// Index management
 	IsSystemIndex(indexName string) bool
-	
+
 	// Table management
 	IsSystemTable(tableName string) bool
 }

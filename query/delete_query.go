@@ -126,7 +126,6 @@ func (q *DeleteQueryImpl) buildWhereClause(conditions []types.Condition) (string
 	return whereSQL, args, nil
 }
 
-
 // clone creates a copy of the delete query
 func (q *DeleteQueryImpl) clone() *DeleteQueryImpl {
 	return &DeleteQueryImpl{

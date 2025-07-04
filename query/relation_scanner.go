@@ -235,7 +235,6 @@ func (rs *RelationScanner) parseColumnName(column string, columnInfo map[string]
 	return tableAlias, fieldName
 }
 
-
 // isNullRecord checks if all fields in a record are null
 func isNullRecord(record map[string]any) bool {
 	for _, val := range record {

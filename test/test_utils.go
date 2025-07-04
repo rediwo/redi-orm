@@ -24,9 +24,9 @@ type TestDatabase struct {
 // NewTestDatabase creates a new test database instance
 func NewTestDatabase(t *testing.T, db types.Database, config types.Config, cleanup func()) *TestDatabase {
 	return &TestDatabase{
-		DB:     db,
-		Config: config,
-		T:      t,
+		DB:      db,
+		Config:  config,
+		T:       t,
 		Cleanup: cleanup,
 	}
 }
@@ -290,12 +290,6 @@ func (td *TestDatabase) InsertStandardTestData() error {
 
 	return nil
 }
-
-
-
-
-
-
 
 // AssertCount asserts the count of records in a model
 func (td *TestDatabase) AssertCount(modelName string, expected int64) {

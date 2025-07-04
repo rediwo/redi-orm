@@ -16,22 +16,59 @@ A modern, schema-driven ORM for Go with a JavaScript runtime interface. RediORM 
 
 ## 📦 Installation
 
+### Go Library
+
 ```bash
 go get github.com/rediwo/redi-orm
 ```
 
 ### CLI Tool
 
-Build the `redi-orm` CLI for migration management and running JavaScript files:
+#### Pre-built Binaries (Recommended)
 
+Download the latest release for your platform:
+
+**Linux (AMD64)**:
 ```bash
-go install github.com/rediwo/redi-orm/cmd/redi-orm@latest
+wget https://github.com/rediwo/redi-orm/releases/latest/download/redi-orm-linux-amd64.tar.gz
+tar -xzf redi-orm-linux-amd64.tar.gz
+sudo mv redi-orm-* /usr/local/bin/redi-orm
 ```
 
-Or build from source:
+**macOS (Intel)**:
+```bash
+wget https://github.com/rediwo/redi-orm/releases/latest/download/redi-orm-darwin-amd64.tar.gz
+tar -xzf redi-orm-darwin-amd64.tar.gz
+sudo mv redi-orm-* /usr/local/bin/redi-orm
+```
+
+**macOS (Apple Silicon)**:
+```bash
+wget https://github.com/rediwo/redi-orm/releases/latest/download/redi-orm-darwin-arm64.tar.gz
+tar -xzf redi-orm-darwin-arm64.tar.gz
+sudo mv redi-orm-* /usr/local/bin/redi-orm
+```
+
+**Windows (AMD64)**:
+1. Download `redi-orm-windows-amd64.zip` from [releases](https://github.com/rediwo/redi-orm/releases/latest)
+2. Extract and add to your PATH
+
+#### Build from Source
 
 ```bash
-go build -o redi-orm ./cmd/redi-orm
+# Install latest version
+go install github.com/rediwo/redi-orm/cmd/redi-orm@latest
+
+# Or build from source
+git clone https://github.com/rediwo/redi-orm.git
+cd redi-orm
+make release-build
+```
+
+#### Verify Installation
+
+```bash
+redi-orm version
 ```
 
 ## 🎯 Quick Start
@@ -517,6 +554,8 @@ err := db.Transaction(ctx, func(tx types.Transaction) error {
 
 ## 🧪 Testing
 
+The project includes comprehensive test coverage with a unified conformance test suite ensuring consistent behavior across all database drivers.
+
 ```bash
 # Run all tests
 make test
@@ -531,9 +570,25 @@ make test-postgresql # PostgreSQL driver tests
 make test-verbose    # Verbose output
 make test-cover      # Coverage report
 make test-race       # Race detection
+make test-short      # Skip long-running tests
+```
+
+### Type Conversion Utilities
+
+RediORM provides safe type conversion utilities to handle driver-specific differences:
+
+```go
+import "github.com/rediwo/redi-orm/utils"
+
+// Handle different driver representations
+boolValue := utils.ToBool(result["active"])      // SQLite returns int64, MySQL returns bool
+intValue := utils.ToInt64(result["count"])       // MySQL may return string for aggregates
+floatValue := utils.ToFloat64(result["average"]) // Handle various numeric types
 ```
 
 ## 🛠️ Development
+
+### Local Development
 
 ```bash
 # Format code
@@ -550,21 +605,33 @@ make dev
 
 # CI workflow
 make ci
+
+# Build with version injection
+make release-build
+
+# Show current version
+make version
 ```
+
 
 ## 🚦 Roadmap
 
-- [x] Core database operations
-- [x] Schema management
-- [x] Migration system
-- [x] JavaScript runtime
-- [x] Raw SQL support
-- [x] Relations (basic support)
-- [ ] Advanced relation features (eager loading, nested writes)
-- [ ] Query optimization
-- [ ] Connection pooling
-- [ ] Middleware support
+- [x] Core database operations (CRUD, transactions, raw SQL)
+- [x] Schema management (Prisma-style definitions)
+- [x] Migration system (auto & file-based)
+- [x] JavaScript runtime with ORM interface
+- [x] Multi-database support (SQLite, MySQL, PostgreSQL)
+- [x] Relations support (one-to-one, one-to-many, many-to-many)
+- [x] Advanced relation features (eager loading, nested writes, filtering)
+- [x] CLI tool with timeout support
+- [x] GitHub Actions CI/CD pipeline
+- [x] Multi-platform binary releases
+- [ ] Query optimization and caching
+- [ ] Connection pooling configuration
+- [ ] Middleware/plugin system
 - [ ] GraphQL integration
+- [ ] Database introspection tools
+- [ ] Performance monitoring and metrics
 
 ## 📄 License
 

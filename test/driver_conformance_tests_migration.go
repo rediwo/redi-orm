@@ -25,7 +25,7 @@ func (dct *DriverConformanceTests) TestGetMigrator(t *testing.T) {
 	// Get migrator
 	migrator := td.DB.GetMigrator()
 	assert.NotNil(t, migrator)
-	
+
 	// Verify database type
 	assert.Equal(t, strings.ToLower(dct.DriverName), migrator.GetDatabaseType())
 }
@@ -37,7 +37,7 @@ func (dct *DriverConformanceTests) TestGetTables(t *testing.T) {
 
 	td := dct.createTestDB(t)
 	defer td.Cleanup()
-	
+
 	// Initially should have no tables (or only system tables)
 	migrator := td.DB.GetMigrator()
 	tables, err := migrator.GetTables()
@@ -52,7 +52,7 @@ func (dct *DriverConformanceTests) TestGetTables(t *testing.T) {
 	tables, err = migrator.GetTables()
 	assert.NoError(t, err)
 	assert.Greater(t, len(tables), initialTableCount)
-	
+
 	// Should include our tables
 	tableNames := make(map[string]bool)
 	for _, table := range tables {
@@ -69,7 +69,7 @@ func (dct *DriverConformanceTests) TestGetTableInfo(t *testing.T) {
 
 	td := dct.createTestDB(t)
 	defer td.Cleanup()
-	
+
 	// Create standard schemas
 	err := td.CreateStandardSchemas()
 	require.NoError(t, err)
@@ -79,10 +79,10 @@ func (dct *DriverConformanceTests) TestGetTableInfo(t *testing.T) {
 	tableInfo, err := migrator.GetTableInfo("users")
 	assert.NoError(t, err)
 	assert.NotNil(t, tableInfo)
-	
+
 	// Verify columns
 	assert.True(t, len(tableInfo.Columns) > 0)
-	
+
 	// Check for expected columns
 	columnNames := make(map[string]bool)
 	for _, col := range tableInfo.Columns {
@@ -91,7 +91,7 @@ func (dct *DriverConformanceTests) TestGetTableInfo(t *testing.T) {
 	assert.True(t, columnNames["id"])
 	assert.True(t, columnNames["name"])
 	assert.True(t, columnNames["email"])
-	
+
 	// Check primary key
 	for _, col := range tableInfo.Columns {
 		if col.Name == "id" {
@@ -99,10 +99,10 @@ func (dct *DriverConformanceTests) TestGetTableInfo(t *testing.T) {
 			assert.True(t, col.AutoIncrement)
 		}
 	}
-	
+
 	// Check indexes
 	assert.True(t, len(tableInfo.Indexes) > 0)
-	
+
 	// Email should have unique index
 	hasEmailIndex := false
 	for _, idx := range tableInfo.Indexes {
@@ -135,7 +135,7 @@ func (dct *DriverConformanceTests) TestGenerateCreateTableSQL(t *testing.T) {
 	sql, err := migrator.GenerateCreateTableSQL(testSchema)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, sql)
-	
+
 	// Verify SQL contains expected elements
 	sqlLower := strings.ToLower(sql)
 	assert.Contains(t, sqlLower, "create table")
@@ -144,15 +144,15 @@ func (dct *DriverConformanceTests) TestGenerateCreateTableSQL(t *testing.T) {
 	assert.Contains(t, sqlLower, "name")
 	assert.Contains(t, sqlLower, "email")
 	assert.Contains(t, sqlLower, "primary key")
-	
+
 	// Test execution
 	ctx := context.Background()
 	err = td.DB.RegisterSchema("TestTable", testSchema)
 	require.NoError(t, err)
-	
+
 	_, err = td.DB.Exec(sql)
 	assert.NoError(t, err)
-	
+
 	// Clean up
 	err = td.DB.DropModel(ctx, "TestTable")
 	assert.NoError(t, err)
@@ -182,12 +182,12 @@ func (dct *DriverConformanceTests) TestGenerateAddColumnSQL(t *testing.T) {
 	defer td.Cleanup()
 
 	ctx := context.Background()
-	
+
 	// Create initial table
 	initialSchema := schema.New("AddColTest").
 		AddField(schema.Field{Name: "id", Type: schema.FieldTypeInt, PrimaryKey: true}).
 		AddField(schema.Field{Name: "name", Type: schema.FieldTypeString})
-	
+
 	err := td.DB.RegisterSchema("AddColTest", initialSchema)
 	require.NoError(t, err)
 	err = td.DB.CreateModel(ctx, "AddColTest")
@@ -199,15 +199,15 @@ func (dct *DriverConformanceTests) TestGenerateAddColumnSQL(t *testing.T) {
 	sql, err := migrator.GenerateAddColumnSQL("add_col_tests", newField)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, sql)
-	
+
 	// Execute the SQL
 	_, err = td.DB.Exec(sql)
 	assert.NoError(t, err)
-	
+
 	// Verify column was added
 	tableInfo, err := migrator.GetTableInfo("add_col_tests")
 	assert.NoError(t, err)
-	
+
 	hasEmail := false
 	for _, col := range tableInfo.Columns {
 		if col.Name == "email" {
@@ -234,7 +234,7 @@ func (dct *DriverConformanceTests) TestGenerateDropColumnSQL(t *testing.T) {
 	sqls, err := migrator.GenerateDropColumnSQL("test_table", "column_to_drop")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, sqls)
-	
+
 	// At least one SQL statement should contain DROP
 	foundDrop := false
 	for _, sql := range sqls {
@@ -256,14 +256,14 @@ func (dct *DriverConformanceTests) TestGenerateCreateIndexSQL(t *testing.T) {
 	defer td.Cleanup()
 
 	migrator := td.DB.GetMigrator()
-	
+
 	// Test single column index
 	sql := migrator.GenerateCreateIndexSQL("users", "idx_users_email", []string{"email"}, true)
 	assert.NotEmpty(t, sql)
 	assert.Contains(t, strings.ToLower(sql), "create")
 	assert.Contains(t, strings.ToLower(sql), "index")
 	assert.Contains(t, strings.ToLower(sql), "unique")
-	
+
 	// Test composite index
 	sql = migrator.GenerateCreateIndexSQL("posts", "idx_posts_user_created", []string{"user_id", "created_at"}, false)
 	assert.NotEmpty(t, sql)
@@ -281,7 +281,7 @@ func (dct *DriverConformanceTests) TestGenerateDropIndexSQL(t *testing.T) {
 
 	migrator := td.DB.GetMigrator()
 	sql := migrator.GenerateDropIndexSQL("idx_users_email")
-	
+
 	// Some databases return empty string for certain operations
 	if sql != "" {
 		assert.Contains(t, strings.ToLower(sql), "drop")
@@ -296,7 +296,7 @@ func (dct *DriverConformanceTests) TestApplyMigration(t *testing.T) {
 
 	td := dct.createTestDB(t)
 	defer td.Cleanup()
-	
+
 	// Create a simple migration SQL
 	integerType := dct.Characteristics.AutoIncrementIntegerType
 	if integerType == "" {
@@ -306,17 +306,17 @@ func (dct *DriverConformanceTests) TestApplyMigration(t *testing.T) {
 		integerType)
 
 	migrator := td.DB.GetMigrator()
-	
+
 	// Apply migration
 	err := migrator.ApplyMigration(createSQL)
 	assert.NoError(t, err)
-	
+
 	// Verify table exists
 	tables, err := migrator.GetTables()
 	assert.NoError(t, err)
 	hasTable := slices.Contains(tables, "test_migration")
 	assert.True(t, hasTable, "Table should exist after migration")
-	
+
 	// Clean up
 	_, _ = td.DB.Exec("DROP TABLE test_migration")
 }
@@ -336,14 +336,14 @@ func (dct *DriverConformanceTests) TestMigrationWorkflow(t *testing.T) {
 		AddField(schema.Field{Name: "id", Type: schema.FieldTypeInt, PrimaryKey: true, AutoIncrement: true}).
 		AddField(schema.Field{Name: "name", Type: schema.FieldTypeString}).
 		AddField(schema.Field{Name: "price", Type: schema.FieldTypeDecimal})
-	
+
 	err := td.DB.RegisterSchema("Product", initialSchema)
 	require.NoError(t, err)
 
 	// Generate and apply initial migration
 	createSQL, err := migrator.GenerateCreateTableSQL(initialSchema)
 	assert.NoError(t, err)
-	
+
 	err = migrator.ApplyMigration(createSQL)
 	assert.NoError(t, err)
 
@@ -351,13 +351,13 @@ func (dct *DriverConformanceTests) TestMigrationWorkflow(t *testing.T) {
 	newField := schema.Field{Name: "description", Type: schema.FieldTypeString, Nullable: true}
 	addColumnSQL, err := migrator.GenerateAddColumnSQL("products", newField)
 	assert.NoError(t, err)
-	
+
 	err = migrator.ApplyMigration(addColumnSQL)
 	assert.NoError(t, err)
 
 	// Step 3: Add index
 	indexSQL := migrator.GenerateCreateIndexSQL("products", "idx_products_name", []string{"name"}, false)
-	
+
 	if indexSQL != "" { // Some operations might return empty SQL
 		err = migrator.ApplyMigration(indexSQL)
 		assert.NoError(t, err)
@@ -366,7 +366,7 @@ func (dct *DriverConformanceTests) TestMigrationWorkflow(t *testing.T) {
 	// Verify final state
 	tableInfo, err := migrator.GetTableInfo("products")
 	assert.NoError(t, err)
-	
+
 	// Check columns
 	columnNames := make(map[string]bool)
 	for _, col := range tableInfo.Columns {

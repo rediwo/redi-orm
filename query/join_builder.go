@@ -21,50 +21,56 @@ const (
 // JoinClause represents a single join operation
 type JoinClause struct {
 	Type         JoinType
-	Table        string           // Table to join
-	Alias        string           // Table alias
-	Condition    string           // Join condition
-	Schema       *schema.Schema   // Schema of joined table
-	Relation     *schema.Relation // Relation definition
-	RelationName string           // Name of the relation field (e.g., "posts")
-	NestedJoins  []JoinClause     // Nested joins for this table
+	Table        string               // Table to join
+	Alias        string               // Table alias
+	Condition    string               // Join condition
+	Schema       *schema.Schema       // Schema of joined table
+	Relation     *schema.Relation     // Relation definition
+	RelationName string               // Name of the relation field (e.g., "posts")
+	ParentAlias  string               // Alias of the parent table
+	RelationPath string               // Full relation path (e.g., "posts.comments")
+	NestedJoins  []JoinClause         // Nested joins for this table
+	IncludeOpt   *types.IncludeOption // Include options for filtering
 }
 
 // JoinBuilder handles building SQL joins from relations
 type JoinBuilder struct {
-	database     types.Database
-	joins        []JoinClause
-	tableAliases map[string]int // Track alias counters
-	schemaCache  map[string]*schema.Schema
-	joinedPaths  map[string]string // Track joined relation paths to their aliases
+	database       types.Database
+	joins          []JoinClause
+	tableAliases   map[string]int // Track alias counters
+	schemaCache    map[string]*schema.Schema
+	joinedPaths    map[string]string               // Track joined relation paths to their aliases
+	includeOptions map[string]*types.IncludeOption // Include options by relation path
 }
 
 // NewJoinBuilder creates a new join builder
 func NewJoinBuilder(database types.Database) *JoinBuilder {
 	return &JoinBuilder{
-		database:     database,
-		joins:        []JoinClause{},
-		tableAliases: make(map[string]int),
-		schemaCache:  make(map[string]*schema.Schema),
-		joinedPaths:  make(map[string]string),
+		database:       database,
+		joins:          []JoinClause{},
+		tableAliases:   make(map[string]int),
+		schemaCache:    make(map[string]*schema.Schema),
+		joinedPaths:    make(map[string]string),
+		includeOptions: make(map[string]*types.IncludeOption),
 	}
 }
 
 // NewJoinBuilderWithReservedAliases creates a new join builder with reserved aliases
 func NewJoinBuilderWithReservedAliases(database types.Database, reservedAliases ...string) *JoinBuilder {
 	jb := &JoinBuilder{
-		database:     database,
-		joins:        []JoinClause{},
-		tableAliases: make(map[string]int),
-		schemaCache:  make(map[string]*schema.Schema),
-		joinedPaths:  make(map[string]string),
+		database:       database,
+		joins:          []JoinClause{},
+		tableAliases:   make(map[string]int),
+		schemaCache:    make(map[string]*schema.Schema),
+		joinedPaths:    make(map[string]string),
+		includeOptions: make(map[string]*types.IncludeOption),
 	}
-	
+
 	// Mark reserved aliases as used
 	for _, alias := range reservedAliases {
 		jb.tableAliases[alias] = 1
 	}
-	
+
 	return jb
 }
 
@@ -112,6 +118,8 @@ func (b *JoinBuilder) AddRelationJoin(
 		Schema:       relatedSchema,
 		Relation:     &relation,
 		RelationName: relationName,
+		ParentAlias:  fromAlias,
+		RelationPath: relationName, // Will be updated in AddNestedRelationJoin for nested paths
 	}
 
 	b.joins = append(b.joins, join)
@@ -145,7 +153,7 @@ func (b *JoinBuilder) AddNestedRelationJoin(
 		if existingAlias, exists := b.joinedPaths[currentPath]; exists {
 			// This relation is already joined, use its alias for the next level
 			currentAlias = existingAlias
-			
+
 			// Get the relation to update currentModel for next iteration
 			currentSchema, err := b.getSchema(currentModel)
 			if err != nil {
@@ -177,6 +185,11 @@ func (b *JoinBuilder) AddNestedRelationJoin(
 			return err
 		}
 
+		// Update the relation path for the join we just added
+		if len(b.joins) > 0 {
+			b.joins[len(b.joins)-1].RelationPath = currentPath
+		}
+
 		// Update current model and alias for next iteration
 		currentModel = relation.Model
 		// Get the alias of the join we just added
@@ -190,6 +203,11 @@ func (b *JoinBuilder) AddNestedRelationJoin(
 	return nil
 }
 
+// SetIncludeOptions sets include options for specific relation paths
+func (b *JoinBuilder) SetIncludeOptions(includeOptions map[string]*types.IncludeOption) {
+	b.includeOptions = includeOptions
+}
+
 // BuildSQL generates the JOIN SQL clauses
 func (b *JoinBuilder) BuildSQL() string {
 	if len(b.joins) == 0 {
@@ -198,11 +216,46 @@ func (b *JoinBuilder) BuildSQL() string {
 
 	var parts []string
 	for _, join := range b.joins {
+		// Get include options for this join if they exist
+		includeOpt, hasOpt := b.includeOptions[join.RelationPath]
+
+		// Build the base join condition
+		condition := join.Condition
+
+		// SQL-level filtering: add WHERE conditions to the JOIN ON clause
+		if hasOpt && includeOpt.Where != nil && join.Schema != nil {
+			// Create a condition context for the joined table
+			// Create a temporary field mapper with the schema
+			fieldMapper := types.NewDefaultFieldMapper()
+			fieldMapper.RegisterSchema(join.Relation.Model, join.Schema)
+			ctx := types.NewConditionContext(fieldMapper, join.Relation.Model, join.Alias)
+
+			// Build the WHERE condition SQL
+			whereSql, whereArgs := includeOpt.Where.ToSQL(ctx)
+			if whereSql != "" {
+				// For now, we'll embed the args as literals for the JOIN clause
+				// This is a simplified implementation - in production, we'd need better handling
+				for _, arg := range whereArgs {
+					// Replace the first placeholder with the literal value
+					switch v := arg.(type) {
+					case string:
+						whereSql = strings.Replace(whereSql, "?", fmt.Sprintf("'%s'", v), 1)
+					case bool:
+						// Use database-specific boolean literal
+						whereSql = strings.Replace(whereSql, "?", b.database.GetBooleanLiteral(v), 1)
+					default:
+						whereSql = strings.Replace(whereSql, "?", fmt.Sprintf("%v", v), 1)
+					}
+				}
+				condition = fmt.Sprintf("%s AND %s", condition, whereSql)
+			}
+		}
+
 		parts = append(parts, fmt.Sprintf("%s %s AS %s ON %s",
 			join.Type,
 			join.Table,
 			join.Alias,
-			join.Condition,
+			condition,
 		))
 	}
 

@@ -1,8 +1,8 @@
 package query
 
 import (
-	"testing"
 	"strings"
+	"testing"
 
 	"github.com/rediwo/redi-orm/types"
 )
@@ -108,18 +108,18 @@ func TestConditionFieldMapping(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create condition context
 			ctx := types.NewConditionContext(mapper, tt.modelName, tt.tableAlias)
-			
+
 			// Build condition
 			cond := tt.buildCond()
-			
+
 			// Get SQL
 			sql, args := cond.ToSQL(ctx)
-			
+
 			// Check SQL
 			if sql != tt.expectedSQL {
 				t.Errorf("SQL mismatch\nGot:      %s\nExpected: %s", sql, tt.expectedSQL)
 			}
-			
+
 			// Check args
 			if len(args) != len(tt.expectedArgs) {
 				t.Errorf("Args length mismatch: got %d, expected %d", len(args), len(tt.expectedArgs))

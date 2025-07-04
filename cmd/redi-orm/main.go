@@ -23,9 +23,11 @@ import (
 	"github.com/rediwo/redi/runtime"
 )
 
+// Version is injected at build time via -ldflags
+var version = "dev"
+
 const (
-	version = "0.1.0"
-	usage   = `RediORM CLI - Database migration tool
+	usage = `RediORM CLI - Database migration tool
 
 Usage:
   redi-orm <command> [flags]
@@ -150,7 +152,7 @@ func main() {
 	if command == "run" {
 		args := os.Args[2:]
 		var filteredArgs []string
-		
+
 		for i := 0; i < len(args); i++ {
 			arg := args[i]
 			if arg == "--timeout" && i+1 < len(args) {
@@ -169,7 +171,7 @@ func main() {
 			}
 			filteredArgs = append(filteredArgs, arg)
 		}
-		
+
 		// Now parse remaining flags
 		flag.CommandLine.Parse(filteredArgs)
 	} else {

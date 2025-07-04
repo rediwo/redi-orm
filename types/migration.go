@@ -45,7 +45,7 @@ type SchemaChange struct {
 	SQL        string
 	// IndexDef stores index definition for DROP_INDEX changes
 	// This allows recreating the index during rollback
-	IndexDef   *IndexDefinition `json:"index_def,omitempty"`
+	IndexDef *IndexDefinition `json:"index_def,omitempty"`
 }
 
 // IndexDefinition stores the definition of an index

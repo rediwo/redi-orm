@@ -1,6 +1,12 @@
 # RediORM Makefile
 
-.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-orm test-docker docker-up docker-down docker-wait clean fmt lint vet deps build install cli-build cli-install
+# Version from git tags with fallback
+VERSION := $(shell git describe --tags --exact-match 2>/dev/null || git describe --tags --always 2>/dev/null || echo "dev")
+
+# Build flags with version injection
+LDFLAGS := -X main.version=$(VERSION)
+
+.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-orm test-docker docker-up docker-down docker-wait clean fmt lint vet deps build install cli-build cli-install release-build
 
 # Default target
 help:
@@ -27,6 +33,8 @@ help:
 	@echo "  clean         - Clean build artifacts"
 	@echo "  cli-build     - Build the CLI tool"
 	@echo "  cli-install   - Install the CLI tool globally"
+	@echo "  release-build - Build CLI with version injection for release"
+	@echo "  version       - Show current version"
 
 # Test targets
 test:
@@ -95,6 +103,14 @@ cli-build:
 
 cli-install:
 	go install ./cmd/redi-orm
+
+# Release build with version injection
+release-build:
+	go build -o redi-orm -ldflags "$(LDFLAGS)" ./cmd/redi-orm
+
+# Version information
+version:
+	@echo "Version: $(VERSION)"
 
 # Development workflow
 dev: fmt vet test

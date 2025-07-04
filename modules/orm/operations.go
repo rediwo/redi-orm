@@ -176,7 +176,7 @@ func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQ
 	}
 
 	query := model.Select()
-	
+
 	// Apply where conditions
 	query = m.applySimpleWhereConditions(query, where).(types.SelectQuery)
 
@@ -248,10 +248,10 @@ func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQue
 
 	// Apply pagination
 	if skip, ok := options["skip"]; ok {
-		query = query.Offset(int(toInt64(skip)))
+		query = query.Offset(utils.ToInt(skip))
 	}
 	if take, ok := options["take"]; ok {
-		query = query.Limit(int(toInt64(take)))
+		query = query.Limit(utils.ToInt(take))
 	}
 
 	// Handle select fields
@@ -447,10 +447,10 @@ func (m *ModelsModule) executeGroupBy(ctx context.Context, _ types.ModelQuery, m
 
 	// Handle aggregations - we need to build raw SQL for aggregations
 	// For now, let's execute a raw query instead of using the query builder
-	
+
 	// Build SELECT clause
 	var selectParts []string
-	
+
 	// Add grouped fields
 	for _, field := range groupByFields {
 		// Resolve field name to column name
@@ -462,7 +462,7 @@ func (m *ModelsModule) executeGroupBy(ctx context.Context, _ types.ModelQuery, m
 		// Use column AS field to maintain the original field name in results
 		selectParts = append(selectParts, fmt.Sprintf("%s AS %s", columnName, field))
 	}
-	
+
 	// Handle _count, _sum, _avg, _min, _max aggregations
 	aggregations := []string{"_count", "_sum", "_avg", "_min", "_max"}
 	for _, agg := range aggregations {
@@ -491,21 +491,21 @@ func (m *ModelsModule) executeGroupBy(ctx context.Context, _ types.ModelQuery, m
 			}
 		}
 	}
-	
+
 	// Build the SQL query
 	tableName, err := db.ResolveTableName(modelName)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	sql := fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectParts, ", "), tableName)
-	
+
 	// Add WHERE clause if provided
 	if where, ok := options["where"]; ok {
 		// For now, skip complex where conditions in groupBy
 		_ = where
 	}
-	
+
 	// Add GROUP BY clause
 	if len(groupByFields) > 0 {
 		var groupByColumns []string
@@ -518,13 +518,13 @@ func (m *ModelsModule) executeGroupBy(ctx context.Context, _ types.ModelQuery, m
 		}
 		sql += fmt.Sprintf(" GROUP BY %s", strings.Join(groupByColumns, ", "))
 	}
-	
+
 	// Add HAVING clause if provided
 	if having, ok := options["having"]; ok {
 		// For now, skip having conditions
 		_ = having
 	}
-	
+
 	// Add ORDER BY if provided
 	if orderBy, ok := options["orderBy"]; ok {
 		if orderMap, ok := orderBy.(map[string]any); ok {
@@ -545,28 +545,28 @@ func (m *ModelsModule) executeGroupBy(ctx context.Context, _ types.ModelQuery, m
 			}
 		}
 	}
-	
+
 	// Apply pagination
 	if take, ok := options["take"]; ok {
-		sql += fmt.Sprintf(" LIMIT %d", int(toInt64(take)))
+		sql += fmt.Sprintf(" LIMIT %d", utils.ToInt64(take))
 	}
 	if skip, ok := options["skip"]; ok {
-		sql += fmt.Sprintf(" OFFSET %d", int(toInt64(skip)))
+		sql += fmt.Sprintf(" OFFSET %d", utils.ToInt64(skip))
 	}
-	
+
 	// Execute raw query
 	rows, err := db.Query(sql)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	// Scan results into maps
 	results, err := utils.ScanRowsToMaps(rows)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return results, nil
 }
 
@@ -587,7 +587,7 @@ func (m *ModelsModule) executeUpdate(ctx context.Context, model types.ModelQuery
 	processedData := m.processUpdateData(data)
 
 	query := model.Update(processedData)
-	
+
 	// Apply where conditions
 	query = m.applySimpleWhereConditions(query, where).(types.UpdateQuery)
 
@@ -760,7 +760,7 @@ func (m *ModelsModule) applySimpleWhereConditions(query any, where any) any {
 	if condition == nil {
 		return query
 	}
-	
+
 	// Apply the condition to the query using type assertion instead of reflection
 	switch q := query.(type) {
 	case types.SelectQuery:
@@ -784,7 +784,7 @@ func (m *ModelsModule) processNestedWrites(data any, operation string, modelName
 	}
 
 	processedData := make(map[string]any)
-	
+
 	// Get schema for the current model to check relations
 	schema, err := db.GetSchema(modelName)
 	if err != nil {
@@ -985,9 +985,10 @@ func (m *ModelsModule) applyInclude(query any, include any) any {
 				}
 			case map[string]any:
 				// Handle nested include with options
-				includes := m.parseNestedIncludes(relationName, opts)
-				for _, incl := range includes {
-					selectQuery = selectQuery.Include(incl)
+				includeOpts := m.parseNestedIncludes(relationName, opts)
+				// Apply include options to the query
+				for path, opt := range includeOpts {
+					selectQuery = m.applyIncludeOption(selectQuery, path, opt)
 				}
 			}
 		}
@@ -995,11 +996,71 @@ func (m *ModelsModule) applyInclude(query any, include any) any {
 	return selectQuery
 }
 
-// parseNestedIncludes parses nested include options and returns a list of include paths
-func (m *ModelsModule) parseNestedIncludes(relationName string, options map[string]any) []string {
-	var includes []string
+// applyIncludeOption applies a single include option to the query
+func (m *ModelsModule) applyIncludeOption(query types.SelectQuery, path string, opt *types.IncludeOption) types.SelectQuery {
+	// Use the new IncludeWithOptions method
+	return query.IncludeWithOptions(path, opt)
+}
+
+// parseNestedIncludes parses nested include options and returns include options
+func (m *ModelsModule) parseNestedIncludes(relationName string, options map[string]any) map[string]*types.IncludeOption {
+	result := make(map[string]*types.IncludeOption)
 	hasNestedIncludes := false
-	
+
+	// Create the include option for this relation
+	includeOpt := &types.IncludeOption{
+		Path: relationName,
+	}
+
+	// Check for select fields (for selective loading)
+	if selectFields, hasSelect := options["select"]; hasSelect {
+		if selectMap, ok := selectFields.(map[string]any); ok {
+			var fields []string
+			for field, included := range selectMap {
+				if inc, ok := included.(bool); ok && inc {
+					fields = append(fields, field)
+				}
+			}
+			includeOpt.Select = fields
+		}
+	}
+
+	// Check for where conditions (for filtered loading)
+	if whereCondition, hasWhere := options["where"]; hasWhere {
+		// Build condition from where clause
+		includeOpt.Where = m.BuildCondition(whereCondition)
+	}
+
+	// Check for orderBy
+	if orderBy, hasOrderBy := options["orderBy"]; hasOrderBy {
+		if orderMap, ok := orderBy.(map[string]any); ok {
+			var orders []types.OrderByOption
+			for field, direction := range orderMap {
+				dir := types.ASC
+				if dirStr, ok := direction.(string); ok && strings.ToLower(dirStr) == "desc" {
+					dir = types.DESC
+				}
+				orders = append(orders, types.OrderByOption{
+					Field:     field,
+					Direction: dir,
+				})
+			}
+			includeOpt.OrderBy = orders
+		}
+	}
+
+	// Check for limit
+	if limit, hasLimit := options["take"]; hasLimit {
+		l := utils.ToInt(limit)
+		includeOpt.Limit = &l
+	}
+
+	// Check for offset
+	if skip, hasSkip := options["skip"]; hasSkip {
+		o := utils.ToInt(skip)
+		includeOpt.Offset = &o
+	}
+
 	// Check for nested includes
 	if nestedInclude, hasInclude := options["include"]; hasInclude {
 		switch nested := nestedInclude.(type) {
@@ -1011,56 +1072,28 @@ func (m *ModelsModule) parseNestedIncludes(relationName string, options map[stri
 				switch opts := nestedOpts.(type) {
 				case bool:
 					if opts {
-						includes = append(includes, fullPath)
+						result[fullPath] = &types.IncludeOption{
+							Path: fullPath,
+						}
 					}
 				case map[string]any:
 					// Recursively parse deeper nesting
 					deeperIncludes := m.parseNestedIncludes(fullPath, opts)
-					includes = append(includes, deeperIncludes...)
+					for k, v := range deeperIncludes {
+						result[k] = v
+					}
 				}
 			}
 		}
 	}
-	
+
 	// Only include the parent relation if there are no nested includes
 	// This prevents duplicate joins when we have both "posts" and "posts.comments"
 	if !hasNestedIncludes {
-		includes = append(includes, relationName)
+		result[relationName] = includeOpt
 	}
-	
-	// Check for select fields (for selective loading)
-	if selectFields, hasSelect := options["select"]; hasSelect {
-		// Store select information for later processing
-		// This would need to be passed to the query builder
-		_ = selectFields // TODO: Implement selective field loading
-	}
-	
-	// Check for where conditions (for filtered loading)
-	if whereCondition, hasWhere := options["where"]; hasWhere {
-		// Store where information for later processing
-		// This would need to be passed to the query builder
-		_ = whereCondition // TODO: Implement filtered relation loading
-	}
-	
-	return includes
-}
 
-// Helper to convert numeric types to int64
-func toInt64(v any) int64 {
-	switch val := v.(type) {
-	case int:
-		return int64(val)
-	case int32:
-		return int64(val)
-	case int64:
-		return val
-	case float32:
-		return int64(val)
-	case float64:
-		return int64(val)
-	default:
-		return 0
-	}
+	return result
 }
 
 // Check if error is a unique constraint violation

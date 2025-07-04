@@ -16,32 +16,32 @@ type DriverCharacteristics struct {
 	// ReturnsZeroRowsAffectedForUnchanged indicates if the driver returns 0 for RowsAffected
 	// when UPDATE doesn't actually change any values (MySQL behavior)
 	ReturnsZeroRowsAffectedForUnchanged bool
-	
+
 	// SupportsLastInsertID indicates if the driver supports LastInsertID
 	// PostgreSQL doesn't support this and always returns 0
 	SupportsLastInsertID bool
-	
+
 	// SupportsReturningClause indicates if the driver supports RETURNING clause
 	SupportsReturningClause bool
-	
+
 	// MigrationTableName is the name of the migration tracking table
 	MigrationTableName string
-	
+
 	// SystemIndexPatterns contains patterns for identifying system indexes
 	SystemIndexPatterns []string
-	
+
 	// AutoIncrementIntegerType is the SQL type for an auto-incrementing integer primary key
 	AutoIncrementIntegerType string
 }
 
 // DriverConformanceTests provides a comprehensive test suite for database drivers
 type DriverConformanceTests struct {
-	DriverName       string
-	NewDriver        func(config types.Config) (types.Database, error)
-	Config           types.Config
-	SkipTests        map[string]bool                       // For driver-specific test skipping
-	CleanupTables    func(t *testing.T, db types.Database) // Driver-specific table cleanup
-	Characteristics  DriverCharacteristics                  // Driver-specific behaviors
+	DriverName      string
+	NewDriver       func(config types.Config) (types.Database, error)
+	Config          types.Config
+	SkipTests       map[string]bool                       // For driver-specific test skipping
+	CleanupTables   func(t *testing.T, db types.Database) // Driver-specific table cleanup
+	Characteristics DriverCharacteristics                 // Driver-specific behaviors
 }
 
 // RunAll runs all conformance tests
@@ -164,6 +164,16 @@ func (dct *DriverConformanceTests) RunAll(t *testing.T) {
 		t.Run("RawQueryParameterBinding", dct.TestRawQueryParameterBinding)
 	})
 
+	// Include Options (Advanced Features)
+	t.Run("IncludeOptions", func(t *testing.T) {
+		t.Run("IncludeWithSelectFields", dct.TestIncludeWithSelectFields)
+		t.Run("IncludeWithWhereFilter", dct.TestIncludeWithWhereFilter)
+		t.Run("IncludeWithOrderBy", dct.TestIncludeWithOrderBy)
+		t.Run("IncludeWithPagination", dct.TestIncludeWithPagination)
+		t.Run("IncludeNestedWithOptions", dct.TestIncludeNestedWithOptions)
+		t.Run("IncludePerformance", dct.TestIncludePerformance)
+	})
+
 	// Driver Initialization
 	t.Run("DriverInitialization", func(t *testing.T) {
 		t.Run("NewDriver", dct.TestNewDriver)
@@ -250,7 +260,7 @@ func (dct *DriverConformanceTests) TestConnectWithInvalidConfig(t *testing.T) {
 	}
 
 	invalidConfig := dct.Config
-	
+
 	// Handle different invalid configs for different drivers
 	switch dct.DriverName {
 	case "SQLite":
@@ -700,7 +710,7 @@ func (dct *DriverConformanceTests) TestUpdate(t *testing.T) {
 		"active": false,
 	}).Exec(ctx)
 	assert.NoError(t, err)
-	
+
 	// Check expected rows affected based on driver characteristics
 	expectedRowsAffected := int64(5)
 	if dct.Characteristics.ReturnsZeroRowsAffectedForUnchanged {

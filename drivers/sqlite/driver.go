@@ -48,13 +48,13 @@ func (s *SQLiteDB) Connect(ctx context.Context) error {
 	}
 
 	s.SetDB(db)
-	
+
 	// Enable foreign key constraints in SQLite
 	_, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON")
 	if err != nil {
 		return fmt.Errorf("failed to enable foreign key constraints: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -168,13 +168,13 @@ func (s *SQLiteDB) generateCreateTableSQL(schema *schema.Schema) (string, error)
 			return "", fmt.Errorf("failed to generate column SQL for field %s: %w", field.Name, err)
 		}
 		columns = append(columns, column)
-		
+
 		if field.PrimaryKey && !field.AutoIncrement {
 			// For composite primary keys (non-autoincrement)
 			primaryKeys = append(primaryKeys, field.GetColumnName())
 		}
 	}
-	
+
 	// Add composite primary key if needed
 	if len(primaryKeys) > 1 {
 		columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
@@ -182,15 +182,15 @@ func (s *SQLiteDB) generateCreateTableSQL(schema *schema.Schema) (string, error)
 
 	// Add foreign key constraints
 	for _, relation := range schema.Relations {
-		if relation.Type == "manyToOne" || 
-		   (relation.Type == "oneToOne" && relation.ForeignKey != "") {
+		if relation.Type == "manyToOne" ||
+			(relation.Type == "oneToOne" && relation.ForeignKey != "") {
 			// Get the referenced table name
 			referencedSchema, err := s.GetSchema(relation.Model)
 			if err != nil {
 				// If we can't find the schema, skip this foreign key
 				continue
 			}
-			
+
 			// Find the actual field to get the column name
 			var foreignKeyColumn string
 			for _, field := range schema.Fields {
@@ -202,7 +202,7 @@ func (s *SQLiteDB) generateCreateTableSQL(schema *schema.Schema) (string, error)
 			if foreignKeyColumn == "" {
 				foreignKeyColumn = relation.ForeignKey
 			}
-			
+
 			// Find the referenced column name
 			var referencesColumn string
 			for _, field := range referencedSchema.Fields {
@@ -214,14 +214,14 @@ func (s *SQLiteDB) generateCreateTableSQL(schema *schema.Schema) (string, error)
 			if referencesColumn == "" {
 				referencesColumn = relation.References
 			}
-			
+
 			fkConstraint := fmt.Sprintf(
 				"FOREIGN KEY (%s) REFERENCES %s(%s)",
 				foreignKeyColumn,
 				referencedSchema.GetTableName(),
 				referencesColumn,
 			)
-			
+
 			// Add ON DELETE/UPDATE rules if specified
 			if relation.OnDelete != "" {
 				fkConstraint += " ON DELETE " + relation.OnDelete
@@ -229,7 +229,7 @@ func (s *SQLiteDB) generateCreateTableSQL(schema *schema.Schema) (string, error)
 			if relation.OnUpdate != "" {
 				fkConstraint += " ON UPDATE " + relation.OnUpdate
 			}
-			
+
 			columns = append(columns, fkConstraint)
 		}
 	}

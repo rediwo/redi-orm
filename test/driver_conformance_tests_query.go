@@ -454,7 +454,7 @@ func (dct *DriverConformanceTests) TestOrderByMultiple(t *testing.T) {
 		OrderBy("name", types.ASC).
 		FindMany(ctx, &users)
 	assert.NoError(t, err)
-	
+
 	// Users with age 25 should be ordered by name
 	var age25Users []string
 	for _, u := range users {
@@ -690,16 +690,16 @@ func (dct *DriverConformanceTests) TestAggregations(t *testing.T) {
 		WHERE published = ?
 	`, true).FindOne(ctx, &result)
 	assert.NoError(t, err)
-	
+
 	// MySQL returns aggregation results as strings, so use conversion utilities
 	countResult := utils.ToInt64(result["count"])
 	totalViews := utils.ToInt64(result["total_views"])
 	avgViews := utils.ToFloat64(result["avg_views"])
 	minViews := utils.ToInt64(result["min_views"])
 	maxViews := utils.ToInt64(result["max_views"])
-	
+
 	assert.Equal(t, int64(3), countResult)
-	assert.Equal(t, int64(1150), totalViews) // 100 + 50 + 1000
+	assert.Equal(t, int64(1150), totalViews)          // 100 + 50 + 1000
 	assert.InDelta(t, float64(383.33), avgViews, 0.5) // Average of 100, 50, 1000
 	assert.Equal(t, int64(50), minViews)
 	assert.Equal(t, int64(1000), maxViews)
@@ -815,4 +815,3 @@ func (dct *DriverConformanceTests) TestComplexQueries(t *testing.T) {
 	assert.True(t, firstName == "Alice" || firstName == "Bob", "Expected Alice or Bob but got %s", firstName)
 	assert.Equal(t, int64(2), utils.ToInt64(results[0]["post_count"]))
 }
-

@@ -576,7 +576,7 @@ func (m *PostgreSQLMigrator) ConvertFieldToColumnInfo(field schema.Field) *types
 	// For PostgreSQL, use the actual column type, not SERIAL
 	// SERIAL is only used during CREATE TABLE
 	colType := m.postgresqlDB.mapFieldTypeToSQL(field.Type)
-	
+
 	return &types.ColumnInfo{
 		Name:          field.GetColumnName(),
 		Type:          colType,

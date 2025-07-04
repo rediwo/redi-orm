@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/rediwo/redi-orm/types"
@@ -44,8 +45,14 @@ func (q *SelectQueryImpl) Include(relations ...string) types.SelectQuery {
 	newQuery := q.clone()
 	newQuery.includes = append(newQuery.includes, relations...)
 
-	// Add joins for each included relation
+	// Also add to includeOptions for backward compatibility
 	for _, relation := range relations {
+		if _, exists := newQuery.includeOptions[relation]; !exists {
+			newQuery.includeOptions[relation] = &types.IncludeOption{
+				Path: relation,
+			}
+		}
+
 		// Parse nested relations (e.g., "posts.comments")
 		relationPath := strings.Split(relation, ".")
 
@@ -60,6 +67,36 @@ func (q *SelectQueryImpl) Include(relations ...string) types.SelectQuery {
 			// Log error but continue - we might handle this differently in production
 			fmt.Printf("Warning: failed to add join for relation %s: %v\n", relation, err)
 		}
+	}
+
+	return newQuery
+}
+
+// IncludeWithOptions adds a relation with specific options
+func (q *SelectQueryImpl) IncludeWithOptions(path string, opt *types.IncludeOption) types.SelectQuery {
+	newQuery := q.clone()
+
+	// Store the include option
+	newQuery.includeOptions[path] = opt
+
+	// Also add to includes for backward compatibility
+	if !slices.Contains(newQuery.includes, path) {
+		newQuery.includes = append(newQuery.includes, path)
+	}
+
+	// Parse nested relations (e.g., "posts.comments")
+	relationPath := strings.Split(path, ".")
+
+	// Add join for this relation path
+	err := newQuery.joinBuilder.AddNestedRelationJoin(
+		newQuery.tableAlias, // Use the main table alias
+		newQuery.modelName,
+		relationPath,
+		LeftJoin, // Use LEFT JOIN to include records without relations
+	)
+	if err != nil {
+		// Log error but continue - we might handle this differently in production
+		fmt.Printf("Warning: failed to add join for relation %s: %v\n", path, err)
 	}
 
 	return newQuery
@@ -145,7 +182,7 @@ func (q *SelectQueryImpl) FindFirst(ctx context.Context, dest any) error {
 	var sql string
 	var args []any
 	var err error
-	
+
 	if len(q.includes) > 0 && q.joinBuilder != nil && len(q.joinBuilder.GetJoinedTables()) > 0 {
 		// For includes, we need to get all rows for the first main record
 		// We'll add a subquery or handle it differently
@@ -153,30 +190,30 @@ func (q *SelectQueryImpl) FindFirst(ctx context.Context, dest any) error {
 		if err != nil {
 			return fmt.Errorf("failed to build SQL: %w", err)
 		}
-		
+
 		// Use a slice to collect results
 		destType := reflect.TypeOf(dest)
 		if destType.Kind() != reflect.Ptr {
 			return fmt.Errorf("dest must be a pointer")
 		}
-		
+
 		// Create a slice of the same type
 		elemType := destType.Elem()
 		sliceType := reflect.SliceOf(elemType)
 		slicePtr := reflect.New(sliceType)
-		
+
 		// Find all results
 		err = q.findManyWithRelations(ctx, sql, args, slicePtr.Interface())
 		if err != nil {
 			return err
 		}
-		
+
 		// Get the first result if any
 		sliceValue := slicePtr.Elem()
 		if sliceValue.Len() == 0 {
 			return fmt.Errorf("no records found")
 		}
-		
+
 		// Set the first element to dest
 		reflect.ValueOf(dest).Elem().Set(sliceValue.Index(0))
 		return nil
@@ -187,7 +224,7 @@ func (q *SelectQueryImpl) FindFirst(ctx context.Context, dest any) error {
 		if err != nil {
 			return fmt.Errorf("failed to build SQL: %w", err)
 		}
-		
+
 		// Check if dest is map[string]any - if so, we need field mapping
 		destType := reflect.TypeOf(dest)
 		if destType.Kind() == reflect.Ptr && destType.Elem().Kind() == reflect.Map &&
@@ -196,7 +233,7 @@ func (q *SelectQueryImpl) FindFirst(ctx context.Context, dest any) error {
 			// Scanning into map[string]any, use field mapping
 			return q.Limit(1).(*SelectQueryImpl).findOneMapsWithFieldMapping(ctx, sql, args, dest)
 		}
-		
+
 		// Execute the query using the database
 		rawQuery := q.database.Raw(sql, args...)
 		return rawQuery.FindOne(ctx, dest)
@@ -238,6 +275,9 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 
 	// Add JOINs if any
 	if q.joinBuilder != nil {
+		// Pass include options to join builder for SQL-level filtering
+		q.joinBuilder.SetIncludeOptions(q.includeOptions)
+
 		joinSQL := q.joinBuilder.BuildSQL()
 		if joinSQL != "" {
 			fromClause += " " + joinSQL
@@ -312,7 +352,7 @@ func (q *SelectQueryImpl) buildSelectClause() string {
 		if q.joinBuilder != nil && len(q.joinBuilder.GetJoinedTables()) > 0 {
 			// Build explicit column list to avoid ambiguity
 			selectParts := []string{}
-			
+
 			// Get main table schema
 			mainSchema, err := q.database.GetModelSchema(q.modelName)
 			if err == nil {
@@ -320,7 +360,7 @@ func (q *SelectQueryImpl) buildSelectClause() string {
 				for _, field := range mainSchema.Fields {
 					columnName := field.GetColumnName()
 					// Alias format: tableAlias.column AS tableAlias_column
-					selectParts = append(selectParts, fmt.Sprintf("%s.%s AS %s_%s", 
+					selectParts = append(selectParts, fmt.Sprintf("%s.%s AS %s_%s",
 						q.tableAlias, columnName, q.tableAlias, columnName))
 				}
 			} else {
@@ -330,11 +370,25 @@ func (q *SelectQueryImpl) buildSelectClause() string {
 
 			// Add columns from joined tables
 			for _, join := range q.joinBuilder.GetJoinedTables() {
-				if join.Schema != nil {
+				// Check if we have include options with field selection for this relation
+				includeOpt, hasIncludeOpt := q.includeOptions[join.RelationPath]
+
+				if hasIncludeOpt && len(includeOpt.Select) > 0 && join.Schema != nil {
+					// SQL-level field selection: only select specified fields
+					for _, fieldName := range includeOpt.Select {
+						field, err := join.Schema.GetField(fieldName)
+						if err != nil {
+							continue // Skip invalid fields
+						}
+						columnName := field.GetColumnName()
+						selectParts = append(selectParts, fmt.Sprintf("%s.%s AS %s_%s",
+							join.Alias, columnName, join.Alias, columnName))
+					}
+				} else if join.Schema != nil {
+					// Select all fields from the joined table
 					for _, field := range join.Schema.Fields {
 						columnName := field.GetColumnName()
-						// Alias format: joinAlias.column AS joinAlias_column
-						selectParts = append(selectParts, fmt.Sprintf("%s.%s AS %s_%s", 
+						selectParts = append(selectParts, fmt.Sprintf("%s.%s AS %s_%s",
 							join.Alias, columnName, join.Alias, columnName))
 					}
 				} else {
@@ -342,7 +396,7 @@ func (q *SelectQueryImpl) buildSelectClause() string {
 					selectParts = append(selectParts, fmt.Sprintf("%s.*", join.Alias))
 				}
 			}
-			
+
 			return fmt.Sprintf("SELECT %s%s", distinctStr, strings.Join(selectParts, ", "))
 		} else {
 			// No joins, simple case
@@ -542,7 +596,7 @@ func (q *SelectQueryImpl) buildCountSQL() (string, []any, error) {
 		// Regular count
 		countExpr = "COUNT(*)"
 	}
-	
+
 	countSQL := fmt.Sprintf("SELECT %s FROM %s", countExpr, tableName)
 
 	if whereClause != "" {
@@ -558,7 +612,6 @@ func (q *SelectQueryImpl) buildCountSQL() (string, []any, error) {
 	return countSQL, args, nil
 }
 
-
 // findManyWithRelations executes the query and scans results with relation support
 func (q *SelectQueryImpl) findManyWithRelations(_ context.Context, sql string, args []any, dest any) error {
 	// Execute query using database's Query method
@@ -568,23 +621,54 @@ func (q *SelectQueryImpl) findManyWithRelations(_ context.Context, sql string, a
 	}
 	defer rows.Close()
 
-	// Create relation scanner
+	// Get main schema
 	mainSchema, err := q.database.GetSchema(q.modelName)
 	if err != nil {
 		return fmt.Errorf("failed to get schema for model %s: %w", q.modelName, err)
 	}
 
-	scanner := NewRelationScanner(mainSchema, q.tableAlias)
-
-	// Add joined table information to scanner
-	for _, join := range q.joinBuilder.GetJoinedTables() {
-		if join.Schema != nil && join.Relation != nil {
-			scanner.AddJoinedTable(join.Alias, join.Schema, join.Relation, join.RelationName)
+	// Check if we have nested includes (includes with dots like "posts.comments")
+	hasNestedIncludes := false
+	for _, include := range q.includes {
+		if strings.Contains(include, ".") {
+			hasNestedIncludes = true
+			break
 		}
 	}
 
-	// Use relation scanner to scan rows
-	return scanner.ScanRowsWithRelations(rows, dest)
+	// Use hierarchical scanner for nested includes
+	if hasNestedIncludes {
+		scanner := NewHierarchicalScanner(mainSchema, q.tableAlias)
+
+		// Create include processor if we have include options
+		if len(q.includeOptions) > 0 {
+			processor := NewIncludeProcessor(q.database, q.fieldMapper, q.includeOptions)
+			scanner.SetIncludeProcessor(processor)
+		}
+
+		// Add joined table information to scanner
+		for _, join := range q.joinBuilder.GetJoinedTables() {
+			if join.Schema != nil && join.Relation != nil {
+				scanner.AddJoinedTable(join.Alias, join.Schema, join.Relation, join.RelationName, join.ParentAlias, join.RelationPath)
+			}
+		}
+
+		// Use hierarchical scanner to scan rows
+		return scanner.ScanRowsWithRelations(rows, dest)
+	} else {
+		// Use regular scanner for simple includes
+		scanner := NewRelationScanner(mainSchema, q.tableAlias)
+
+		// Add joined table information to scanner
+		for _, join := range q.joinBuilder.GetJoinedTables() {
+			if join.Schema != nil && join.Relation != nil {
+				scanner.AddJoinedTable(join.Alias, join.Schema, join.Relation, join.RelationName)
+			}
+		}
+
+		// Use relation scanner to scan rows
+		return scanner.ScanRowsWithRelations(rows, dest)
+	}
 }
 
 // findManyMapsWithFieldMapping executes the query and scans results into maps with field name mapping

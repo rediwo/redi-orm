@@ -596,7 +596,7 @@ func (dct *DriverConformanceTests) TestDateTimeTypes(t *testing.T) {
 		WhereCondition(User.Where("email").Equals("time@example.com")).
 		FindFirst(ctx, &user)
 	assert.NoError(t, err)
-	
+
 	// Time should be close (within 1 second due to DB precision)
 	// Compare in UTC to handle timezone differences
 	assert.WithinDuration(t, now.UTC(), user.CreatedAt.UTC(), time.Second)
@@ -887,7 +887,7 @@ func (dct *DriverConformanceTests) TestRawUpdate(t *testing.T) {
 	// Test raw UPDATE
 	result, err := td.DB.Raw("UPDATE users SET active = ? WHERE age > ?", false, 30).Exec(ctx)
 	assert.NoError(t, err)
-	
+
 	// Check expected rows affected based on driver characteristics
 	if dct.Characteristics.ReturnsZeroRowsAffectedForUnchanged {
 		// MySQL doesn't count rows where values didn't actually change
@@ -1014,7 +1014,7 @@ func (dct *DriverConformanceTests) TestRawQueryWithDifferentDataTypes(t *testing
 	var result map[string]any
 	err = td.DB.Raw("SELECT * FROM data_type_tests WHERE id = ?", 1).FindOne(ctx, &result)
 	assert.NoError(t, err)
-	
+
 	// Use conversion utilities to handle different driver representations
 	// Raw queries return column names as-is (snake_case)
 	assert.Equal(t, int64(42), utils.ToInt64(result["int_val"]))

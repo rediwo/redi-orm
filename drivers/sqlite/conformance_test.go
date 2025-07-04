@@ -40,7 +40,7 @@ func TestSQLiteConformance(t *testing.T) {
 		Config: config,
 		SkipTests: map[string]bool{
 			// SQLite-specific skips
-			"TestTransactionIsolation": true, // SQLite has limited transaction isolation support
+			"TestTransactionIsolation":        true, // SQLite has limited transaction isolation support
 			"TestTransactionConcurrentAccess": true, // SQLite file-based DB has locking issues with concurrent transactions
 		},
 		CleanupTables: func(t *testing.T, db types.Database) {
@@ -52,11 +52,11 @@ func TestSQLiteConformance(t *testing.T) {
 		},
 		Characteristics: test.DriverCharacteristics{
 			ReturnsZeroRowsAffectedForUnchanged: false,
-			SupportsLastInsertID: true,
-			SupportsReturningClause: false,
-			MigrationTableName: "_migrations",
-			SystemIndexPatterns: []string{"sqlite_*", "pk_*"},
-			AutoIncrementIntegerType: "INTEGER",
+			SupportsLastInsertID:                true,
+			SupportsReturningClause:             false,
+			MigrationTableName:                  "_migrations",
+			SystemIndexPatterns:                 []string{"sqlite_*", "pk_*"},
+			AutoIncrementIntegerType:            "INTEGER",
 		},
 	}
 
@@ -66,7 +66,7 @@ func TestSQLiteConformance(t *testing.T) {
 // cleanupTables removes all non-system tables from the database
 func cleanupTables(t *testing.T, db *SQLiteDB) {
 	ctx := context.Background()
-	
+
 	// Get all tables
 	rows, err := db.DB.QueryContext(ctx, `
 		SELECT name FROM sqlite_master 

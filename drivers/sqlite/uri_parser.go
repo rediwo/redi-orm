@@ -57,14 +57,14 @@ func (p *SQLiteURIParser) ParseURI(uri string) (types.Config, error) {
 
 	// For SQLite URIs:
 	// - sqlite:///absolute/path -> /absolute/path (absolute)
-	// - sqlite://relative/path -> relative/path (relative) 
+	// - sqlite://relative/path -> relative/path (relative)
 	// - sqlite:/path -> path (relative)
-	
+
 	// When using sqlite:/// (three slashes), url.Parse returns path as "/absolute/path"
 	// We want to keep this as an absolute path
 	// When using sqlite:// with a host, we get the host separately
 	// When using sqlite:/ (one slash), we want relative paths
-	
+
 	if parsedURI.Host == "" && strings.HasPrefix(path, "/") {
 		// Check if original URI had three slashes (indicating absolute path)
 		// by looking at the original URI string

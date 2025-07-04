@@ -236,8 +236,8 @@ func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) 
 
 	// Add foreign key constraints
 	for _, relation := range schema.Relations {
-		if relation.Type == "manyToOne" || 
-		   (relation.Type == "oneToOne" && relation.ForeignKey != "") {
+		if relation.Type == "manyToOne" ||
+			(relation.Type == "oneToOne" && relation.ForeignKey != "") {
 			// Get the referenced table name
 			referencedSchema, err := m.GetSchema(relation.Model)
 			if err != nil {
@@ -245,7 +245,7 @@ func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) 
 				// This might happen during circular dependencies
 				continue
 			}
-			
+
 			// Find the actual field to get the column name
 			var foreignKeyColumn string
 			for _, field := range schema.Fields {
@@ -258,7 +258,7 @@ func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) 
 				// If field not found, use the relation.ForeignKey as is
 				foreignKeyColumn = relation.ForeignKey
 			}
-			
+
 			// Find the referenced column name
 			var referencesColumn string
 			for _, field := range referencedSchema.Fields {
@@ -270,7 +270,7 @@ func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) 
 			if referencesColumn == "" {
 				referencesColumn = relation.References
 			}
-			
+
 			fkConstraint := fmt.Sprintf(
 				"CONSTRAINT `fk_%s_%s` FOREIGN KEY (`%s`) REFERENCES `%s`(`%s`)",
 				strings.ReplaceAll(schema.GetTableName(), ".", "_"),
@@ -279,7 +279,7 @@ func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) 
 				referencedSchema.GetTableName(),
 				referencesColumn,
 			)
-			
+
 			// Add ON DELETE/UPDATE rules if specified
 			if relation.OnDelete != "" {
 				fkConstraint += " ON DELETE " + relation.OnDelete
@@ -287,7 +287,7 @@ func (m *MySQLDB) generateCreateTableSQL(schema *schema.Schema) (string, error) 
 			if relation.OnUpdate != "" {
 				fkConstraint += " ON UPDATE " + relation.OnUpdate
 			}
-			
+
 			columns = append(columns, fkConstraint)
 		}
 	}

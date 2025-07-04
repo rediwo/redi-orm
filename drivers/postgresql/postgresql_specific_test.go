@@ -162,7 +162,7 @@ func TestPostgreSQLCaseSensitivity(t *testing.T) {
 	err = User.Select().
 		WhereCondition(User.Where("name").Equals("alice")). // lowercase
 		FindMany(ctx, &users)
-	
+
 	// PostgreSQL should NOT find the user due to case sensitivity
 	require.NoError(t, err)
 	assert.Len(t, users, 0)
@@ -172,7 +172,7 @@ func TestPostgreSQLCaseSensitivity(t *testing.T) {
 	err = User.Select().
 		WhereCondition(User.Where("name").Equals("Alice")). // correct case
 		FindMany(ctx, &users)
-	
+
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
 	assert.Equal(t, "Alice", users[0].Name)

@@ -148,6 +148,10 @@ func (td *SQLiteTransactionDB) GetDriverType() string {
 	return td.database.GetDriverType()
 }
 
+func (td *SQLiteTransactionDB) GetBooleanLiteral(value bool) string {
+	return td.database.GetBooleanLiteral(value)
+}
+
 func (td *SQLiteTransactionDB) ResolveTableName(modelName string) (string, error) {
 	return td.database.ResolveTableName(modelName)
 }

@@ -133,6 +133,11 @@ func (tdb *MySQLTransactionDB) GetDriverType() string {
 	return tdb.db.GetDriverType()
 }
 
+// GetBooleanLiteral delegates to the main database
+func (tdb *MySQLTransactionDB) GetBooleanLiteral(value bool) string {
+	return tdb.db.GetBooleanLiteral(value)
+}
+
 // ResolveTableName delegates to the main database
 func (tdb *MySQLTransactionDB) ResolveTableName(modelName string) (string, error) {
 	return tdb.db.ResolveTableName(modelName)

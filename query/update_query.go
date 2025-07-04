@@ -247,7 +247,6 @@ func (q *UpdateQueryImpl) buildWhereClause(conditions []types.Condition) (string
 	return whereSQL, args, nil
 }
 
-
 // extractFieldsAndValues extracts field names and values from data
 func (q *UpdateQueryImpl) extractFieldsAndValues(data any) ([]string, []any, error) {
 	switch v := data.(type) {

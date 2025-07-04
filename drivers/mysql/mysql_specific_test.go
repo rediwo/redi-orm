@@ -43,7 +43,7 @@ func TestMySQLCaseSensitivity(t *testing.T) {
 	err = User.Select().
 		WhereCondition(User.Where("name").Equals("alice")). // lowercase
 		FindMany(ctx, &users)
-	
+
 	// MySQL should find the user despite case difference
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
@@ -54,7 +54,7 @@ func TestMySQLCaseSensitivity(t *testing.T) {
 	err = User.Select().
 		WhereCondition(User.Where("email").Equals("ALICE@EXAMPLE.COM")). // uppercase
 		FindMany(ctx, &users)
-	
+
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
 	assert.Equal(t, "alice@example.com", users[0].Email) // Actual email is lowercase
@@ -64,7 +64,7 @@ func TestMySQLCaseSensitivity(t *testing.T) {
 	err = User.Select().
 		WhereCondition(User.Where("name").Contains("LIC")). // uppercase
 		FindMany(ctx, &users)
-	
+
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
 	assert.Equal(t, "Alice", users[0].Name)
