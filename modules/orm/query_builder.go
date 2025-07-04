@@ -2,7 +2,6 @@ package orm
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/rediwo/redi-orm/types"
 )
@@ -36,14 +35,14 @@ func (m *ModelsModule) applyWhereConditions(query any, where any) error {
 				condition := fieldCond.Equals(value)
 				conditions = append(conditions, condition)
 			} else {
-				// For complex conditions, use the existing buildCondition
-				condition := m.buildCondition(map[string]any{field: value})
+				// For complex conditions, use the existing BuildCondition
+				condition := m.BuildCondition(map[string]any{field: value})
 				conditions = append(conditions, condition)
 			}
 		}
 	} else {
 		// For non-map where clauses, use buildCondition
-		condition := m.buildCondition(where)
+		condition := m.BuildCondition(where)
 		if condition != nil {
 			conditions = append(conditions, condition)
 		}
@@ -73,8 +72,8 @@ func (m *ModelsModule) applyWhereConditions(query any, where any) error {
 	return nil
 }
 
-// buildCondition builds a condition from JavaScript where object
-func (m *ModelsModule) buildCondition(where any) types.Condition {
+// BuildCondition builds a condition from JavaScript where object
+func (m *ModelsModule) BuildCondition(where any) types.Condition {
 	whereMap, ok := where.(map[string]any)
 	if !ok {
 		return nil
@@ -89,7 +88,7 @@ func (m *ModelsModule) buildCondition(where any) types.Condition {
 			if orConditions, ok := value.([]any); ok {
 				var orConds []types.Condition
 				for _, orCond := range orConditions {
-					orConds = append(orConds, m.buildCondition(orCond))
+					orConds = append(orConds, m.BuildCondition(orCond))
 				}
 				if len(orConds) > 0 {
 					conditions = append(conditions, types.NewOrCondition(orConds...))
@@ -99,14 +98,14 @@ func (m *ModelsModule) buildCondition(where any) types.Condition {
 			if andConditions, ok := value.([]any); ok {
 				var andConds []types.Condition
 				for _, andCond := range andConditions {
-					andConds = append(andConds, m.buildCondition(andCond))
+					andConds = append(andConds, m.BuildCondition(andCond))
 				}
 				if len(andConds) > 0 {
 					conditions = append(conditions, types.NewAndCondition(andConds...))
 				}
 			}
 		case "NOT":
-			notCond := m.buildCondition(value)
+			notCond := m.BuildCondition(value)
 			if notCond != nil {
 				conditions = append(conditions, types.NewNotCondition(notCond))
 			}
@@ -130,39 +129,51 @@ func (m *ModelsModule) buildCondition(where any) types.Condition {
 
 // buildFieldCondition builds a field condition
 func (m *ModelsModule) buildFieldCondition(field string, value any) types.Condition {
+	// Create a field condition that supports proper mapping
+	fieldCond := types.NewFieldCondition("", field)
+	
 	// Check if value is an operator object
 	if valueMap, ok := value.(map[string]any); ok {
 		// Handle operators
 		for op, val := range valueMap {
 			switch op {
 			case "equals":
-				return types.NewBaseCondition(field+" = ?", val)
+				return fieldCond.Equals(val)
 			case "not":
-				return types.NewBaseCondition(field+" != ?", val)
+				return fieldCond.NotEquals(val)
 			case "in":
 				if values, ok := val.([]any); ok {
-					return m.buildInCondition(field, values)
+					return fieldCond.In(values...)
 				}
 				return nil
 			case "notIn":
 				if values, ok := val.([]any); ok {
-					return m.buildNotInCondition(field, values)
+					return fieldCond.NotIn(values...)
 				}
 				return nil
 			case "lt":
-				return types.NewBaseCondition(field+" < ?", val)
+				return fieldCond.LessThan(val)
 			case "lte":
-				return types.NewBaseCondition(field+" <= ?", val)
+				return fieldCond.LessThanOrEqual(val)
 			case "gt":
-				return types.NewBaseCondition(field+" > ?", val)
+				return fieldCond.GreaterThan(val)
 			case "gte":
-				return types.NewBaseCondition(field+" >= ?", val)
+				return fieldCond.GreaterThanOrEqual(val)
 			case "contains":
-				return types.NewBaseCondition(field+" LIKE ?", "%"+fmt.Sprintf("%v", val)+"%")
+				if strVal, ok := val.(string); ok {
+					return fieldCond.Contains(strVal)
+				}
+				return fieldCond.Contains(fmt.Sprintf("%v", val))
 			case "startsWith":
-				return types.NewBaseCondition(field+" LIKE ?", fmt.Sprintf("%v", val)+"%")
+				if strVal, ok := val.(string); ok {
+					return fieldCond.StartsWith(strVal)
+				}
+				return fieldCond.StartsWith(fmt.Sprintf("%v", val))
 			case "endsWith":
-				return types.NewBaseCondition(field+" LIKE ?", "%"+fmt.Sprintf("%v", val))
+				if strVal, ok := val.(string); ok {
+					return fieldCond.EndsWith(strVal)
+				}
+				return fieldCond.EndsWith(fmt.Sprintf("%v", val))
 			}
 		}
 		return nil
@@ -170,39 +181,21 @@ func (m *ModelsModule) buildFieldCondition(field string, value any) types.Condit
 
 	// Direct value comparison
 	if value == nil {
-		return types.NewBaseCondition(field + " IS NULL")
+		return fieldCond.IsNull()
 	}
-	return types.NewBaseCondition(field+" = ?", value)
+	return fieldCond.Equals(value)
 }
 
 // buildInCondition builds an IN condition
 func (m *ModelsModule) buildInCondition(field string, values []any) types.Condition {
-	if len(values) == 0 {
-		return types.NewBaseCondition("1 = 0") // Always false
-	}
-
-	placeholders := make([]string, len(values))
-	for i := range values {
-		placeholders[i] = "?"
-	}
-
-	sql := fmt.Sprintf("%s IN (%s)", field, strings.Join(placeholders, ", "))
-	return types.NewBaseCondition(sql, values...)
+	fieldCond := types.NewFieldCondition("", field)
+	return fieldCond.In(values...)
 }
 
 // buildNotInCondition builds a NOT IN condition
 func (m *ModelsModule) buildNotInCondition(field string, values []any) types.Condition {
-	if len(values) == 0 {
-		return types.NewBaseCondition("1 = 1") // Always true
-	}
-
-	placeholders := make([]string, len(values))
-	for i := range values {
-		placeholders[i] = "?"
-	}
-
-	sql := fmt.Sprintf("%s NOT IN (%s)", field, strings.Join(placeholders, ", "))
-	return types.NewBaseCondition(sql, values...)
+	fieldCond := types.NewFieldCondition("", field)
+	return fieldCond.NotIn(values...)
 }
 
 // applyOrderBy applies orderBy conditions to a query

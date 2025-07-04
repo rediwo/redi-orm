@@ -234,11 +234,11 @@ func (t *TransactionModelsModule) executeTransactionOperation(modelName, methodN
 	// Reuse the same operation logic but with transaction model
 	switch methodName {
 	case "create":
-		return t.executeCreate(ctx, model, options)
+		return t.executeCreate(ctx, model, options, modelName, t.db)
 	case "createMany":
-		return t.executeCreateMany(ctx, model, modelName, options)
+		return t.executeCreateMany(ctx, model, modelName, options, t.db)
 	case "createManyAndReturn":
-		return t.executeCreateManyAndReturn(ctx, model, modelName, options)
+		return t.executeCreateManyAndReturn(ctx, model, modelName, options, t.db)
 
 	case "findUnique":
 		return t.executeFindUnique(ctx, model, options)
@@ -260,7 +260,7 @@ func (t *TransactionModelsModule) executeTransactionOperation(modelName, methodN
 	case "updateManyAndReturn":
 		return t.executeUpdateManyAndReturn(ctx, model, modelName, options)
 	case "upsert":
-		return t.executeUpsert(ctx, model, options)
+		return t.executeUpsert(ctx, model, options, modelName, t.db)
 
 	case "delete":
 		return t.executeDelete(ctx, model, options)

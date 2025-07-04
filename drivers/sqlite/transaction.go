@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -68,29 +69,20 @@ func (t *SQLiteTransaction) RollbackTo(ctx context.Context, name string) error {
 
 // CreateMany performs batch insert within the transaction
 func (t *SQLiteTransaction) CreateMany(ctx context.Context, modelName string, data []any) (types.Result, error) {
-	if len(data) == 0 {
-		return types.Result{}, fmt.Errorf("no data to insert")
-	}
-
-	// Create an insert query and add all data
-	insertQuery := t.Model(modelName).Insert(data[0])
-	if len(data) > 1 {
-		insertQuery = insertQuery.Values(data[1:]...)
-	}
-
-	return insertQuery.Exec(ctx)
+	utils := base.NewTransactionUtils(t.tx, t.database, "sqlite")
+	return utils.CreateMany(ctx, modelName, data)
 }
 
 // UpdateMany performs batch update within the transaction
 func (t *SQLiteTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data any) (types.Result, error) {
-	updateQuery := t.Model(modelName).Update(data).WhereCondition(condition)
-	return updateQuery.Exec(ctx)
+	utils := base.NewTransactionUtils(t.tx, t.database, "sqlite")
+	return utils.UpdateMany(ctx, modelName, condition, data)
 }
 
 // DeleteMany performs batch delete within the transaction
 func (t *SQLiteTransaction) DeleteMany(ctx context.Context, modelName string, condition types.Condition) (types.Result, error) {
-	deleteQuery := t.Model(modelName).Delete().WhereCondition(condition)
-	return deleteQuery.Exec(ctx)
+	utils := base.NewTransactionUtils(t.tx, t.database, "sqlite")
+	return utils.DeleteMany(ctx, modelName, condition)
 }
 
 // SQLiteTransactionDB wraps the transaction for database operations

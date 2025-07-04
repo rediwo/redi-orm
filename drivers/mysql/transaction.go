@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -70,21 +71,20 @@ func (t *MySQLTransaction) RollbackTo(ctx context.Context, name string) error {
 
 // CreateMany creates multiple records within the transaction
 func (t *MySQLTransaction) CreateMany(ctx context.Context, modelName string, data []any) (types.Result, error) {
-	// For now, return a simple implementation
-	// In production, this would build a bulk INSERT statement
-	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
+	utils := base.NewTransactionUtils(t.tx, t.db, "mysql")
+	return utils.CreateMany(ctx, modelName, data)
 }
 
 // UpdateMany updates multiple records within the transaction
 func (t *MySQLTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data any) (types.Result, error) {
-	// For now, return a simple implementation
-	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
+	utils := base.NewTransactionUtils(t.tx, t.db, "mysql")
+	return utils.UpdateMany(ctx, modelName, condition, data)
 }
 
 // DeleteMany deletes multiple records within the transaction
 func (t *MySQLTransaction) DeleteMany(ctx context.Context, modelName string, condition types.Condition) (types.Result, error) {
-	// For now, return a simple implementation
-	return types.Result{}, fmt.Errorf("batch operations not yet implemented for MySQL")
+	utils := base.NewTransactionUtils(t.tx, t.db, "mysql")
+	return utils.DeleteMany(ctx, modelName, condition)
 }
 
 // MySQLTransactionDB implements types.Database for use within a transaction

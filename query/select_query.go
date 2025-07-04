@@ -23,7 +23,7 @@ func NewSelectQuery(baseQuery *ModelQueryImpl, fields []string) *SelectQueryImpl
 		ModelQueryImpl: baseQuery,
 		selectedFields: fields,
 		distinct:       false,
-		joinBuilder:    NewJoinBuilder(baseQuery.database),
+		joinBuilder:    NewJoinBuilderWithReservedAliases(baseQuery.database, baseQuery.tableAlias),
 	}
 }
 
@@ -736,7 +736,7 @@ func (q *SelectQueryImpl) clone() *SelectQueryImpl {
 		ModelQueryImpl: q.ModelQueryImpl.clone(),
 		selectedFields: append([]string{}, q.selectedFields...),
 		distinct:       q.distinct,
-		joinBuilder:    NewJoinBuilder(q.database),
+		joinBuilder:    NewJoinBuilderWithReservedAliases(q.database, q.tableAlias),
 	}
 
 	// Copy existing joins if any

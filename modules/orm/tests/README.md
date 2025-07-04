@@ -157,3 +157,7 @@ Custom assertion module with methods:
 - Fixed update operations to properly apply where conditions
 - Added map support to scanning utilities for flexible result handling
 - All ORM tests now pass successfully
+
+## Driver Conformance
+
+The RediORM project includes a comprehensive driver conformance test suite that ensures consistent behavior across all database drivers (SQLite, MySQL, PostgreSQL). While the JavaScript ORM tests focus on the JavaScript API, the Go conformance tests verify that all drivers implement the same behavior at the driver level. This guarantees that JavaScript code will work consistently regardless of the underlying database.

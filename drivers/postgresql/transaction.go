@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -66,20 +67,20 @@ func (t *PostgreSQLTransaction) Model(modelName string) types.ModelQuery {
 
 // CreateMany creates multiple records within the transaction
 func (t *PostgreSQLTransaction) CreateMany(ctx context.Context, modelName string, data []any) (types.Result, error) {
-	// This would need the full model implementation
-	return types.Result{}, fmt.Errorf("CreateMany not implemented")
+	utils := base.NewTransactionUtils(t.tx, t.db, "postgresql")
+	return utils.CreateMany(ctx, modelName, data)
 }
 
 // UpdateMany updates multiple records within the transaction
 func (t *PostgreSQLTransaction) UpdateMany(ctx context.Context, modelName string, condition types.Condition, data any) (types.Result, error) {
-	// This would need the full model implementation
-	return types.Result{}, fmt.Errorf("UpdateMany not implemented")
+	utils := base.NewTransactionUtils(t.tx, t.db, "postgresql")
+	return utils.UpdateMany(ctx, modelName, condition, data)
 }
 
 // DeleteMany deletes multiple records within the transaction
 func (t *PostgreSQLTransaction) DeleteMany(ctx context.Context, modelName string, condition types.Condition) (types.Result, error) {
-	// This would need the full model implementation
-	return types.Result{}, fmt.Errorf("DeleteMany not implemented")
+	utils := base.NewTransactionUtils(t.tx, t.db, "postgresql")
+	return utils.DeleteMany(ctx, modelName, condition)
 }
 
 // Raw creates a raw query within the transaction

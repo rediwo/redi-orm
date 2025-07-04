@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi-orm/utils"
 )
@@ -18,11 +19,11 @@ func (m *ModelsModule) executeOperation(db types.Database, modelName, methodName
 	switch methodName {
 	// Create operations
 	case "create":
-		return m.executeCreate(ctx, model, options)
+		return m.executeCreate(ctx, model, options, modelName, db)
 	case "createMany":
-		return m.executeCreateMany(ctx, model, modelName, options)
+		return m.executeCreateMany(ctx, model, modelName, options, db)
 	case "createManyAndReturn":
-		return m.executeCreateManyAndReturn(ctx, model, modelName, options)
+		return m.executeCreateManyAndReturn(ctx, model, modelName, options, db)
 
 	// Read operations
 	case "findUnique":
@@ -46,7 +47,7 @@ func (m *ModelsModule) executeOperation(db types.Database, modelName, methodName
 	case "updateManyAndReturn":
 		return m.executeUpdateManyAndReturn(ctx, model, modelName, options)
 	case "upsert":
-		return m.executeUpsert(ctx, model, options)
+		return m.executeUpsert(ctx, model, options, modelName, db)
 
 	// Delete operations
 	case "delete":
@@ -61,14 +62,14 @@ func (m *ModelsModule) executeOperation(db types.Database, modelName, methodName
 
 // Create operations
 
-func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
+func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery, options map[string]any, modelName string, db types.Database) (any, error) {
 	data, ok := options["data"]
 	if !ok {
 		return nil, fmt.Errorf("create requires 'data' field")
 	}
 
 	// Handle nested creates
-	processedData := m.processNestedWrites(data, "create")
+	processedData := m.processNestedWrites(data, "create", modelName, db)
 
 	query := model.Insert(processedData)
 
@@ -93,7 +94,7 @@ func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery
 	return processedData, nil
 }
 
-func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQuery, _ string, options map[string]any) (any, error) {
+func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any, db types.Database) (any, error) {
 	data, ok := options["data"]
 	if !ok {
 		return nil, fmt.Errorf("createMany requires 'data' field")
@@ -112,7 +113,7 @@ func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQ
 	// Process each item
 	var processedData []any
 	for _, item := range dataSlice {
-		processedData = append(processedData, m.processNestedWrites(item, "create"))
+		processedData = append(processedData, m.processNestedWrites(item, "create", modelName, db))
 	}
 
 	// Create records one by one (batch insert would be more efficient)
@@ -134,7 +135,7 @@ func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQ
 	}, nil
 }
 
-func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model types.ModelQuery, _ string, options map[string]any) (any, error) {
+func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any, db types.Database) (any, error) {
 	// Similar to createMany but returns created records
 	// This is a simplified implementation
 	data, ok := options["data"]
@@ -149,7 +150,7 @@ func (m *ModelsModule) executeCreateManyAndReturn(ctx context.Context, model typ
 
 	var created []any
 	for _, item := range dataSlice {
-		processedItem := m.processNestedWrites(item, "create")
+		processedItem := m.processNestedWrites(item, "create", modelName, db)
 		query := model.Insert(processedItem)
 		result, err := query.Exec(ctx)
 		if err != nil {
@@ -303,7 +304,7 @@ func (m *ModelsModule) executeCount(ctx context.Context, model types.ModelQuery,
 					conditions = append(conditions, condition)
 				} else {
 					// For complex conditions, use the existing buildCondition
-					condition := m.buildCondition(map[string]any{field: value})
+					condition := m.BuildCondition(map[string]any{field: value})
 					conditions = append(conditions, condition)
 				}
 			}
@@ -318,7 +319,7 @@ func (m *ModelsModule) executeCount(ctx context.Context, model types.ModelQuery,
 				model = model.WhereCondition(finalCondition)
 			}
 		} else {
-			model = model.WhereCondition(m.buildCondition(where))
+			model = model.WhereCondition(m.BuildCondition(where))
 		}
 	}
 
@@ -333,7 +334,7 @@ func (m *ModelsModule) executeCount(ctx context.Context, model types.ModelQuery,
 func (m *ModelsModule) executeAggregate(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
 	// Apply where conditions if provided
 	if where, ok := options["where"]; ok {
-		model = model.WhereCondition(m.buildCondition(where))
+		model = model.WhereCondition(m.BuildCondition(where))
 	}
 
 	result := make(map[string]any)
@@ -645,7 +646,7 @@ func (m *ModelsModule) executeUpdateManyAndReturn(ctx context.Context, model typ
 	return nil, fmt.Errorf("updateManyAndReturn not yet implemented")
 }
 
-func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery, options map[string]any) (any, error) {
+func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery, options map[string]any, modelName string, db types.Database) (any, error) {
 	where, ok := options["where"]
 	if !ok {
 		return nil, fmt.Errorf("upsert requires 'where' field")
@@ -684,7 +685,7 @@ func (m *ModelsModule) executeUpsert(ctx context.Context, model types.ModelQuery
 		return existing, nil
 	} else {
 		// Record doesn't exist, create it
-		createData := m.processNestedWrites(create, "create")
+		createData := m.processNestedWrites(create, "create", modelName, db)
 		insertQuery := model.Insert(createData)
 		result, err := insertQuery.Exec(ctx)
 		if err != nil {
@@ -754,52 +755,186 @@ func (m *ModelsModule) executeDeleteMany(ctx context.Context, model types.ModelQ
 // It takes a where clause (expected to be map[string]any) and applies each field=value condition
 // The function is generic and works with any query type that has Where() and WhereCondition() methods
 func (m *ModelsModule) applySimpleWhereConditions(query any, where any) any {
-	if whereMap, ok := where.(map[string]any); ok {
-		// Use reflection to handle different query types
-		queryValue := reflect.ValueOf(query)
-		for field, value := range whereMap {
-			// Call Where(field) method
-			whereMethod := queryValue.MethodByName("Where")
-			if !whereMethod.IsValid() {
-				continue
-			}
-			whereResult := whereMethod.Call([]reflect.Value{reflect.ValueOf(field)})
-			if len(whereResult) == 0 {
-				continue
-			}
-			
-			// Call Equals(value) on the result
-			conditionBuilder := whereResult[0]
-			equalsMethod := conditionBuilder.MethodByName("Equals")
-			if !equalsMethod.IsValid() {
-				continue
-			}
-			equalsResult := equalsMethod.Call([]reflect.Value{reflect.ValueOf(value)})
-			if len(equalsResult) == 0 {
-				continue
-			}
-			
-			// Call WhereCondition(condition) on the query
-			whereConditionMethod := queryValue.MethodByName("WhereCondition")
-			if !whereConditionMethod.IsValid() {
-				continue
-			}
-			whereConditionResult := whereConditionMethod.Call([]reflect.Value{equalsResult[0]})
-			if len(whereConditionResult) > 0 {
-				// Update query with the result
-				query = whereConditionResult[0].Interface()
-				queryValue = reflect.ValueOf(query)
-			}
-		}
+	// Build condition using our proper condition builder
+	condition := m.BuildCondition(where)
+	if condition == nil {
+		return query
 	}
-	return query
+	
+	// Apply the condition to the query using type assertion instead of reflection
+	switch q := query.(type) {
+	case types.SelectQuery:
+		return q.WhereCondition(condition)
+	case types.UpdateQuery:
+		return q.WhereCondition(condition)
+	case types.DeleteQuery:
+		return q.WhereCondition(condition)
+	case types.ModelQuery:
+		return q.WhereCondition(condition)
+	default:
+		return query
+	}
 }
 
-func (m *ModelsModule) processNestedWrites(data any, operation string) any {
+func (m *ModelsModule) processNestedWrites(data any, operation string, modelName string, db types.Database) any {
 	// Process nested create/connect/disconnect operations
-	// For now, just return the data as-is
-	_ = operation // TODO: implement nested writes based on operation type
-	return data
+	dataMap, ok := data.(map[string]any)
+	if !ok {
+		return data // Not a map, return as-is
+	}
+
+	processedData := make(map[string]any)
+	
+	// Get schema for the current model to check relations
+	schema, err := db.GetSchema(modelName)
+	if err != nil {
+		// No schema found, return data as-is
+		return data
+	}
+
+	for fieldName, fieldValue := range dataMap {
+		// Check if this field is a relation
+		_, exists := schema.Relations[fieldName]
+		if !exists {
+			// Not a relation, copy as-is
+			processedData[fieldName] = fieldValue
+			continue
+		}
+
+		// Handle nested writes based on operation type
+		// For now, we'll skip relation fields entirely as they need special handling
+		// The actual nested write implementation should happen in the query builders
+		// This prevents the field mapper from trying to map relation fields as columns
+		continue
+	}
+
+	return processedData
+}
+
+func (m *ModelsModule) processNestedCreate(fieldName string, fieldValue any, relation schema.Relation) any {
+	// Handle nested create operations for different relation types
+	switch valueMap := fieldValue.(type) {
+	case map[string]any:
+		// Check for nested operations
+		if createData, hasCreate := valueMap["create"]; hasCreate {
+			// Handle create operation
+			return m.handleNestedCreate(fieldName, createData, relation)
+		}
+		if connectData, hasConnect := valueMap["connect"]; hasConnect {
+			// Handle connect operation (link existing records)
+			return m.handleNestedConnect(fieldName, connectData, relation)
+		}
+		if createManyData, hasCreateMany := valueMap["createMany"]; hasCreateMany {
+			// Handle createMany operation
+			return m.handleNestedCreateMany(fieldName, createManyData, relation)
+		}
+		// If no nested operation keywords, treat as direct data
+		return fieldValue
+	default:
+		// Direct value (e.g., for foreign key assignment)
+		return fieldValue
+	}
+}
+
+func (m *ModelsModule) processNestedUpdate(fieldName string, fieldValue any, relation schema.Relation) any {
+	// Handle nested update operations
+	switch valueMap := fieldValue.(type) {
+	case map[string]any:
+		// Check for nested operations
+		if createData, hasCreate := valueMap["create"]; hasCreate {
+			return m.handleNestedCreate(fieldName, createData, relation)
+		}
+		if updateData, hasUpdate := valueMap["update"]; hasUpdate {
+			return m.handleNestedUpdate(fieldName, updateData, relation)
+		}
+		if connectData, hasConnect := valueMap["connect"]; hasConnect {
+			return m.handleNestedConnect(fieldName, connectData, relation)
+		}
+		if disconnectData, hasDisconnect := valueMap["disconnect"]; hasDisconnect {
+			return m.handleNestedDisconnect(fieldName, disconnectData, relation)
+		}
+		if setData, hasSet := valueMap["set"]; hasSet {
+			// Replace all related records
+			return m.handleNestedSet(fieldName, setData, relation)
+		}
+		return fieldValue
+	default:
+		return fieldValue
+	}
+}
+
+func (m *ModelsModule) handleNestedCreate(fieldName string, createData any, relation schema.Relation) any {
+	// For now, we'll store the nested write information
+	// The actual creation will happen in the driver implementation
+	return map[string]any{
+		"__nested_create": true,
+		"relation":        fieldName,
+		"data":            createData,
+		"type":            relation.Type,
+		"model":           relation.Model,
+		"foreignKey":      relation.ForeignKey,
+		"references":      relation.References,
+	}
+}
+
+func (m *ModelsModule) handleNestedConnect(fieldName string, connectData any, relation schema.Relation) any {
+	return map[string]any{
+		"__nested_connect": true,
+		"relation":         fieldName,
+		"data":             connectData,
+		"type":             relation.Type,
+		"model":            relation.Model,
+		"foreignKey":       relation.ForeignKey,
+		"references":       relation.References,
+	}
+}
+
+func (m *ModelsModule) handleNestedCreateMany(fieldName string, createManyData any, relation schema.Relation) any {
+	return map[string]any{
+		"__nested_create_many": true,
+		"relation":             fieldName,
+		"data":                 createManyData,
+		"type":                 relation.Type,
+		"model":                relation.Model,
+		"foreignKey":           relation.ForeignKey,
+		"references":           relation.References,
+	}
+}
+
+func (m *ModelsModule) handleNestedUpdate(fieldName string, updateData any, relation schema.Relation) any {
+	return map[string]any{
+		"__nested_update": true,
+		"relation":        fieldName,
+		"data":            updateData,
+		"type":            relation.Type,
+		"model":           relation.Model,
+		"foreignKey":      relation.ForeignKey,
+		"references":      relation.References,
+	}
+}
+
+func (m *ModelsModule) handleNestedDisconnect(fieldName string, disconnectData any, relation schema.Relation) any {
+	return map[string]any{
+		"__nested_disconnect": true,
+		"relation":            fieldName,
+		"data":                disconnectData,
+		"type":                relation.Type,
+		"model":               relation.Model,
+		"foreignKey":          relation.ForeignKey,
+		"references":          relation.References,
+	}
+}
+
+func (m *ModelsModule) handleNestedSet(fieldName string, setData any, relation schema.Relation) any {
+	return map[string]any{
+		"__nested_set": true,
+		"relation":     fieldName,
+		"data":         setData,
+		"type":         relation.Type,
+		"model":        relation.Model,
+		"foreignKey":   relation.ForeignKey,
+		"references":   relation.References,
+	}
 }
 
 func (m *ModelsModule) processUpdateData(data any) any {
@@ -849,13 +984,65 @@ func (m *ModelsModule) applyInclude(query any, include any) any {
 					selectQuery = selectQuery.Include(relationName)
 				}
 			case map[string]any:
-				// Nested include - for now just include the relation
-				// TODO: Handle nested includes properly
-				selectQuery = selectQuery.Include(relationName)
+				// Handle nested include with options
+				includes := m.parseNestedIncludes(relationName, opts)
+				for _, incl := range includes {
+					selectQuery = selectQuery.Include(incl)
+				}
 			}
 		}
 	}
 	return selectQuery
+}
+
+// parseNestedIncludes parses nested include options and returns a list of include paths
+func (m *ModelsModule) parseNestedIncludes(relationName string, options map[string]any) []string {
+	var includes []string
+	hasNestedIncludes := false
+	
+	// Check for nested includes
+	if nestedInclude, hasInclude := options["include"]; hasInclude {
+		switch nested := nestedInclude.(type) {
+		case map[string]any:
+			// Parse nested relations
+			for nestedRelation, nestedOpts := range nested {
+				hasNestedIncludes = true
+				fullPath := relationName + "." + nestedRelation
+				switch opts := nestedOpts.(type) {
+				case bool:
+					if opts {
+						includes = append(includes, fullPath)
+					}
+				case map[string]any:
+					// Recursively parse deeper nesting
+					deeperIncludes := m.parseNestedIncludes(fullPath, opts)
+					includes = append(includes, deeperIncludes...)
+				}
+			}
+		}
+	}
+	
+	// Only include the parent relation if there are no nested includes
+	// This prevents duplicate joins when we have both "posts" and "posts.comments"
+	if !hasNestedIncludes {
+		includes = append(includes, relationName)
+	}
+	
+	// Check for select fields (for selective loading)
+	if selectFields, hasSelect := options["select"]; hasSelect {
+		// Store select information for later processing
+		// This would need to be passed to the query builder
+		_ = selectFields // TODO: Implement selective field loading
+	}
+	
+	// Check for where conditions (for filtered loading)
+	if whereCondition, hasWhere := options["where"]; hasWhere {
+		// Store where information for later processing
+		// This would need to be passed to the query builder
+		_ = whereCondition // TODO: Implement filtered relation loading
+	}
+	
+	return includes
 }
 
 // Helper to convert numeric types to int64

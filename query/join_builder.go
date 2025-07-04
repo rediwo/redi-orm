@@ -36,6 +36,7 @@ type JoinBuilder struct {
 	joins        []JoinClause
 	tableAliases map[string]int // Track alias counters
 	schemaCache  map[string]*schema.Schema
+	joinedPaths  map[string]string // Track joined relation paths to their aliases
 }
 
 // NewJoinBuilder creates a new join builder
@@ -45,7 +46,26 @@ func NewJoinBuilder(database types.Database) *JoinBuilder {
 		joins:        []JoinClause{},
 		tableAliases: make(map[string]int),
 		schemaCache:  make(map[string]*schema.Schema),
+		joinedPaths:  make(map[string]string),
 	}
+}
+
+// NewJoinBuilderWithReservedAliases creates a new join builder with reserved aliases
+func NewJoinBuilderWithReservedAliases(database types.Database, reservedAliases ...string) *JoinBuilder {
+	jb := &JoinBuilder{
+		database:     database,
+		joins:        []JoinClause{},
+		tableAliases: make(map[string]int),
+		schemaCache:  make(map[string]*schema.Schema),
+		joinedPaths:  make(map[string]string),
+	}
+	
+	// Mark reserved aliases as used
+	for _, alias := range reservedAliases {
+		jb.tableAliases[alias] = 1
+	}
+	
+	return jb
 }
 
 // AddRelationJoin adds a join based on a relation
@@ -111,8 +131,34 @@ func (b *JoinBuilder) AddNestedRelationJoin(
 
 	currentModel := parentModel
 	currentAlias := parentAlias
+	currentPath := ""
 
 	for _, relationName := range relationPath {
+		// Build the path for this level
+		if currentPath == "" {
+			currentPath = relationName
+		} else {
+			currentPath = currentPath + "." + relationName
+		}
+
+		// Check if this path is already joined
+		if existingAlias, exists := b.joinedPaths[currentPath]; exists {
+			// This relation is already joined, use its alias for the next level
+			currentAlias = existingAlias
+			
+			// Get the relation to update currentModel for next iteration
+			currentSchema, err := b.getSchema(currentModel)
+			if err != nil {
+				return fmt.Errorf("failed to get schema for %s: %w", currentModel, err)
+			}
+			relation, err := currentSchema.GetRelation(relationName)
+			if err != nil {
+				return fmt.Errorf("failed to get relation %s in model %s: %w", relationName, currentModel, err)
+			}
+			currentModel = relation.Model
+			continue
+		}
+
 		// Get current schema
 		currentSchema, err := b.getSchema(currentModel)
 		if err != nil {
@@ -135,7 +181,9 @@ func (b *JoinBuilder) AddNestedRelationJoin(
 		currentModel = relation.Model
 		// Get the alias of the join we just added
 		if len(b.joins) > 0 {
-			currentAlias = b.joins[len(b.joins)-1].Alias
+			newAlias := b.joins[len(b.joins)-1].Alias
+			b.joinedPaths[currentPath] = newAlias
+			currentAlias = newAlias
 		}
 	}
 
