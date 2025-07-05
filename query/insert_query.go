@@ -70,6 +70,11 @@ func (q *InsertQueryImpl) ExecAndReturn(ctx context.Context, dest any) error {
 		return fmt.Errorf("no returning fields specified")
 	}
 
+	// Check if database supports RETURNING
+	if !q.database.GetCapabilities().SupportsReturning() {
+		return fmt.Errorf("database does not support RETURNING clause")
+	}
+
 	sql, args, err := q.BuildSQL()
 	if err != nil {
 		return fmt.Errorf("failed to build SQL: %w", err)
@@ -115,14 +120,17 @@ func (q *InsertQueryImpl) BuildSQL() (string, []any, error) {
 
 	// Check if we have any fields to insert
 	if len(fields) == 0 {
-		// Check if database supports DEFAULT VALUES
-		if !q.database.GetCapabilities().SupportsDefaultValues() {
-			return "", nil, fmt.Errorf("cannot insert empty record - at least one field value is required")
+		// Handle empty insert based on database capabilities
+		if q.database.GetCapabilities().SupportsDefaultValues() {
+			// Use DEFAULT VALUES for databases that support it (PostgreSQL, SQLite)
+			sql.WriteString(" DEFAULT VALUES")
+		} else {
+			// For databases like MySQL that don't support DEFAULT VALUES,
+			// use the () VALUES () syntax for empty insert
+			sql.WriteString(" () VALUES ()")
 		}
-		// Use DEFAULT VALUES for empty insert
-		sql.WriteString(" DEFAULT VALUES")
 
-		// RETURNING clause is still supported with DEFAULT VALUES if database supports it
+		// RETURNING clause is still supported with empty insert if database supports it
 		if len(q.returningFields) > 0 && q.database.GetCapabilities().SupportsReturning() {
 			returningColumns, err := q.fieldMapper.SchemaFieldsToColumns(q.modelName, q.returningFields)
 			if err != nil {

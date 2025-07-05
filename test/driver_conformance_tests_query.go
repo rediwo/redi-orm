@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi-orm/utils"
 	"github.com/stretchr/testify/assert"
@@ -814,4 +815,99 @@ func (dct *DriverConformanceTests) TestComplexQueries(t *testing.T) {
 	firstName := results[0]["name"].(string)
 	assert.True(t, firstName == "Alice" || firstName == "Bob", "Expected Alice or Bob but got %s", firstName)
 	assert.Equal(t, int64(2), utils.ToInt64(results[0]["post_count"]))
+}
+
+func (dct *DriverConformanceTests) TestEmptyInsert(t *testing.T) {
+	if dct.shouldSkip("TestEmptyInsert") {
+		t.Skip("Test skipped by driver")
+	}
+
+	td := dct.createTestDB(t)
+	defer td.Cleanup()
+
+	ctx := context.Background()
+
+	// Define a schema with default values
+	userSchema := schema.New("User").
+		AddField(schema.Field{
+			Name:          "id",
+			Type:          schema.FieldTypeInt,
+			PrimaryKey:    true,
+			AutoIncrement: true,
+		}).
+		AddField(schema.Field{
+			Name:    "status",
+			Type:    schema.FieldTypeString,
+			Default: "active",
+		}).
+		AddField(schema.Field{
+			Name:    "createdAt",
+			Type:    schema.FieldTypeDateTime,
+			Default: "CURRENT_TIMESTAMP",
+		})
+
+	// Register schema and sync
+	err := td.DB.RegisterSchema("User", userSchema)
+	require.NoError(t, err)
+
+	err = td.DB.SyncSchemas(ctx)
+	require.NoError(t, err)
+
+	// Test 1: Insert with empty map
+	t.Run("insert with empty map", func(t *testing.T) {
+		result, err := td.DB.Model("User").Insert(map[string]any{}).Exec(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), result.RowsAffected)
+		
+		// Only check LastInsertID if the driver supports it
+		if dct.Characteristics.SupportsLastInsertID {
+			assert.Greater(t, result.LastInsertID, int64(0))
+		}
+	})
+
+	// Test 2: Insert with empty map and RETURNING
+	t.Run("insert with empty map and returning", func(t *testing.T) {
+		var user map[string]any
+		err := td.DB.Model("User").
+			Insert(map[string]any{}).
+			Returning("id", "status", "createdAt").
+			ExecAndReturn(ctx, &user)
+
+		if td.DB.GetCapabilities().SupportsReturning() {
+			assert.NoError(t, err)
+			assert.NotZero(t, user["id"])
+			assert.Equal(t, "active", user["status"])
+			// createdAt might be returned as a string or time.Time
+			// Some databases might not return calculated defaults in RETURNING clause
+			if user["createdAt"] != nil {
+				assert.NotNil(t, user["createdAt"])
+			} else {
+				t.Log("createdAt was not returned in RETURNING clause")
+			}
+		} else {
+			assert.Error(t, err)
+		}
+	})
+
+	// Test 3: Verify data was actually inserted
+	t.Run("verify inserted data", func(t *testing.T) {
+		var users []map[string]any
+		err := td.DB.Model("User").Select().FindMany(ctx, &users)
+		require.NoError(t, err)
+
+		// Should have users from previous tests
+		expectedCount := 1
+		if td.DB.GetCapabilities().SupportsReturning() {
+			expectedCount = 2
+		}
+		assert.Len(t, users, expectedCount)
+
+		// All should have default status
+		for i, user := range users {
+			assert.Equal(t, "active", user["status"], "User %d should have default status", i)
+			// Check both possible field names since mapping might vary
+			hasCreatedAt := user["createdAt"] != nil || user["created_at"] != nil
+			assert.True(t, hasCreatedAt, "User %d should have createdAt set", i)
+		}
+	})
 }

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-
-	"github.com/rediwo/redi-orm/types"
 )
 
 // SQLiteURIParser implements URIParser for SQLite databases
@@ -16,40 +14,33 @@ func NewSQLiteURIParser() *SQLiteURIParser {
 	return &SQLiteURIParser{}
 }
 
-// ParseURI parses a SQLite URI and returns a Config
+// ParseURI parses a SQLite URI and returns a native SQLite file path
 // Supported formats:
 //   - sqlite:///path/to/database.db
 //   - sqlite://:memory:
 //   - sqlite://file::memory:?cache=shared
 //   - sqlite:///absolute/path/database.db
 //   - sqlite://relative/path/database.db
-func (p *SQLiteURIParser) ParseURI(uri string) (types.Config, error) {
+func (p *SQLiteURIParser) ParseURI(uri string) (string, error) {
 	// Parse the URI
 	parsedURI, err := url.Parse(uri)
 	if err != nil {
-		return types.Config{}, fmt.Errorf("invalid URI format: %w", err)
+		return "", fmt.Errorf("invalid URI format: %w", err)
 	}
 
 	// Check if this is a SQLite URI
 	if parsedURI.Scheme != "sqlite" && parsedURI.Scheme != "sqlite3" {
-		return types.Config{}, fmt.Errorf("unsupported URI scheme: %s", parsedURI.Scheme)
-	}
-
-	config := types.Config{
-		Type:    "sqlite",
-		Options: make(map[string]string),
+		return "", fmt.Errorf("unsupported URI scheme: %s", parsedURI.Scheme)
 	}
 
 	// Handle special case for in-memory database
 	if parsedURI.Host == "" && strings.HasPrefix(parsedURI.Path, "/:memory:") {
-		config.FilePath = ":memory:"
-		return config, nil
+		return ":memory:", nil
 	}
 
 	// Handle file::memory:?cache=shared format
 	if parsedURI.Host == "file" && strings.HasPrefix(parsedURI.Path, "/:memory:") {
-		config.FilePath = "file::memory:?cache=shared"
-		return config, nil
+		return "file::memory:?cache=shared", nil
 	}
 
 	// Handle regular file paths
@@ -83,28 +74,12 @@ func (p *SQLiteURIParser) ParseURI(uri string) (types.Config, error) {
 		path = parsedURI.Host + path
 	}
 
-	// Parse query parameters for SQLite options
-	query := parsedURI.Query()
-	for key, values := range query {
-		if len(values) > 0 {
-			// Common SQLite connection parameters
-			switch key {
-			case "mode", "cache", "psow", "nolock", "immutable", "_mutex":
-				config.Options[key] = values[0]
-			default:
-				// Store any other parameters as well
-				config.Options[key] = values[0]
-			}
-		}
-	}
-
 	// Add query parameters to file path if present
 	if parsedURI.RawQuery != "" {
 		path = path + "?" + parsedURI.RawQuery
 	}
 
-	config.FilePath = path
-	return config, nil
+	return path, nil
 }
 
 // GetSupportedSchemes returns the URI schemes this parser supports

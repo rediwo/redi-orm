@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 )
 
 // Query Tests
-func (act *AgileConformanceTests) runQueryTests(t *testing.T, client *Client, db types.Database) {
+func (act *OrmConformanceTests) runQueryTests(t *testing.T, client *Client, db types.Database) {
 	// Test complex where conditions
 	act.runWithCleanup(t, db, func() {
 		t.Run("ComplexWhereConditions", func(t *testing.T) {

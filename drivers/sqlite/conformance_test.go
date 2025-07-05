@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/test"
 	"github.com/rediwo/redi-orm/types"
 )
@@ -14,19 +15,15 @@ func TestSQLiteConformance(t *testing.T) {
 		t.Skip("Skipping conformance tests in short mode")
 	}
 
-	// Get test database URI and parse it
+	// Get test database URI
 	uri := test.GetTestDatabaseUri("sqlite")
-	config, err := NewSQLiteURIParser().ParseURI(uri)
-	if err != nil {
-		t.Fatalf("Failed to parse SQLite URI: %v", err)
-	}
 
 	suite := &test.DriverConformanceTests{
 		DriverName: "SQLite",
-		NewDriver: func(cfg types.Config) (types.Database, error) {
-			return NewSQLiteDB(cfg)
+		NewDriver: func(uri string) (types.Database, error) {
+			return database.NewFromURI(uri)
 		},
-		Config: config,
+		URI: uri,
 		SkipTests: map[string]bool{
 			// SQLite-specific skips
 			"TestTransactionIsolation":        true, // SQLite doesn't support concurrent write transactions

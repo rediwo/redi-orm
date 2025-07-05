@@ -16,16 +16,16 @@ import (
 // TestDatabase provides utilities for test database management
 type TestDatabase struct {
 	DB      types.Database
-	Config  types.Config
+	URI     string
 	Cleanup func()
 	T       *testing.T
 }
 
 // NewTestDatabase creates a new test database instance
-func NewTestDatabase(t *testing.T, db types.Database, config types.Config, cleanup func()) *TestDatabase {
+func NewTestDatabase(t *testing.T, db types.Database, uri string, cleanup func()) *TestDatabase {
 	return &TestDatabase{
 		DB:      db,
-		Config:  config,
+		URI:     uri,
 		T:       t,
 		Cleanup: cleanup,
 	}

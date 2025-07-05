@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 )
 
 // Relation Tests
-func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client, db types.Database) {
+func (act *OrmConformanceTests) runRelationTests(t *testing.T, client *Client, db types.Database) {
 	// Test one-to-many relations
 	act.runWithCleanup(t, db, func() {
 		t.Run("OneToManyRelations", func(t *testing.T) {

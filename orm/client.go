@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/rediwo/redi-orm/types"
 )
 
-// Client is the main entry point for the agile API
+// Client is the main entry point for the ORM API
 type Client struct {
 	db            types.Database
 	typeConverter *TypeConverter
@@ -19,7 +19,7 @@ type Client struct {
 // ClientOption is a functional option for configuring the client
 type ClientOption func(*Client)
 
-// NewClient creates a new agile client
+// NewClient creates a new ORM client
 func NewClient(db types.Database, opts ...ClientOption) *Client {
 	client := &Client{
 		db:            db,

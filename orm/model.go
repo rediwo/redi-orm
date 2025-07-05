@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/rediwo/redi-orm/types"
 )
 
-// Model represents a database model with agile query capabilities
+// Model represents a database model with ORM query capabilities
 type Model struct {
 	client    *Client
 	modelName string

@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 )
 
 // Transaction Tests
-func (act *AgileConformanceTests) runTransactionTests(t *testing.T, client *Client, db types.Database) {
+func (act *OrmConformanceTests) runTransactionTests(t *testing.T, client *Client, db types.Database) {
 	// Test basic transaction commit
 	act.runWithCleanup(t, db, func() {
 		t.Run("TransactionCommit", func(t *testing.T) {

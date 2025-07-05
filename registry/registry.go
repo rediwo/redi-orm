@@ -8,7 +8,7 @@ import (
 )
 
 // DriverFactory is a function that creates a new database instance
-type DriverFactory func(config types.Config) (types.Database, error)
+type DriverFactory func(uri string) (types.Database, error)
 
 // driverRegistry holds all registered database drivers, URI parsers, and capabilities
 var (
@@ -125,12 +125,12 @@ func ResolveScheme(scheme string) (types.DriverType, error) {
 	return driverType, nil
 }
 
-// ParseURI attempts to parse a URI using all registered parsers
-func ParseURI(uri string) (types.Config, error) {
+// ParseURI attempts to parse a URI using all registered parsers and returns the native database URI
+func ParseURI(uri string) (string, types.DriverType, error) {
 	// First, try to determine the driver type from the scheme
 	parsedURI, err := url.Parse(uri)
 	if err != nil {
-		return types.Config{}, fmt.Errorf("invalid URI format: %w", err)
+		return "", "", fmt.Errorf("invalid URI format: %w", err)
 	}
 
 	mu.RLock()
@@ -139,22 +139,26 @@ func ParseURI(uri string) (types.Config, error) {
 	// Try to find the right parser based on scheme
 	if driverType, ok := schemes[parsedURI.Scheme]; ok {
 		if parser, exists := uriParsers[string(driverType)]; exists {
-			return parser.ParseURI(uri)
+			nativeURI, err := parser.ParseURI(uri)
+			if err != nil {
+				return "", "", err
+			}
+			return nativeURI, driverType, nil
 		}
 	}
 
 	// Fallback: try all parsers (for backward compatibility)
 	var lastErr error
-	for _, parser := range uriParsers {
-		if config, err := parser.ParseURI(uri); err == nil {
-			return config, nil
+	for driverTypeStr, parser := range uriParsers {
+		if nativeURI, err := parser.ParseURI(uri); err == nil {
+			return nativeURI, types.DriverType(driverTypeStr), nil
 		} else {
 			lastErr = err
 		}
 	}
 
 	if lastErr != nil {
-		return types.Config{}, fmt.Errorf("no driver supports URI '%s': %w", uri, lastErr)
+		return "", "", fmt.Errorf("no driver supports URI '%s': %w", uri, lastErr)
 	}
-	return types.Config{}, fmt.Errorf("no URI parsers registered")
+	return "", "", fmt.Errorf("no URI parsers registered")
 }

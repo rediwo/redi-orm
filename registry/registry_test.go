@@ -20,14 +20,14 @@ func clearRegistries() {
 type mockURIParser struct {
 	supportedSchemes []string
 	driverType       string
-	parseFunc        func(uri string) (types.Config, error)
+	parseFunc        func(uri string) (string, error)
 }
 
-func (m *mockURIParser) ParseURI(uri string) (types.Config, error) {
+func (m *mockURIParser) ParseURI(uri string) (string, error) {
 	if m.parseFunc != nil {
 		return m.parseFunc(uri)
 	}
-	return types.Config{}, fmt.Errorf("not supported")
+	return "", fmt.Errorf("not supported")
 }
 
 func (m *mockURIParser) GetSupportedSchemes() []string {
@@ -50,7 +50,7 @@ func TestRegister(t *testing.T) {
 		{
 			name:       "register new driver",
 			driverType: "testdb",
-			factory: func(config types.Config) (types.Database, error) {
+			factory: func(uri string) (types.Database, error) {
 				return nil, nil
 			},
 			shouldPanic: false,
@@ -58,7 +58,7 @@ func TestRegister(t *testing.T) {
 		{
 			name:       "register duplicate driver",
 			driverType: "duplicate",
-			factory: func(config types.Config) (types.Database, error) {
+			factory: func(uri string) (types.Database, error) {
 				return nil, nil
 			},
 			shouldPanic: true,
@@ -99,7 +99,7 @@ func TestGet(t *testing.T) {
 	clearRegistries()
 
 	// Register a test driver
-	testFactory := func(config types.Config) (types.Database, error) {
+	testFactory := func(uri string) (types.Database, error) {
 		return nil, nil
 	}
 	Register("gettest", testFactory)
@@ -271,14 +271,11 @@ func TestParseURI(t *testing.T) {
 	validParser := &mockURIParser{
 		driverType:       "valid",
 		supportedSchemes: []string{"valid"},
-		parseFunc: func(uri string) (types.Config, error) {
+		parseFunc: func(uri string) (string, error) {
 			if len(uri) > 8 && uri[:8] == "valid://" {
-				return types.Config{
-					Type: "valid",
-					Host: uri[8:],
-				}, nil
+				return "valid://" + uri[8:], nil
 			}
-			return types.Config{}, fmt.Errorf("not a valid URI")
+			return "", fmt.Errorf("not a valid URI")
 		},
 	}
 
@@ -286,14 +283,11 @@ func TestParseURI(t *testing.T) {
 	testParser := &mockURIParser{
 		driverType:       "test",
 		supportedSchemes: []string{"test"},
-		parseFunc: func(uri string) (types.Config, error) {
+		parseFunc: func(uri string) (string, error) {
 			if len(uri) > 7 && uri[:7] == "test://" {
-				return types.Config{
-					Type: "test",
-					Host: uri[7:],
-				}, nil
+				return "test://" + uri[7:], nil
 			}
-			return types.Config{}, fmt.Errorf("not a test URI")
+			return "", fmt.Errorf("not a test URI")
 		},
 	}
 
@@ -301,25 +295,25 @@ func TestParseURI(t *testing.T) {
 	RegisterURIParser("test", testParser)
 
 	tests := []struct {
-		name     string
-		uri      string
-		wantType string
-		wantHost string
-		wantErr  bool
+		name           string
+		uri            string
+		wantDriverType string
+		wantDSN        string
+		wantErr        bool
 	}{
 		{
-			name:     "valid URI for first parser",
-			uri:      "valid://localhost:5432",
-			wantType: "valid",
-			wantHost: "localhost:5432",
-			wantErr:  false,
+			name:           "valid URI for first parser",
+			uri:            "valid://localhost:5432",
+			wantDriverType: "valid",
+			wantDSN:        "valid://localhost:5432",
+			wantErr:        false,
 		},
 		{
-			name:     "valid URI for second parser",
-			uri:      "test://example.com",
-			wantType: "test",
-			wantHost: "example.com",
-			wantErr:  false,
+			name:           "valid URI for second parser",
+			uri:            "test://example.com",
+			wantDriverType: "test",
+			wantDSN:        "test://example.com",
+			wantErr:        false,
 		},
 		{
 			name:    "invalid URI for all parsers",
@@ -335,7 +329,7 @@ func TestParseURI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config, err := ParseURI(tt.uri)
+			dsn, driverType, err := ParseURI(tt.uri)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseURI() error = %v, wantErr %v", err, tt.wantErr)
@@ -345,12 +339,12 @@ func TestParseURI(t *testing.T) {
 				return
 			}
 
-			if config.Type != tt.wantType {
-				t.Errorf("ParseURI() Type = %v, want %v", config.Type, tt.wantType)
+			if string(driverType) != tt.wantDriverType {
+				t.Errorf("ParseURI() driverType = %v, want %v", driverType, tt.wantDriverType)
 			}
 
-			if config.Host != tt.wantHost {
-				t.Errorf("ParseURI() Host = %v, want %v", config.Host, tt.wantHost)
+			if dsn != tt.wantDSN {
+				t.Errorf("ParseURI() DSN = %v, want %v", dsn, tt.wantDSN)
 			}
 		})
 	}
@@ -360,7 +354,7 @@ func TestParseURINoParserRegistered(t *testing.T) {
 	clearRegistries()
 
 	// No parsers registered
-	_, err := ParseURI("test://something")
+	_, _, err := ParseURI("test://something")
 	if err == nil {
 		t.Error("ParseURI() should return error when no parsers registered")
 	}
@@ -382,7 +376,7 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			driverType := fmt.Sprintf("driver%d", id)
-			factory := func(config types.Config) (types.Database, error) {
+			factory := func(uri string) (types.Database, error) {
 				return nil, nil
 			}
 			Register(driverType, factory)

@@ -5,28 +5,25 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rediwo/redi-orm/agile"
+	"github.com/rediwo/redi-orm/orm"
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/test"
 	"github.com/rediwo/redi-orm/types"
 )
 
-func TestPostgreSQLAgileConformance(t *testing.T) {
+func TestPostgreSQLOrmConformance(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping agile conformance tests in short mode")
+		t.Skip("Skipping orm conformance tests in short mode")
 	}
 
 	// Get test database URI and parse it
 	uri := test.GetTestDatabaseUri("postgresql")
 
-	suite := &agile.AgileConformanceTests{
+	suite := &orm.OrmConformanceTests{
 		DriverName:  "PostgreSQL",
 		DatabaseURI: uri,
 		NewDatabase: func(uri string) (types.Database, error) {
-			config, err := NewPostgreSQLURIParser().ParseURI(uri)
-			if err != nil {
-				return nil, err
-			}
-			return NewPostgreSQLDB(config)
+			return database.NewFromURI(uri)
 		},
 		SkipTests: map[string]bool{
 			// PostgreSQL-specific skips (if any)
@@ -37,7 +34,7 @@ func TestPostgreSQLAgileConformance(t *testing.T) {
 				cleanupPostgreSQLTables(t, pgDB)
 			}
 		},
-		Characteristics: agile.AgileDriverCharacteristics{
+		Characteristics: orm.OrmDriverCharacteristics{
 			SupportsReturning:          true,
 			MaxConnectionPoolSize:      10,
 			SupportsNestedTransactions: true,

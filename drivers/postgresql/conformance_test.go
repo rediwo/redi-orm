@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/test"
 	"github.com/rediwo/redi-orm/types"
 )
@@ -16,11 +17,7 @@ func TestPostgreSQLConformance(t *testing.T) {
 
 	// Skip if PostgreSQL is not available
 	uri := test.GetTestDatabaseUri("postgresql")
-	config, err := NewPostgreSQLURIParser().ParseURI(uri)
-	if err != nil {
-		t.Skipf("Failed to parse PostgreSQL URI: %v", err)
-	}
-	db, err := NewPostgreSQLDB(config)
+	db, err := database.NewFromURI(uri)
 	if err != nil {
 		t.Skip("PostgreSQL not available for testing")
 	}
@@ -31,10 +28,10 @@ func TestPostgreSQLConformance(t *testing.T) {
 
 	suite := &test.DriverConformanceTests{
 		DriverName: "PostgreSQL",
-		NewDriver: func(cfg types.Config) (types.Database, error) {
-			return NewPostgreSQLDB(cfg)
+		NewDriver: func(uri string) (types.Database, error) {
+			return database.NewFromURI(uri)
 		},
-		Config: config,
+		URI: uri,
 		SkipTests: map[string]bool{
 			// PostgreSQL-specific skips
 			"TestTransactionErrorHandling": true, // PostgreSQL aborts transaction on error

@@ -20,12 +20,12 @@ func init() {
 	driverType := types.DriverPostgreSQL
 
 	// Register PostgreSQL driver
-	registry.Register(string(driverType), func(config types.Config) (types.Database, error) {
-		return NewPostgreSQLDB(config)
+	registry.Register(string(driverType), func(uri string) (types.Database, error) {
+		return NewPostgreSQLDB(uri)
 	})
 	// Also register with "postgres" alias for compatibility
-	registry.Register("postgres", func(config types.Config) (types.Database, error) {
-		return NewPostgreSQLDB(config)
+	registry.Register("postgres", func(uri string) (types.Database, error) {
+		return NewPostgreSQLDB(uri)
 	})
 
 	// Register PostgreSQL capabilities
@@ -40,12 +40,15 @@ func init() {
 // PostgreSQLDB implements the Database interface for PostgreSQL
 type PostgreSQLDB struct {
 	*base.Driver
+	nativeURI string
 }
 
 // NewPostgreSQLDB creates a new PostgreSQL database instance
-func NewPostgreSQLDB(config types.Config) (*PostgreSQLDB, error) {
+// The uri parameter should be a native PostgreSQL DSN (e.g., "host=localhost port=5432 user=user dbname=db")
+func NewPostgreSQLDB(nativeURI string) (*PostgreSQLDB, error) {
 	return &PostgreSQLDB{
-		Driver: base.NewDriver(config),
+		Driver:    base.NewDriver(nativeURI, types.DriverPostgreSQL),
+		nativeURI: nativeURI,
 	}, nil
 }
 
@@ -73,8 +76,7 @@ func (p *PostgreSQLDB) Connect(ctx context.Context) error {
 		return nil
 	}
 
-	dsn := p.buildDSN()
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("postgres", p.nativeURI)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -88,45 +90,6 @@ func (p *PostgreSQLDB) Connect(ctx context.Context) error {
 	return nil
 }
 
-// buildDSN builds the PostgreSQL connection string
-func (p *PostgreSQLDB) buildDSN() string {
-	var parts []string
-
-	if p.Config.Host != "" {
-		parts = append(parts, fmt.Sprintf("host=%s", p.Config.Host))
-	}
-	if p.Config.Port > 0 {
-		parts = append(parts, fmt.Sprintf("port=%d", p.Config.Port))
-	}
-	if p.Config.User != "" {
-		parts = append(parts, fmt.Sprintf("user=%s", p.Config.User))
-	}
-	if p.Config.Password != "" {
-		parts = append(parts, fmt.Sprintf("password=%s", p.Config.Password))
-	}
-	if p.Config.Database != "" {
-		parts = append(parts, fmt.Sprintf("dbname=%s", p.Config.Database))
-	}
-
-	// Add additional options from Config.Options
-	if p.Config.Options != nil {
-		for key, value := range p.Config.Options {
-			// Escape special characters in values if needed
-			parts = append(parts, fmt.Sprintf("%s=%s", key, value))
-		}
-	}
-
-	// Add sslmode if not specified
-	hasSSLMode := false
-	if p.Config.Options != nil {
-		_, hasSSLMode = p.Config.Options["sslmode"]
-	}
-	if !hasSSLMode {
-		parts = append(parts, "sslmode=disable")
-	}
-
-	return strings.Join(parts, " ")
-}
 
 // SyncSchemas synchronizes all loaded schemas with the database
 func (p *PostgreSQLDB) SyncSchemas(ctx context.Context) error {

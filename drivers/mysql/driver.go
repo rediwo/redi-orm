@@ -18,8 +18,8 @@ func init() {
 	driverType := types.DriverMySQL
 
 	// Register MySQL driver
-	registry.Register(string(driverType), func(config types.Config) (types.Database, error) {
-		return NewMySQLDB(config)
+	registry.Register(string(driverType), func(uri string) (types.Database, error) {
+		return NewMySQLDB(uri)
 	})
 
 	// Register MySQL capabilities
@@ -32,20 +32,21 @@ func init() {
 // MySQLDB implements the Database interface for MySQL
 type MySQLDB struct {
 	*base.Driver
+	nativeURI string
 }
 
 // NewMySQLDB creates a new MySQL database instance
-func NewMySQLDB(config types.Config) (*MySQLDB, error) {
+// The uri parameter should be a native MySQL DSN (e.g., "user:pass@tcp(host:port)/db")
+func NewMySQLDB(nativeURI string) (*MySQLDB, error) {
 	return &MySQLDB{
-		Driver: base.NewDriver(config),
+		Driver:    base.NewDriver(nativeURI, types.DriverMySQL),
+		nativeURI: nativeURI,
 	}, nil
 }
 
 // Connect establishes connection to MySQL database
 func (m *MySQLDB) Connect(ctx context.Context) error {
-	dsn := m.buildDSN()
-
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", m.nativeURI)
 	if err != nil {
 		return fmt.Errorf("failed to open MySQL database: %w", err)
 	}
@@ -58,60 +59,6 @@ func (m *MySQLDB) Connect(ctx context.Context) error {
 	return nil
 }
 
-// buildDSN builds the MySQL connection string
-func (m *MySQLDB) buildDSN() string {
-	// Basic DSN format: user:password@tcp(host:port)/database
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
-		m.Config.User,
-		m.Config.Password,
-		m.Config.Host,
-		m.Config.Port,
-		m.Config.Database,
-	)
-
-	// Add query parameters from Options
-	var params []string
-
-	// Add options from Config.Options
-	if m.Config.Options != nil {
-		for key, value := range m.Config.Options {
-			params = append(params, fmt.Sprintf("%s=%s", key, value))
-		}
-	}
-
-	// Ensure parseTime and charset have defaults if not specified
-	if m.Config.Options == nil || m.Config.Options["parseTime"] == "" {
-		hasParseTime := false
-		for _, p := range params {
-			if strings.HasPrefix(p, "parseTime=") {
-				hasParseTime = true
-				break
-			}
-		}
-		if !hasParseTime {
-			params = append(params, "parseTime=true")
-		}
-	}
-
-	if m.Config.Options == nil || m.Config.Options["charset"] == "" {
-		hasCharset := false
-		for _, p := range params {
-			if strings.HasPrefix(p, "charset=") {
-				hasCharset = true
-				break
-			}
-		}
-		if !hasCharset {
-			params = append(params, "charset=utf8mb4")
-		}
-	}
-
-	if len(params) > 0 {
-		dsn += "?" + strings.Join(params, "&")
-	}
-
-	return dsn
-}
 
 // SyncSchemas synchronizes all loaded schemas with the database
 func (m *MySQLDB) SyncSchemas(ctx context.Context) error {

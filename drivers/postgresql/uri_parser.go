@@ -5,8 +5,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/rediwo/redi-orm/types"
 )
 
 // PostgreSQLURIParser implements URIParser for PostgreSQL
@@ -17,30 +15,30 @@ func NewPostgreSQLURIParser() *PostgreSQLURIParser {
 	return &PostgreSQLURIParser{}
 }
 
-// ParseURI parses a PostgreSQL connection URI
-func (p *PostgreSQLURIParser) ParseURI(uri string) (types.Config, error) {
+// ParseURI parses a PostgreSQL connection URI and returns a PostgreSQL DSN
+func (p *PostgreSQLURIParser) ParseURI(uri string) (string, error) {
 	parsedURI, err := url.Parse(uri)
 	if err != nil {
-		return types.Config{}, fmt.Errorf("invalid URI format: %w", err)
+		return "", fmt.Errorf("invalid URI format: %w", err)
 	}
 
 	// Check scheme
 	scheme := parsedURI.Scheme
 	if scheme != "postgresql" && scheme != "postgres" {
-		return types.Config{}, fmt.Errorf("invalid scheme: %s, expected postgresql or postgres", scheme)
+		return "", fmt.Errorf("invalid scheme: %s, expected postgresql or postgres", scheme)
 	}
 
 	// Extract host and port
 	host := parsedURI.Hostname()
 	if host == "" {
-		return types.Config{}, fmt.Errorf("host is required")
+		return "", fmt.Errorf("host is required")
 	}
 
 	port := 5432 // Default PostgreSQL port
 	if parsedURI.Port() != "" {
 		parsedPort, err := strconv.Atoi(parsedURI.Port())
 		if err != nil {
-			return types.Config{}, fmt.Errorf("invalid port: %s", parsedURI.Port())
+			return "", fmt.Errorf("invalid port: %s", parsedURI.Port())
 		}
 		port = parsedPort
 	}
@@ -55,37 +53,38 @@ func (p *PostgreSQLURIParser) ParseURI(uri string) (types.Config, error) {
 	// Extract database name
 	database := strings.TrimPrefix(parsedURI.Path, "/")
 	if database == "" {
-		return types.Config{}, fmt.Errorf("database name is required")
+		return "", fmt.Errorf("database name is required")
 	}
 
-	config := types.Config{
-		Type:     "postgresql",
-		Host:     host,
-		Port:     port,
-		User:     user,
-		Password: password,
-		Database: database,
-		Options:  make(map[string]string),
+	// Build PostgreSQL DSN: key=value pairs
+	var dsnParts []string
+	
+	if host != "" {
+		dsnParts = append(dsnParts, fmt.Sprintf("host=%s", host))
+	}
+	if port != 5432 {
+		dsnParts = append(dsnParts, fmt.Sprintf("port=%d", port))
+	}
+	if user != "" {
+		dsnParts = append(dsnParts, fmt.Sprintf("user=%s", user))
+	}
+	if password != "" {
+		dsnParts = append(dsnParts, fmt.Sprintf("password=%s", password))
+	}
+	if database != "" {
+		dsnParts = append(dsnParts, fmt.Sprintf("dbname=%s", database))
 	}
 
 	// Parse query parameters for additional options
 	query := parsedURI.Query()
 	for key, values := range query {
 		if len(values) > 0 {
-			// Common PostgreSQL connection parameters
-			switch key {
-			case "sslmode", "application_name", "connect_timeout",
-				"timezone", "search_path", "statement_timeout",
-				"lock_timeout", "client_encoding":
-				config.Options[key] = values[0]
-			default:
-				// Store any other parameters as well
-				config.Options[key] = values[0]
-			}
+			dsnParts = append(dsnParts, fmt.Sprintf("%s=%s", key, values[0]))
 		}
 	}
 
-	return config, nil
+	dsn := strings.Join(dsnParts, " ")
+	return dsn, nil
 }
 
 // GetSupportedSchemes returns the URI schemes supported by this parser

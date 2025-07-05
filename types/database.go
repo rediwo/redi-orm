@@ -7,17 +7,6 @@ import (
 	"github.com/rediwo/redi-orm/schema"
 )
 
-// Config holds database connection configuration
-type Config struct {
-	Type     string // Database type (e.g., "sqlite", "mysql", "postgresql")
-	Host     string
-	Port     int
-	Database string
-	User     string
-	Password string
-	FilePath string            // for SQLite
-	Options  map[string]string // Additional connection options (e.g., sslmode, charset, etc.)
-}
 
 // Order represents sorting direction
 type Order int

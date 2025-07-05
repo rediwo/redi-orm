@@ -5,28 +5,25 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rediwo/redi-orm/agile"
+	"github.com/rediwo/redi-orm/orm"
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/test"
 	"github.com/rediwo/redi-orm/types"
 )
 
-func TestMySQLAgileConformance(t *testing.T) {
+func TestMySQLOrmConformance(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping agile conformance tests in short mode")
+		t.Skip("Skipping orm conformance tests in short mode")
 	}
 
 	// Get test database URI and parse it
 	uri := test.GetTestDatabaseUri("mysql")
 
-	suite := &agile.AgileConformanceTests{
+	suite := &orm.OrmConformanceTests{
 		DriverName:  "MySQL",
 		DatabaseURI: uri,
 		NewDatabase: func(uri string) (types.Database, error) {
-			config, err := NewMySQLURIParser().ParseURI(uri)
-			if err != nil {
-				return nil, err
-			}
-			return NewMySQLDB(config)
+			return database.NewFromURI(uri)
 		},
 		SkipTests: map[string]bool{
 			// MySQL-specific skips (if any)
@@ -37,7 +34,7 @@ func TestMySQLAgileConformance(t *testing.T) {
 				cleanupMySQLTables(t, mysqlDB)
 			}
 		},
-		Characteristics: agile.AgileDriverCharacteristics{
+		Characteristics: orm.OrmDriverCharacteristics{
 			SupportsReturning:          false,
 			MaxConnectionPoolSize:      10,
 			SupportsNestedTransactions: true,

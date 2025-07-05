@@ -1,10 +1,10 @@
-# Agile Package
+# ORM Package
 
-The `agile` package provides a Prisma-like experience in Go, using JSON strings for query definitions while supporting both type-safe and non-type-safe usage patterns.
+The `orm` package provides a Prisma-like experience in Go, using JSON strings for query definitions while supporting both type-safe and non-type-safe usage patterns.
 
 ## Overview
 
-The agile package is an independent, high-level API that sits on top of the RediORM core. It provides:
+The orm package is an independent, high-level API that sits on top of the RediORM core. It provides:
 
 - **JSON-based queries** - Use familiar JSON syntax instead of method chaining
 - **Automatic type conversion** - Handles database-specific type conversions (e.g., MySQL string numbers)
@@ -14,7 +14,7 @@ The agile package is an independent, high-level API that sits on top of the Redi
 ## Installation
 
 ```go
-import "github.com/rediwo/redi-orm/agile"
+import "github.com/rediwo/redi-orm/orm"
 ```
 
 ## Basic Usage
@@ -23,10 +23,10 @@ import "github.com/rediwo/redi-orm/agile"
 
 ```go
 // Create client from database
-client := agile.NewClient(db)
+client := orm.NewClient(db)
 
 // Or with custom type converter
-client := agile.NewClient(db, agile.WithTypeConverter(customConverter))
+client := orm.NewClient(db, orm.WithTypeConverter(customConverter))
 ```
 
 ### CRUD Operations
@@ -134,7 +134,7 @@ err = client.Model("User").FindManyTyped(`{
 ### Transactions
 
 ```go
-err := client.Transaction(func(tx *agile.Client) error {
+err := client.Transaction(func(tx *orm.Client) error {
     // All operations use tx instead of client
     user, err := tx.Model("User").Create(`{
       "data": { "name": "Alice", "balance": 1000 }
@@ -168,7 +168,7 @@ result, err := raw.FindOne()
 
 ## Query Syntax
 
-The agile package uses JSON for all queries. Here are the supported operations:
+The orm package uses JSON for all queries. Here are the supported operations:
 
 ### Operations
 - `create` - Create a single record
@@ -214,7 +214,7 @@ The agile package uses JSON for all queries. Here are the supported operations:
 
 ## Type Conversion
 
-The agile package automatically handles database-specific type conversions:
+The orm package automatically handles database-specific type conversions:
 
 - **MySQL**: Converts string numbers to proper numeric types
 - **PostgreSQL**: Native numeric types preserved
@@ -223,7 +223,7 @@ The agile package automatically handles database-specific type conversions:
 This is especially important for aggregations where MySQL returns strings:
 
 ```go
-// MySQL returns "123.45" as string, agile converts to float64
+// MySQL returns "123.45" as string, orm converts to float64
 result, err := client.Model("Order").Aggregate(`{
   "_sum": { "amount": true }
 }`)
@@ -232,10 +232,10 @@ sum := result["_sum"].(map[string]any)["amount"].(float64) // Always float64
 
 ## Testing
 
-The agile package includes comprehensive conformance tests:
+The orm package includes comprehensive conformance tests:
 
 ```go
-suite := &agile.AgileConformanceTests{
+suite := &orm.OrmConformanceTests{
     DriverName:  "SQLite",
     DatabaseURI: uri,
     NewDatabase: func(uri string) (types.Database, error) {
@@ -249,7 +249,7 @@ suite.RunAll(t)
 
 ## Differences from ORM Module
 
-| Feature | ORM Module | Agile Package |
+| Feature | ORM Module | ORM Package |
 |---------|------------|---------------|
 | API Style | Method chaining | JSON strings |
 | Type Safety | Go types only | Dual (typed/untyped) |
@@ -266,4 +266,4 @@ suite.RunAll(t)
 
 ## Examples
 
-See the `agile_conformance_tests_*.go` files for comprehensive examples of all features.
+See the `orm_conformance_tests_*.go` files for comprehensive examples of all features.

@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"github.com/rediwo/redi-orm/types"
 )
 
-// AgileDriverCharacteristics defines driver-specific behaviors for agile tests
-type AgileDriverCharacteristics struct {
+// OrmDriverCharacteristics defines driver-specific behaviors for ORM tests
+type OrmDriverCharacteristics struct {
 	// SupportsReturning indicates if the driver supports RETURNING clause
 	SupportsReturning bool
 
@@ -22,18 +22,18 @@ type AgileDriverCharacteristics struct {
 	ReturnsStringForNumbers bool
 }
 
-// AgileConformanceTests provides a comprehensive test suite for the agile API
-type AgileConformanceTests struct {
+// OrmConformanceTests provides a comprehensive test suite for the ORM API
+type OrmConformanceTests struct {
 	DriverName      string
 	DatabaseURI     string
 	SkipTests       map[string]bool
-	Characteristics AgileDriverCharacteristics
+	Characteristics OrmDriverCharacteristics
 	NewDatabase     func(uri string) (types.Database, error) // Function to create database instance
 	CleanupTables   func(t *testing.T, db types.Database)    // Driver-specific table cleanup
 }
 
-// RunAll runs all agile conformance tests
-func (act *AgileConformanceTests) RunAll(t *testing.T) {
+// RunAll runs all orm conformance tests
+func (act *OrmConformanceTests) RunAll(t *testing.T) {
 	// Create database instance
 	db, err := act.NewDatabase(act.DatabaseURI)
 	if err != nil {
@@ -47,7 +47,7 @@ func (act *AgileConformanceTests) RunAll(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create agile client
+	// Create ORM client
 	client := NewClient(db)
 
 	// Connection Management
@@ -108,7 +108,7 @@ func (act *AgileConformanceTests) RunAll(t *testing.T) {
 }
 
 // shouldSkip checks if a test should be skipped
-func (act *AgileConformanceTests) shouldSkip(testName string) bool {
+func (act *OrmConformanceTests) shouldSkip(testName string) bool {
 	if act.SkipTests == nil {
 		return false
 	}
@@ -116,7 +116,7 @@ func (act *AgileConformanceTests) shouldSkip(testName string) bool {
 }
 
 // runWithCleanup runs a test with table cleanup before execution
-func (act *AgileConformanceTests) runWithCleanup(t *testing.T, db types.Database, testFunc func()) {
+func (act *OrmConformanceTests) runWithCleanup(t *testing.T, db types.Database, testFunc func()) {
 	// Clean up tables before each test
 	if act.CleanupTables != nil {
 		act.CleanupTables(t, db)

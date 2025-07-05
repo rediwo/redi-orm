@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"github.com/rediwo/redi-orm/types"

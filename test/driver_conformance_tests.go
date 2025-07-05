@@ -37,8 +37,8 @@ type DriverCharacteristics struct {
 // DriverConformanceTests provides a comprehensive test suite for database drivers
 type DriverConformanceTests struct {
 	DriverName      string
-	NewDriver       func(config types.Config) (types.Database, error)
-	Config          types.Config
+	NewDriver       func(uri string) (types.Database, error)
+	URI             string
 	SkipTests       map[string]bool                       // For driver-specific test skipping
 	CleanupTables   func(t *testing.T, db types.Database) // Driver-specific table cleanup
 	Characteristics DriverCharacteristics                 // Driver-specific behaviors
@@ -71,6 +71,7 @@ func (dct *DriverConformanceTests) RunAll(t *testing.T) {
 		t.Run("Insert", dct.TestInsert)
 		t.Run("InsertWithDefaults", dct.TestInsertWithDefaults)
 		t.Run("InsertWithAutoIncrement", dct.TestInsertWithAutoIncrement)
+		t.Run("EmptyInsert", dct.TestEmptyInsert)
 		t.Run("Select", dct.TestSelect)
 		t.Run("SelectWithFields", dct.TestSelectWithFields)
 		t.Run("Update", dct.TestUpdate)
@@ -209,7 +210,7 @@ func (dct *DriverConformanceTests) shouldSkip(testName string) bool {
 
 // Helper to create a test database
 func (dct *DriverConformanceTests) createTestDB(t *testing.T) *TestDatabase {
-	db, err := dct.NewDriver(dct.Config)
+	db, err := dct.NewDriver(dct.URI)
 	require.NoError(t, err, "failed to create driver")
 
 	ctx := context.Background()
@@ -224,7 +225,7 @@ func (dct *DriverConformanceTests) createTestDB(t *testing.T) *TestDatabase {
 		db.Close()
 	}
 
-	td := NewTestDatabase(t, db, dct.Config, cleanup)
+	td := NewTestDatabase(t, db, dct.URI, cleanup)
 
 	// Clean up existing tables before starting tests
 	if dct.CleanupTables != nil {
@@ -241,13 +242,13 @@ func (dct *DriverConformanceTests) TestConnect(t *testing.T) {
 		t.Skip("Test skipped by driver")
 	}
 
-	db, err := dct.NewDriver(dct.Config)
+	db, err := dct.NewDriver(dct.URI)
 	require.NoError(t, err)
 	defer db.Close()
 
 	ctx := context.Background()
 	err = db.Connect(ctx)
-	assert.NoError(t, err, "Connect should succeed with valid config")
+	assert.NoError(t, err, "Connect should succeed with valid URI")
 
 	// Test ping after connect
 	err = db.Ping(ctx)
@@ -259,19 +260,25 @@ func (dct *DriverConformanceTests) TestConnectWithInvalidConfig(t *testing.T) {
 		t.Skip("Test skipped by driver")
 	}
 
-	invalidConfig := dct.Config
+	var invalidURI string
 
-	// Handle different invalid configs for different drivers
+	// Handle different invalid URIs for different drivers
 	switch dct.DriverName {
 	case "SQLite":
 		// For SQLite, use an invalid directory path
-		invalidConfig.FilePath = "/invalid/path/that/does/not/exist/test.db"
+		invalidURI = "sqlite:///invalid/path/that/does/not/exist/test.db"
+	case "MySQL":
+		// For MySQL, use wrong password
+		invalidURI = "mysql://user:wrong_password@localhost:3306/test"
+	case "PostgreSQL":
+		// For PostgreSQL, use wrong password
+		invalidURI = "postgresql://user:wrong_password@localhost:5432/test"
 	default:
-		// For other databases, use wrong password
-		invalidConfig.Password = "wrong_password"
+		// Generic invalid URI
+		invalidURI = "invalid://invalid"
 	}
 
-	db, err := dct.NewDriver(invalidConfig)
+	db, err := dct.NewDriver(invalidURI)
 	if err != nil {
 		// Some drivers fail at creation time
 		return
@@ -280,7 +287,7 @@ func (dct *DriverConformanceTests) TestConnectWithInvalidConfig(t *testing.T) {
 
 	ctx := context.Background()
 	err = db.Connect(ctx)
-	assert.Error(t, err, "Connect should fail with invalid config")
+	assert.Error(t, err, "Connect should fail with invalid URI")
 }
 
 func (dct *DriverConformanceTests) TestPing(t *testing.T) {
@@ -322,7 +329,7 @@ func (dct *DriverConformanceTests) TestMultipleConnections(t *testing.T) {
 	// Create multiple connections
 	connections := make([]types.Database, 3)
 	for i := range 3 {
-		db, err := dct.NewDriver(dct.Config)
+		db, err := dct.NewDriver(dct.URI)
 		require.NoError(t, err)
 
 		err = db.Connect(ctx)

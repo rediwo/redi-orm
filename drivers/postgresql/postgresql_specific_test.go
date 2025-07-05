@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,28 +12,26 @@ import (
 
 func TestPostgreSQLArrayTypes(t *testing.T) {
 	uri := test.GetTestDatabaseUri("postgresql")
-	config, err := NewPostgreSQLURIParser().ParseURI(uri)
-	if err != nil {
-		t.Skipf("Failed to parse PostgreSQL URI: %v", err)
-	}
-	if config.Host == "" {
-		t.Skip("PostgreSQL test connection not configured")
-	}
 
-	db, err := NewPostgreSQLDB(config)
-	require.NoError(t, err)
+	db, err := database.NewFromURI(uri)
+	if err != nil {
+		t.Skipf("Failed to create PostgreSQL database: %v", err)
+	}
 	defer db.Close()
 
 	ctx := context.Background()
 	err = db.Connect(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		t.Skip("PostgreSQL test connection not available")
+	}
 
 	// Clean up any existing tables first
-	cleanupTables(t, db)
+	pgDB, _ := db.(*PostgreSQLDB)
+	cleanupTables(t, pgDB)
 
 	// Create test database with cleanup
-	td := test.NewTestDatabase(t, db, config, func() {
-		cleanupTables(t, db)
+	td := test.NewTestDatabase(t, db, uri, func() {
+		cleanupTables(t, pgDB)
 		db.Close()
 	})
 	defer td.Cleanup()
@@ -71,25 +70,23 @@ func TestPostgreSQLArrayTypes(t *testing.T) {
 
 func TestPostgreSQLJSONTypes(t *testing.T) {
 	uri := test.GetTestDatabaseUri("postgresql")
-	config, err := NewPostgreSQLURIParser().ParseURI(uri)
-	if err != nil {
-		t.Skipf("Failed to parse PostgreSQL URI: %v", err)
-	}
-	if config.Host == "" {
-		t.Skip("PostgreSQL test connection not configured")
-	}
 
-	db, err := NewPostgreSQLDB(config)
-	require.NoError(t, err)
+	db, err := database.NewFromURI(uri)
+	if err != nil {
+		t.Skipf("Failed to create PostgreSQL database: %v", err)
+	}
 	defer db.Close()
 
 	ctx := context.Background()
 	err = db.Connect(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		t.Skip("PostgreSQL test connection not available")
+	}
 
 	// Create test database with cleanup
-	td := test.NewTestDatabase(t, db, config, func() {
-		cleanupTables(t, db)
+	pgDB, _ := db.(*PostgreSQLDB)
+	td := test.NewTestDatabase(t, db, uri, func() {
+		cleanupTables(t, pgDB)
 		db.Close()
 	})
 	defer td.Cleanup()
@@ -141,25 +138,23 @@ func TestPostgreSQLJSONTypes(t *testing.T) {
 
 func TestPostgreSQLCaseSensitivity(t *testing.T) {
 	uri := test.GetTestDatabaseUri("postgresql")
-	config, err := NewPostgreSQLURIParser().ParseURI(uri)
-	if err != nil {
-		t.Skipf("Failed to parse PostgreSQL URI: %v", err)
-	}
-	if config.Host == "" {
-		t.Skip("PostgreSQL test connection not configured")
-	}
 
-	db, err := NewPostgreSQLDB(config)
-	require.NoError(t, err)
+	db, err := database.NewFromURI(uri)
+	if err != nil {
+		t.Skipf("Failed to create PostgreSQL database: %v", err)
+	}
 	defer db.Close()
 
 	ctx := context.Background()
 	err = db.Connect(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		t.Skip("PostgreSQL test connection not available")
+	}
 
 	// Create test database with cleanup
-	td := test.NewTestDatabase(t, db, config, func() {
-		cleanupTables(t, db)
+	pgDB, _ := db.(*PostgreSQLDB)
+	td := test.NewTestDatabase(t, db, uri, func() {
+		cleanupTables(t, pgDB)
 		db.Close()
 	})
 	defer td.Cleanup()

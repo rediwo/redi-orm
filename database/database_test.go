@@ -19,7 +19,7 @@ import (
 // Mock database implementation for testing
 type mockDatabase struct {
 	connected bool
-	config    types.Config
+	uri       string
 }
 
 type mockCapabilities struct{}
@@ -182,21 +182,21 @@ func (m *mockDatabase) RequiresLimitForOffset() bool {
 }
 
 // Mock factory function
-func mockFactory(config types.Config) (types.Database, error) {
-	if config.Type != "mock" {
-		return nil, fmt.Errorf("invalid config type for mock database")
+func mockFactory(uri string) (types.Database, error) {
+	if uri != "mock://test" {
+		return nil, fmt.Errorf("invalid URI for mock database")
 	}
-	return &mockDatabase{config: config}, nil
+	return &mockDatabase{uri: uri}, nil
 }
 
 // Mock URI parser implementation
 type mockURIParserImpl struct{}
 
-func (p *mockURIParserImpl) ParseURI(uri string) (types.Config, error) {
+func (p *mockURIParserImpl) ParseURI(uri string) (string, error) {
 	if uri == "mock://test" {
-		return types.Config{Type: "mock"}, nil
+		return "mock://test", nil
 	}
-	return types.Config{}, fmt.Errorf("invalid mock URI")
+	return "", fmt.Errorf("invalid mock URI")
 }
 
 func (p *mockURIParserImpl) GetSupportedSchemes() []string {
@@ -220,31 +220,28 @@ func TestNew(t *testing.T) {
 	}()
 
 	t.Run("Create with valid config", func(t *testing.T) {
-		config := Config{Type: "mock"}
-		db, err := New(config)
+		uri := "mock://test"
+		db, err := New(uri)
 		assert.NoError(t, err)
 		assert.NotNil(t, db)
 
 		// Verify it's our mock database
 		mockDB, ok := db.(*mockDatabase)
 		assert.True(t, ok)
-		assert.Equal(t, "mock", mockDB.config.Type)
+		assert.Equal(t, "mock://test", mockDB.uri)
 	})
 
 	t.Run("Create with unregistered driver", func(t *testing.T) {
-		config := Config{Type: "nonexistent"}
-		db, err := New(config)
+		uri := "nonexistent://invalid"
+		db, err := New(uri)
 		assert.Error(t, err)
 		assert.Nil(t, db)
-		assert.Contains(t, err.Error(), "not registered")
+		assert.Contains(t, err.Error(), "failed to parse URI")
 	})
 
 	t.Run("Create with SQLite", func(t *testing.T) {
-		config := Config{
-			Type:     "sqlite",
-			FilePath: ":memory:",
-		}
-		db, err := New(config)
+		uri := "sqlite://:memory:"
+		db, err := New(uri)
 		assert.NoError(t, err)
 		assert.NotNil(t, db)
 
@@ -256,30 +253,16 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("Create with MySQL", func(t *testing.T) {
-		config := Config{
-			Type:     "mysql",
-			Host:     "localhost",
-			Port:     3306,
-			User:     "testuser",
-			Password: "testpass",
-			Database: "testdb",
-		}
-		db, err := New(config)
+		uri := "mysql://testuser:testpass@localhost:3306/testdb"
+		db, err := New(uri)
 		assert.NoError(t, err)
 		assert.NotNil(t, db)
 		// Don't try to connect as MySQL may not be available
 	})
 
 	t.Run("Create with PostgreSQL", func(t *testing.T) {
-		config := Config{
-			Type:     "postgresql",
-			Host:     "localhost",
-			Port:     5432,
-			User:     "testuser",
-			Password: "testpass",
-			Database: "testdb",
-		}
-		db, err := New(config)
+		uri := "postgresql://testuser:testpass@localhost:5432/testdb"
+		db, err := New(uri)
 		assert.NoError(t, err)
 		assert.NotNil(t, db)
 		// Don't try to connect as PostgreSQL may not be available
@@ -306,7 +289,7 @@ func TestNewFromURI(t *testing.T) {
 		// Verify it's our mock database
 		mockDB, ok := db.(*mockDatabase)
 		assert.True(t, ok)
-		assert.Equal(t, "mock", mockDB.config.Type)
+		assert.Equal(t, "mock://test", mockDB.uri)
 	})
 
 	t.Run("Create from invalid URI", func(t *testing.T) {
@@ -391,49 +374,31 @@ func TestURIParsingExamples(t *testing.T) {
 		name        string
 		uri         string
 		shouldError bool
-		checkConfig func(t *testing.T, config types.Config)
+		expectedDriverType string
 	}{
 		{
 			name:        "SQLite memory",
 			uri:         "sqlite://:memory:",
 			shouldError: false,
-			checkConfig: func(t *testing.T, config types.Config) {
-				assert.Equal(t, "sqlite", config.Type)
-				assert.Equal(t, ":memory:", config.FilePath)
-			},
+			expectedDriverType: "sqlite",
 		},
 		{
 			name:        "SQLite file",
 			uri:         "sqlite:///path/to/db.sqlite",
 			shouldError: false,
-			checkConfig: func(t *testing.T, config types.Config) {
-				assert.Equal(t, "sqlite", config.Type)
-				assert.Equal(t, "/path/to/db.sqlite", config.FilePath)
-			},
+			expectedDriverType: "sqlite",
 		},
 		{
 			name:        "MySQL full URI",
 			uri:         "mysql://user:pass@localhost:3306/database",
 			shouldError: false,
-			checkConfig: func(t *testing.T, config types.Config) {
-				assert.Equal(t, "mysql", config.Type)
-				assert.Equal(t, "localhost", config.Host)
-				assert.Equal(t, 3306, config.Port)
-				assert.Equal(t, "user", config.User)
-				assert.Equal(t, "pass", config.Password)
-				assert.Equal(t, "database", config.Database)
-			},
+			expectedDriverType: "mysql",
 		},
 		{
 			name:        "PostgreSQL with SSL",
 			uri:         "postgresql://user:pass@host:5432/db?sslmode=require",
 			shouldError: false,
-			checkConfig: func(t *testing.T, config types.Config) {
-				assert.Equal(t, "postgresql", config.Type)
-				assert.Equal(t, "host", config.Host)
-				assert.Equal(t, 5432, config.Port)
-				// Note: SSLMode would need to be added to Config struct or handled in driver-specific config
-			},
+			expectedDriverType: "postgresql",
 		},
 		{
 			name:        "Invalid scheme",
@@ -449,15 +414,14 @@ func TestURIParsingExamples(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			config, err := registry.ParseURI(tc.uri)
+			nativeURI, driverType, err := registry.ParseURI(tc.uri)
 
 			if tc.shouldError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				if tc.checkConfig != nil {
-					tc.checkConfig(t, config)
-				}
+				assert.NotEmpty(t, nativeURI)
+				assert.Equal(t, tc.expectedDriverType, string(driverType))
 			}
 		})
 	}

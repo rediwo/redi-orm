@@ -18,8 +18,8 @@ func init() {
 	driverType := types.DriverSQLite
 
 	// Register SQLite driver
-	registry.Register(string(driverType), func(config types.Config) (types.Database, error) {
-		return NewSQLiteDB(config)
+	registry.Register(string(driverType), func(uri string) (types.Database, error) {
+		return NewSQLiteDB(uri)
 	})
 
 	// Register SQLite capabilities
@@ -32,18 +32,21 @@ func init() {
 // SQLiteDB implements the Database interface for SQLite
 type SQLiteDB struct {
 	*base.Driver
+	nativeURI string
 }
 
 // NewSQLiteDB creates a new SQLite database instance
-func NewSQLiteDB(config types.Config) (*SQLiteDB, error) {
+// The uri parameter should be a native SQLite path (e.g., "/path/to/db.sqlite" or ":memory:")
+func NewSQLiteDB(nativeURI string) (*SQLiteDB, error) {
 	return &SQLiteDB{
-		Driver: base.NewDriver(config),
+		Driver:    base.NewDriver(nativeURI, types.DriverSQLite),
+		nativeURI: nativeURI,
 	}, nil
 }
 
 // Connect establishes connection to SQLite database
 func (s *SQLiteDB) Connect(ctx context.Context) error {
-	db, err := sql.Open("sqlite3", s.Config.FilePath)
+	db, err := sql.Open("sqlite3", s.nativeURI)
 	if err != nil {
 		return fmt.Errorf("failed to open SQLite database: %w", err)
 	}

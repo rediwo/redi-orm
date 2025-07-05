@@ -442,6 +442,19 @@ func (m *insertMockDatabase) Raw(sql string, args ...any) types.RawQuery {
 	return &insertMockRawQuery{}
 }
 
+func (m *insertMockDatabase) GetCapabilities() types.DriverCapabilities {
+	return &insertMockCapabilities{}
+}
+
+// insertMockCapabilities implements types.DriverCapabilities for insert testing
+type insertMockCapabilities struct {
+	mockCapabilities
+}
+
+func (m *insertMockCapabilities) SupportsReturning() bool {
+	return true // Enable RETURNING support for tests
+}
+
 // insertMockRawQuery for insert tests
 type insertMockRawQuery struct {
 	execResult    types.Result

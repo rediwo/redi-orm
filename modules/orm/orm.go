@@ -8,7 +8,7 @@ import (
 
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/eventloop"
-	"github.com/rediwo/redi-orm/agile"
+	"github.com/rediwo/redi-orm/orm"
 	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -16,7 +16,30 @@ import (
 	"github.com/rediwo/redi/modules"
 )
 
-// ModelsModule provides Prisma-like database operations using agile as the backend
+// normalizeError normalizes database-specific error messages to common patterns
+func normalizeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	
+	errMsg := err.Error()
+	lowerMsg := strings.ToLower(errMsg)
+	
+	// Normalize NOT NULL constraint violations
+	// MySQL: "Field 'X' doesn't have a default value"
+	// PostgreSQL: "null value in column"
+	// SQLite: "NOT NULL constraint failed"
+	if strings.Contains(lowerMsg, "doesn't have a default value") ||
+		strings.Contains(lowerMsg, "null value in column") ||
+		strings.Contains(lowerMsg, "not null constraint") {
+		return fmt.Errorf("NOT NULL constraint violation: %s", err.Error())
+	}
+	
+	// Return original error if no normalization needed
+	return err
+}
+
+// ModelsModule provides Prisma-like database operations using ORM as the backend
 type ModelsModule struct {
 	loop    *eventloop.EventLoop
 	db      types.Database
@@ -78,7 +101,7 @@ func (m *ModelsModule) registerModel(vm *js.Runtime, modelsObj *js.Object, model
 	modelsObj.Set(modelName, modelObj)
 }
 
-// createMethod creates a promise-returning method using agile
+// createMethod creates a promise-returning method using ORM
 func (m *ModelsModule) createMethod(vm *js.Runtime, modelName, methodName string, db types.Database) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		// Validate arguments
@@ -98,12 +121,12 @@ func (m *ModelsModule) createMethod(vm *js.Runtime, modelName, methodName string
 
 		promise, resolve, reject := vm.NewPromise()
 
-		// Execute async operation using agile
+		// Execute async operation using ORM
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
-			// Create agile client
-			client := agile.NewClient(db)
+			// Create ORM client
+			client := orm.NewClient(db)
 
-			// Build JSON query for agile
+			// Build JSON query for ORM
 			jsonQuery, err := json.Marshal(map[string]any{
 				methodName: options,
 			})
@@ -112,10 +135,10 @@ func (m *ModelsModule) createMethod(vm *js.Runtime, modelName, methodName string
 				return
 			}
 
-			// Execute using agile
+			// Execute using ORM
 			result, err := client.Model(modelName).Query(string(jsonQuery))
 			if err != nil {
-				reject(vm.NewGoError(err))
+				reject(vm.NewGoError(normalizeError(err)))
 				return
 			}
 
@@ -226,11 +249,11 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 			return vm.ToValue(db.GetModels())
 		})
 
-		// Raw query functions using agile
+		// Raw query functions using ORM
 		dbInstance.Set("queryRaw", m.createQueryRawFunction(vm, &db, &connected))
 		dbInstance.Set("executeRaw", m.createExecuteRawFunction(vm, &db, &connected))
 
-		// Transaction function using agile
+		// Transaction function using ORM
 		dbInstance.Set("transaction", m.createTransactionFunction(vm, &db, &connected))
 
 		// Models object (will be populated after syncSchemas)
@@ -253,7 +276,7 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 	}
 }
 
-// Transaction support using agile
+// Transaction support using ORM
 func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		if !*connected || *db == nil {
@@ -273,11 +296,11 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Datab
 
 		// Execute the transaction in a goroutine
 		go func() {
-			// Create agile client
-			client := agile.NewClient(*db)
+			// Create ORM client
+			client := orm.NewClient(*db)
 
 			// Execute the transaction
-			err := client.Transaction(func(tx *agile.Client) error {
+			err := client.Transaction(func(tx *orm.Client) error {
 				// We need to execute the callback on the event loop and wait for it
 				var txErr error
 				done := make(chan bool)
@@ -369,7 +392,7 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Datab
 }
 
 // registerTransactionModel registers model methods for transaction context
-func (m *ModelsModule) registerTransactionModel(vm *js.Runtime, modelsObj *js.Object, modelName string, tx *agile.Client) {
+func (m *ModelsModule) registerTransactionModel(vm *js.Runtime, modelsObj *js.Object, modelName string, tx *orm.Client) {
 	modelObj := vm.NewObject()
 
 	// Create all methods but using transaction client
@@ -428,7 +451,7 @@ func (m *ModelsModule) registerTransactionModel(vm *js.Runtime, modelsObj *js.Ob
 	modelsObj.Set(modelName, modelObj)
 }
 
-// Raw query functions using agile
+// Raw query functions using ORM
 func (m *ModelsModule) createQueryRawFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		if !*connected || *db == nil {
@@ -450,8 +473,8 @@ func (m *ModelsModule) createQueryRawFunction(vm *js.Runtime, db *types.Database
 		promise, resolve, reject := vm.NewPromise()
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
-			// Use agile's raw query
-			client := agile.NewClient(*db)
+			// Use ORM's raw query
+			client := orm.NewClient(*db)
 			results, err := client.Model("").Raw(sql, args...).Find()
 			if err != nil {
 				reject(vm.NewGoError(err))
@@ -486,8 +509,8 @@ func (m *ModelsModule) createExecuteRawFunction(vm *js.Runtime, db *types.Databa
 		promise, resolve, reject := vm.NewPromise()
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
-			// Use agile's raw query
-			client := agile.NewClient(*db)
+			// Use ORM's raw query
+			client := orm.NewClient(*db)
 			result, err := client.Model("").Raw(sql, args...).Exec()
 			if err != nil {
 				reject(vm.NewGoError(err))
@@ -668,7 +691,7 @@ func (m *ModelsModule) dropModelFunction(vm *js.Runtime, db *types.Database, con
 }
 
 // createNestedTransactionFunction creates a transaction method for nested transactions
-func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx *agile.Client) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx *orm.Client) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		if len(call.Arguments) == 0 {
 			panic(vm.NewTypeError("transaction requires a callback function"))
@@ -684,7 +707,7 @@ func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx 
 		// Execute nested transaction in a goroutine
 		go func() {
 			// Execute nested transaction
-			err := parentTx.Transaction(func(nestedTx *agile.Client) error {
+			err := parentTx.Transaction(func(nestedTx *orm.Client) error {
 				// We need to execute the callback on the event loop and wait for it
 				var txErr error
 				done := make(chan bool)

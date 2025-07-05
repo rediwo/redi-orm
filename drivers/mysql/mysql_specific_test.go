@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,25 +12,23 @@ import (
 
 func TestMySQLCaseSensitivity(t *testing.T) {
 	uri := test.GetTestDatabaseUri("mysql")
-	config, err := NewMySQLURIParser().ParseURI(uri)
-	if err != nil {
-		t.Skipf("Failed to parse MySQL URI: %v", err)
-	}
-	if config.Host == "" {
-		t.Skip("MySQL test connection not configured")
-	}
 
-	db, err := NewMySQLDB(config)
-	require.NoError(t, err)
+	db, err := database.NewFromURI(uri)
+	if err != nil {
+		t.Skipf("Failed to create MySQL database: %v", err)
+	}
 	defer db.Close()
 
 	ctx := context.Background()
 	err = db.Connect(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		t.Skip("MySQL test connection not available")
+	}
 
 	// Create test database with cleanup
-	td := test.NewTestDatabase(t, db, config, func() {
-		cleanupTables(t, db)
+	mysqlDB, _ := db.(*MySQLDB)
+	td := test.NewTestDatabase(t, db, uri, func() {
+		cleanupTables(t, mysqlDB)
 		db.Close()
 	})
 	defer td.Cleanup()

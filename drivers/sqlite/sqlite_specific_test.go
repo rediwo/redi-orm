@@ -4,18 +4,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSQLiteCaseSensitivity(t *testing.T) {
-	// Get test database URI and parse it
+	// Get test database URI
 	uri := test.GetTestDatabaseUri("sqlite")
-	config, err := NewSQLiteURIParser().ParseURI(uri)
-	require.NoError(t, err)
 
-	db, err := NewSQLiteDB(config)
+	db, err := database.NewFromURI(uri)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -24,11 +23,12 @@ func TestSQLiteCaseSensitivity(t *testing.T) {
 	require.NoError(t, err)
 
 	// Clean up any existing tables first
-	cleanupTables(t, db)
+	sqliteDB, _ := db.(*SQLiteDB)
+	cleanupTables(t, sqliteDB)
 
 	// Create test database with cleanup
-	td := test.NewTestDatabase(t, db, config, func() {
-		cleanupTables(t, db)
+	td := test.NewTestDatabase(t, db, uri, func() {
+		cleanupTables(t, sqliteDB)
 		db.Close()
 	})
 	defer td.Cleanup()

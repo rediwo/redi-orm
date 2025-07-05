@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 )
 
 // Aggregation Tests
-func (act *AgileConformanceTests) runAggregationTests(t *testing.T, client *Client, db types.Database) {
+func (act *OrmConformanceTests) runAggregationTests(t *testing.T, client *Client, db types.Database) {
 	// Test basic aggregations
 	act.runWithCleanup(t, db, func() {
 		t.Run("BasicAggregations", func(t *testing.T) {

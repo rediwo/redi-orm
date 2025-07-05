@@ -15,16 +15,18 @@ import (
 // Driver provides common functionality for all database drivers
 type Driver struct {
 	DB          *sql.DB
-	Config      types.Config
+	URI         string
+	DriverType  types.DriverType
 	FieldMapper types.FieldMapper
 	Schemas     map[string]*schema.Schema
 	SchemasMu   sync.RWMutex
 }
 
 // NewDriver creates a new base driver instance
-func NewDriver(config types.Config) *Driver {
+func NewDriver(uri string, driverType types.DriverType) *Driver {
 	return &Driver{
-		Config:      config,
+		URI:         uri,
+		DriverType:  driverType,
 		FieldMapper: types.NewDefaultFieldMapper(),
 		Schemas:     make(map[string]*schema.Schema),
 	}

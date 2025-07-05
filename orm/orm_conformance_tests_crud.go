@@ -1,4 +1,4 @@
-package agile
+package orm
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 )
 
 // CRUD Tests
-func (act *AgileConformanceTests) runCRUDTests(t *testing.T, client *Client, db types.Database) {
+func (act *OrmConformanceTests) runCRUDTests(t *testing.T, client *Client, db types.Database) {
 	// Test create
 	act.runWithCleanup(t, db, func() {
 		t.Run("Create", func(t *testing.T) {

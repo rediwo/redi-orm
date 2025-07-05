@@ -18,7 +18,7 @@ func (dct *DriverConformanceTests) TestNewDriver(t *testing.T) {
 		t.Skip("Test skipped by driver")
 	}
 
-	db, err := dct.NewDriver(dct.Config)
+	db, err := dct.NewDriver(dct.URI)
 	assert.NoError(t, err)
 	assert.NotNil(t, db)
 
@@ -31,7 +31,7 @@ func (dct *DriverConformanceTests) TestDriverConfig(t *testing.T) {
 		t.Skip("Test skipped by driver")
 	}
 
-	db, err := dct.NewDriver(dct.Config)
+	db, err := dct.NewDriver(dct.URI)
 	require.NoError(t, err)
 
 	// Driver should store config properly

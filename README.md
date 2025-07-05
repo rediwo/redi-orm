@@ -73,9 +73,9 @@ redi-orm version
 
 ## 🎯 Quick Start
 
-### Go API
+### Go ORM API
 
-The Go API provides type-safe, high-performance database operations:
+The Go ORM API provides a simplified, high-level interface for rapid development:
 
 ```go
 package main
@@ -83,30 +83,26 @@ package main
 import (
     "context"
     "log"
-    "github.com/rediwo/redi-orm/database"
-    "github.com/rediwo/redi-orm/schema"
-    "github.com/rediwo/redi-orm/utils"
+    "github.com/rediwo/redi-orm/orm"
 )
 
 func main() {
-    // Create database from URI
-    db, err := database.NewFromURI("sqlite://./myapp.db")
+    // Create client from URI
+    client, err := orm.NewClient("sqlite://./myapp.db")
     if err != nil {
         log.Fatal(err)
     }
-    
+    defer client.Close()
+
     ctx := context.Background()
-    if err := db.Connect(ctx); err != nil {
-        log.Fatal(err)
-    }
-    defer db.Close()
     
-    // Option 1: Load schema from string (Prisma-style)
+    // Load schema from Prisma-style definition
     schemaContent := `
         model User {
             id    Int     @id @default(autoincrement())
             email String  @unique
             name  String
+            posts Post[]
         }
         
         model Post {
@@ -117,78 +113,58 @@ func main() {
             user    User   @relation(fields: [userId], references: [id])
         }
     `
-    if err := db.LoadSchema(ctx, schemaContent); err != nil {
+    if err := client.LoadSchema(ctx, schemaContent); err != nil {
         log.Fatal(err)
     }
     
-    // Option 2: Load schema from file
-    // if err := db.LoadSchemaFrom(ctx, "./schema.prisma"); err != nil {
-    //     log.Fatal(err)
-    // }
+    // Get model instances
+    User := client.Model("User")
+    Post := client.Model("Post")
     
-    // Option 3: Define schema programmatically
-    // userSchema := schema.New("User").
-    //     AddField(schema.NewField("id").Int().PrimaryKey().AutoIncrement().Build()).
-    //     AddField(schema.NewField("email").String().Unique().Build()).
-    //     AddField(schema.NewField("name").String().Build())
-    // db.RegisterSchema(userSchema)
-    
-    // Sync all loaded schemas with database
-    if err := db.SyncSchemas(ctx); err != nil {
-        log.Fatal(err)
-    }
-    
-    // After sync, models are available
-    models := db.GetModels() // ["User", "Post"]
-    
-    // Insert data
-    result, err := db.Model("User").
-        Insert(map[string]any{
-            "email": "alice@example.com",
-            "name": "Alice",
-        }).
-        Exec(ctx)
+    // Create user
+    user, err := User.Create(ctx, orm.Data{
+        "email": "alice@example.com",
+        "name":  "Alice",
+    })
     if err != nil {
         log.Fatal(err)
     }
-    userID := result.LastInsertID
     
-    // Insert with relations
-    _, err = db.Model("Post").
-        Insert(map[string]any{
-            "title": "Hello World",
-            "content": "My first post",
-            "userId": userID,
-        }).
-        Exec(ctx)
+    // Create post with relation
+    post, err := Post.Create(ctx, orm.Data{
+        "title":   "Hello World",
+        "content": "My first post",
+        "userId":  user["id"],
+    })
     
-    // Query data
-    var users []map[string]any
-    err = db.Model("User").
-        Select("id", "email", "name").
-        Where("email").Like("%example.com%").
-        OrderBy("name", "ASC").
-        FindMany(ctx, &users)
+    // Find with conditions
+    users, err := User.FindMany(ctx, orm.Query{
+        Where: orm.Where{
+            "email": orm.Contains("@example.com"),
+        },
+        OrderBy: orm.OrderBy{"name": "asc"},
+        Include: orm.Include{"posts": true},
+    })
     
-    // Count
-    count, err := db.Model("Post").
-        Where("userId").Equals(userID).
-        Count(ctx)
+    // Update data
+    updatedUser, err := User.Update(ctx, orm.Query{
+        Where: orm.Where{"id": user["id"]},
+        Data:  orm.Data{"name": "Alice Smith"},
+    })
     
-    // Update
-    _, err = db.Model("User").
-        Update(map[string]any{"name": "Alice Smith"}).
-        Where("id").Equals(userID).
-        Exec(ctx)
+    // Count records
+    count, err := Post.Count(ctx, orm.Query{
+        Where: orm.Where{"userId": user["id"]},
+    })
     
-    // Raw SQL
-    rows, err := db.Query("SELECT * FROM users WHERE created_at > ?", "2024-01-01")
-    defer rows.Close()
-    
-    // Use utils for scanning
-    results, err := utils.ScanRowsToMaps(rows)
+    // Delete records
+    err = Post.Delete(ctx, orm.Query{
+        Where: orm.Where{"id": post["id"]},
+    })
 }
 ```
+
+> **💡 Note**: For low-level database operations and advanced features, see the [Driver API documentation](./drivers/README.md).
 
 ### JavaScript API
 
