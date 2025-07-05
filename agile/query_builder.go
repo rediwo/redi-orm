@@ -97,7 +97,7 @@ func buildFieldCondition(field string, value any) types.Condition {
 	if valueMap, ok := value.(map[string]any); ok {
 		// Handle operators - collect all conditions for this field
 		var fieldConditions []types.Condition
-		
+
 		for op, val := range valueMap {
 			var cond types.Condition
 			switch op {
@@ -144,12 +144,12 @@ func buildFieldCondition(field string, value any) types.Condition {
 					cond = fieldCond.EndsWith(fmt.Sprintf("%v", val))
 				}
 			}
-			
+
 			if cond != nil {
 				fieldConditions = append(fieldConditions, cond)
 			}
 		}
-		
+
 		// If we have multiple conditions for the same field, combine them with AND
 		if len(fieldConditions) == 0 {
 			return nil
@@ -213,7 +213,7 @@ func applyOrderByToQuery(query any, orderBy any) any {
 		}
 		return query
 	}
-	
+
 	return query
 }
 

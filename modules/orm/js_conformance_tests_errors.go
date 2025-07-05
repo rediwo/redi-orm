@@ -11,12 +11,12 @@ func (jct *JSConformanceTests) runErrorHandlingTests(t *testing.T, runner *JSTes
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	email String @unique
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create user
@@ -38,12 +38,12 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	email String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Try to create without required field
@@ -64,7 +64,7 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Author {
 	id    Int    @id @default(autoincrement())
 	name  String
@@ -77,7 +77,7 @@ model Post {
 	authorId Int
 	author   Author @relation(fields: [authorId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Try to create post with non-existent author
@@ -97,12 +97,12 @@ model Post {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id   Int    @id @default(autoincrement())
 	name String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Try to query with invalid field
@@ -121,12 +121,12 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id   Int    @id @default(autoincrement())
 	name String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Try to access non-existent model
@@ -146,12 +146,12 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id  Int @id @default(autoincrement())
 	age Int
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Try to insert string into int field

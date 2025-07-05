@@ -11,7 +11,7 @@ func (jct *JSConformanceTests) runDataTypeTests(t *testing.T, runner *JSTestRunn
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model TestModel {
 	id       Int       @id @default(autoincrement())
 	text     String
@@ -21,7 +21,7 @@ model TestModel {
 	date     DateTime  @default(now())
 	optional String?
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create with various types

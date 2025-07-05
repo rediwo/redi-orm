@@ -8,10 +8,10 @@ import (
 
 func TestAnalyzeSchemasDependencies(t *testing.T) {
 	tests := []struct {
-		name      string
-		schemas   map[string]*schema.Schema
-		want      []string
-		wantErr   bool
+		name        string
+		schemas     map[string]*schema.Schema
+		want        []string
+		wantErr     bool
 		errContains string
 	}{
 		{
@@ -30,7 +30,7 @@ func TestAnalyzeSchemasDependencies(t *testing.T) {
 		{
 			name: "multiple dependencies",
 			schemas: map[string]*schema.Schema{
-				"User": schema.New("User"),
+				"User":     schema.New("User"),
 				"Category": schema.New("Category"),
 				"Post": schema.New("Post").
 					AddRelation("author", schema.Relation{
@@ -163,19 +163,19 @@ func TestAnalyzeSchemasDependencies(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := AnalyzeSchemasDependencies(tt.schemas)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AnalyzeSchemasDependencies() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if tt.wantErr && err != nil {
 				if tt.errContains != "" && !contains(err.Error(), tt.errContains) {
 					t.Errorf("AnalyzeSchemasDependencies() error = %v, want error containing %v", err, tt.errContains)
 				}
 				return
 			}
-			
+
 			// For schemas without specific order requirements, just check that all are present
 			if tt.name == "independent schemas" || tt.name == "oneToMany relation (no dependency)" || tt.name == "multiple dependencies" {
 				if len(got) != len(tt.schemas) {
@@ -193,7 +193,7 @@ func TestAnalyzeSchemasDependencies(t *testing.T) {
 				}
 				return
 			}
-			
+
 			// For specific order tests, check exact order
 			if tt.want != nil {
 				if !equalStringSlices(got, tt.want) {
@@ -206,11 +206,11 @@ func TestAnalyzeSchemasDependencies(t *testing.T) {
 
 func TestSplitSchemasByDependency(t *testing.T) {
 	tests := []struct {
-		name          string
-		schemas       map[string]*schema.Schema
-		wantWithFKLen int
+		name             string
+		schemas          map[string]*schema.Schema
+		wantWithFKLen    int
 		wantWithoutFKLen int
-		hasCircular   bool
+		hasCircular      bool
 	}{
 		{
 			name: "no circular dependencies",
@@ -256,21 +256,21 @@ func TestSplitSchemasByDependency(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			withFK, withoutFK, err := splitSchemasByDependency(tt.schemas)
-			
+
 			// splitSchemasByDependency should not return error
 			if err != nil {
 				t.Errorf("splitSchemasByDependency() error = %v", err)
 				return
 			}
-			
+
 			if len(withFK) != tt.wantWithFKLen {
 				t.Errorf("splitSchemasByDependency() withFK length = %d, want %d", len(withFK), tt.wantWithFKLen)
 			}
-			
+
 			if len(withoutFK) != tt.wantWithoutFKLen {
 				t.Errorf("splitSchemasByDependency() withoutFK length = %d, want %d", len(withoutFK), tt.wantWithoutFKLen)
 			}
-			
+
 			// Verify all schemas are accounted for
 			totalSchemas := len(withFK) + len(withoutFK)
 			if totalSchemas != len(tt.schemas) {
@@ -282,7 +282,7 @@ func TestSplitSchemasByDependency(t *testing.T) {
 
 // Helper functions
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && indexString(s, substr) >= 0))
 }
 

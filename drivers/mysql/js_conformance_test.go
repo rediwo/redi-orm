@@ -18,7 +18,7 @@ func TestMySQLJSConformance(t *testing.T) {
 	suite := &orm.JSConformanceTests{
 		DriverName:  "MySQL",
 		DatabaseURI: uri,
-		SkipTests: map[string]bool{
+		SkipTests:   map[string]bool{
 			// MySQL-specific skips if needed
 		},
 		Characteristics: orm.JSDriverCharacteristics{
@@ -68,7 +68,7 @@ func cleanupTablesJS(t *testing.T, runner *orm.JSTestRunner) {
 		// Re-enable foreign key checks
 		await db.executeRaw('SET FOREIGN_KEY_CHECKS = 1');
 	`
-	
+
 	err := runner.RunCleanupScript(cleanupScript)
 	if err != nil {
 		t.Logf("Failed to cleanup tables: %v", err)

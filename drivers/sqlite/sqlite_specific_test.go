@@ -25,7 +25,7 @@ func TestSQLiteCaseSensitivity(t *testing.T) {
 
 	// Clean up any existing tables first
 	cleanupTables(t, db)
-	
+
 	// Create test database with cleanup
 	td := test.NewTestDatabase(t, db, config, func() {
 		cleanupTables(t, db)

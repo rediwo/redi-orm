@@ -22,6 +22,29 @@ type mockDatabase struct {
 	config    types.Config
 }
 
+type mockCapabilities struct{}
+
+func (c *mockCapabilities) SupportsReturning() bool            { return false }
+func (c *mockCapabilities) SupportsDefaultValues() bool        { return true }
+func (c *mockCapabilities) RequiresLimitForOffset() bool       { return true }
+func (c *mockCapabilities) SupportsDistinctOn() bool           { return false }
+func (c *mockCapabilities) QuoteIdentifier(name string) string { return "`" + name + "`" }
+func (c *mockCapabilities) GetPlaceholder(index int) string    { return "?" }
+func (c *mockCapabilities) GetBooleanLiteral(value bool) string {
+	if value {
+		return "1"
+	}
+	return "0"
+}
+func (c *mockCapabilities) NeedsTypeConversion() bool { return false }
+func (c *mockCapabilities) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return ""
+}
+func (c *mockCapabilities) IsSystemIndex(indexName string) bool { return false }
+func (c *mockCapabilities) IsSystemTable(tableName string) bool { return false }
+func (c *mockCapabilities) GetDriverType() types.DriverType     { return "mock" }
+func (c *mockCapabilities) GetSupportedSchemes() []string       { return []string{"mock"} }
+
 func (m *mockDatabase) Connect(ctx context.Context) error {
 	m.connected = true
 	return nil
@@ -101,6 +124,10 @@ func (m *mockDatabase) GetFieldMapper() types.FieldMapper {
 
 func (m *mockDatabase) GetDriverType() string {
 	return "mock"
+}
+
+func (m *mockDatabase) GetCapabilities() types.DriverCapabilities {
+	return &mockCapabilities{}
 }
 
 func (m *mockDatabase) GetBooleanLiteral(value bool) string {

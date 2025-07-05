@@ -1,25 +1,26 @@
 package agile
 
 import (
+	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi-orm/utils"
 )
 
 // TypeConverter handles database-specific type conversions
 type TypeConverter struct {
-	driverType string
+	capabilities types.DriverCapabilities
 }
 
 // NewTypeConverter creates a new type converter for the specified driver
-func NewTypeConverter(driverType string) *TypeConverter {
+func NewTypeConverter(capabilities types.DriverCapabilities) *TypeConverter {
 	return &TypeConverter{
-		driverType: driverType,
+		capabilities: capabilities,
 	}
 }
 
-// ConvertResult converts a single result map based on the driver type
+// ConvertResult converts a single result map based on the driver capabilities
 func (tc *TypeConverter) ConvertResult(modelName string, result map[string]any) map[string]any {
-	if tc.driverType != "mysql" {
-		return result // Only MySQL needs special handling for now
+	if !tc.capabilities.NeedsTypeConversion() {
+		return result // Only drivers that need conversion get special handling
 	}
 
 	// Convert MySQL string numbers to proper types
@@ -34,7 +35,7 @@ func (tc *TypeConverter) ConvertResult(modelName string, result map[string]any) 
 // ConvertAggregateResult converts aggregation results
 func (tc *TypeConverter) ConvertAggregateResult(result map[string]any) map[string]any {
 	converted := make(map[string]any, len(result))
-	
+
 	for key, value := range result {
 		switch key {
 		case "_count", "_sum", "_avg", "_min", "_max":
@@ -60,7 +61,7 @@ func (tc *TypeConverter) ConvertAggregateResult(result map[string]any) map[strin
 
 // convertValue converts a single value based on its type
 func (tc *TypeConverter) convertValue(value any) any {
-	if tc.driverType != "mysql" {
+	if !tc.capabilities.NeedsTypeConversion() {
 		return value
 	}
 

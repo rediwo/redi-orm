@@ -86,6 +86,68 @@ func (m *mockDatabase) RequiresLimitForOffset() bool {
 	return true // Mock requires LIMIT for OFFSET
 }
 
+func (m *mockDatabase) GetCapabilities() types.DriverCapabilities {
+	return &mockCapabilities{}
+}
+
+// mockCapabilities implements types.DriverCapabilities for testing
+type mockCapabilities struct{}
+
+func (m *mockCapabilities) QuoteIdentifier(name string) string {
+	return "`" + name + "`"
+}
+
+func (m *mockCapabilities) GetPlaceholder(index int) string {
+	return "?"
+}
+
+func (m *mockCapabilities) SupportsDefaultValues() bool {
+	return true
+}
+
+func (m *mockCapabilities) SupportsReturning() bool {
+	return false
+}
+
+func (m *mockCapabilities) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return "" // Mock doesn't support NULLS FIRST/LAST
+}
+
+func (m *mockCapabilities) RequiresLimitForOffset() bool {
+	return true
+}
+
+func (m *mockCapabilities) GetBooleanLiteral(value bool) string {
+	if value {
+		return "1"
+	}
+	return "0"
+}
+
+func (m *mockCapabilities) GetDriverType() types.DriverType {
+	return types.DriverType("mock")
+}
+
+func (m *mockCapabilities) GetSupportedSchemes() []string {
+	return []string{"mock"}
+}
+
+func (m *mockCapabilities) SupportsDistinctOn() bool {
+	return false
+}
+
+func (m *mockCapabilities) NeedsTypeConversion() bool {
+	return false
+}
+
+func (m *mockCapabilities) IsSystemIndex(indexName string) bool {
+	return false
+}
+
+func (m *mockCapabilities) IsSystemTable(tableName string) bool {
+	return false
+}
+
 type mockFieldMapper struct{}
 
 func (m *mockFieldMapper) SchemaToColumn(modelName, fieldName string) (string, error) {

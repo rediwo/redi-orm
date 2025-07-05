@@ -102,7 +102,7 @@ func (m *ModelsModule) createMethod(vm *js.Runtime, modelName, methodName string
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			// Create agile client
 			client := agile.NewClient(db)
-			
+
 			// Build JSON query for agile
 			jsonQuery, err := json.Marshal(map[string]any{
 				methodName: options,
@@ -214,7 +214,7 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 		dbInstance.Set("loadSchema", m.createLoadSchemaFunction(vm, &db, &connected))
 		dbInstance.Set("loadSchemaFrom", m.createLoadSchemaFromFunction(vm, &db, &connected))
 		dbInstance.Set("syncSchemas", m.createSyncSchemasFunction(vm, &db, &connected))
-		
+
 		// Database operation methods
 		dbInstance.Set("ping", m.createPingFunction(vm, &db, &connected))
 		dbInstance.Set("createModel", m.createModelFunction(vm, &db, &connected))
@@ -275,27 +275,27 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Datab
 		go func() {
 			// Create agile client
 			client := agile.NewClient(*db)
-			
+
 			// Execute the transaction
 			err := client.Transaction(func(tx *agile.Client) error {
 				// We need to execute the callback on the event loop and wait for it
 				var txErr error
 				done := make(chan bool)
-				
+
 				m.loop.RunOnLoop(func(vm *js.Runtime) {
 					// Create transaction context object
 					txObj := vm.NewObject()
-					
+
 					// Create models for transaction
 					modelsObj := vm.NewObject()
 					for _, modelName := range (*db).GetModels() {
 						m.registerTransactionModel(vm, modelsObj, modelName, tx)
 					}
 					txObj.Set("models", modelsObj)
-					
+
 					// Add nested transaction support
 					txObj.Set("transaction", m.createNestedTransactionFunction(vm, tx))
-					
+
 					// Call the callback
 					result, err := callback(nil, vm.ToValue(txObj))
 					if err != nil {
@@ -303,7 +303,7 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Datab
 						close(done)
 						return
 					}
-					
+
 					// Check if the result is a promise
 					if promiseObj := result.ToObject(vm); promiseObj != nil {
 						thenMethod := promiseObj.Get("then")
@@ -317,7 +317,7 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Datab
 									close(done)
 									return js.Undefined()
 								}))
-								
+
 								if thenResultObj := thenResult.ToObject(vm); thenResultObj != nil {
 									if catchMethod2 := thenResultObj.Get("catch"); !js.IsUndefined(catchMethod2) {
 										if catchFunc2, ok := js.AssertFunction(catchMethod2); ok {
@@ -348,12 +348,12 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Datab
 					// Not a promise, close immediately
 					close(done)
 				})
-				
+
 				// Wait for the JavaScript callback to complete
 				<-done
 				return txErr
 			})
-			
+
 			// Resolve or reject the promise based on the transaction result
 			m.loop.RunOnLoop(func(vm *js.Runtime) {
 				if err != nil {
@@ -440,7 +440,7 @@ func (m *ModelsModule) createQueryRawFunction(vm *js.Runtime, db *types.Database
 		}
 
 		sql := call.Arguments[0].String()
-		
+
 		// Extract parameters
 		var args []any
 		for i := 1; i < len(call.Arguments); i++ {
@@ -476,7 +476,7 @@ func (m *ModelsModule) createExecuteRawFunction(vm *js.Runtime, db *types.Databa
 		}
 
 		sql := call.Arguments[0].String()
-		
+
 		// Extract parameters
 		var args []any
 		for i := 1; i < len(call.Arguments); i++ {
@@ -497,7 +497,7 @@ func (m *ModelsModule) createExecuteRawFunction(vm *js.Runtime, db *types.Databa
 			// Return result with rowsAffected
 			resultObj := vm.NewObject()
 			resultObj.Set("rowsAffected", result.RowsAffected)
-			
+
 			resolve(resultObj)
 		})
 
@@ -688,11 +688,11 @@ func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx 
 				// We need to execute the callback on the event loop and wait for it
 				var txErr error
 				done := make(chan bool)
-				
+
 				m.loop.RunOnLoop(func(vm *js.Runtime) {
 					// Create nested transaction context object
 					nestedTxObj := vm.NewObject()
-					
+
 					// Create models for nested transaction
 					modelsObj := vm.NewObject()
 					// Get models from the parent transaction's database
@@ -704,7 +704,7 @@ func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx 
 						m.registerTransactionModel(vm, modelsObj, modelName, nestedTx)
 					}
 					nestedTxObj.Set("models", modelsObj)
-					
+
 					// Add nested transaction support (for further nesting)
 					nestedTxObj.Set("transaction", m.createNestedTransactionFunction(vm, nestedTx))
 
@@ -715,7 +715,7 @@ func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx 
 						close(done)
 						return
 					}
-					
+
 					// Check if the result is a promise
 					if promiseObj := result.ToObject(vm); promiseObj != nil {
 						thenMethod := promiseObj.Get("then")
@@ -726,7 +726,7 @@ func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx 
 								close(done)
 								return js.Undefined()
 							}))
-							
+
 							if thenResultObj := thenResult.ToObject(vm); thenResultObj != nil {
 								if catchMethod := thenResultObj.Get("catch"); !js.IsUndefined(catchMethod) {
 									if catchFunc, ok := js.AssertFunction(catchMethod); ok {
@@ -747,7 +747,7 @@ func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx 
 					// Not a promise, close immediately
 					close(done)
 				})
-				
+
 				// Wait for the JavaScript callback to complete
 				<-done
 				return txErr

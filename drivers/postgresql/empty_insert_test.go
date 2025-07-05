@@ -46,15 +46,15 @@ func TestEmptyInsert(t *testing.T) {
 			Default: "active",
 		}).
 		AddField(schema.Field{
-			Name:     "createdAt",
-			Type:     schema.FieldTypeDateTime,
-			Default:  "CURRENT_TIMESTAMP",
+			Name:    "createdAt",
+			Type:    schema.FieldTypeDateTime,
+			Default: "CURRENT_TIMESTAMP",
 		})
 
 	// Register schema and sync
 	err = db.RegisterSchema("User", userSchema)
 	require.NoError(t, err)
-	
+
 	err = db.SyncSchemas(ctx)
 	require.NoError(t, err)
 
@@ -73,7 +73,7 @@ func TestEmptyInsert(t *testing.T) {
 			Insert(map[string]any{}).
 			Returning("id", "status", "createdAt").
 			ExecAndReturn(ctx, &user)
-		
+
 		require.NoError(t, err)
 
 		// Log what we got back

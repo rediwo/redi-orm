@@ -11,14 +11,14 @@ func (jct *JSConformanceTests) runQueryTests(t *testing.T, runner *JSTestRunner)
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 	age   Int
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -49,13 +49,13 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Product {
 	id    Int    @id @default(autoincrement())
 	name  String
 	price Float
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -85,12 +85,12 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Item {
 	id   Int    @id @default(autoincrement())
 	name String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -125,7 +125,7 @@ model Item {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id        Int    @id @default(autoincrement())
 	email     String @unique
@@ -133,7 +133,7 @@ model User {
 	firstName String
 	lastName  String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -171,13 +171,13 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Event {
 	id       Int    @id @default(autoincrement())
 	category String
 	name     String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data with duplicate categories

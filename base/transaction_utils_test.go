@@ -1,8 +1,97 @@
 package base
 
 import (
+	"fmt"
+	"github.com/rediwo/redi-orm/types"
 	"testing"
 )
+
+// mockCapabilities implements types.DriverCapabilities for testing
+type mockCapabilities struct {
+	driverType string
+}
+
+func (m *mockCapabilities) QuoteIdentifier(name string) string {
+	if m.driverType == "postgresql" {
+		return fmt.Sprintf(`"%s"`, name)
+	}
+	return fmt.Sprintf("`%s`", name)
+}
+
+func (m *mockCapabilities) GetPlaceholder(index int) string {
+	if m.driverType == "postgresql" {
+		return fmt.Sprintf("$%d", index)
+	}
+	return "?"
+}
+
+func (m *mockCapabilities) SupportsDefaultValues() bool {
+	return true
+}
+
+func (m *mockCapabilities) SupportsReturning() bool {
+	return m.driverType == "postgresql"
+}
+
+func (m *mockCapabilities) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	if nullsFirst {
+		return "NULLS FIRST"
+	}
+	return "NULLS LAST"
+}
+
+func (m *mockCapabilities) RequiresLimitForOffset() bool {
+	return m.driverType == "mysql"
+}
+
+func (m *mockCapabilities) GetBooleanLiteral(value bool) string {
+	if value {
+		return "TRUE"
+	}
+	return "FALSE"
+}
+
+func (m *mockCapabilities) GetDriverType() types.DriverType {
+	switch m.driverType {
+	case "postgresql":
+		return types.DriverPostgreSQL
+	case "mysql":
+		return types.DriverMySQL
+	case "sqlite":
+		return types.DriverSQLite
+	default:
+		return types.DriverSQLite
+	}
+}
+
+func (m *mockCapabilities) GetSupportedSchemes() []string {
+	switch m.driverType {
+	case "postgresql":
+		return []string{"postgresql", "postgres"}
+	case "mysql":
+		return []string{"mysql"}
+	case "sqlite":
+		return []string{"sqlite", "sqlite3"}
+	default:
+		return []string{m.driverType}
+	}
+}
+
+func (m *mockCapabilities) SupportsDistinctOn() bool {
+	return m.driverType == "postgresql"
+}
+
+func (m *mockCapabilities) NeedsTypeConversion() bool {
+	return false
+}
+
+func (m *mockCapabilities) IsSystemIndex(indexName string) bool {
+	return false
+}
+
+func (m *mockCapabilities) IsSystemTable(tableName string) bool {
+	return false
+}
 
 func TestTransactionUtils_quote(t *testing.T) {
 	tests := []struct {
@@ -39,7 +128,8 @@ func TestTransactionUtils_quote(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tu := &TransactionUtils{driverType: tt.driverType}
+			mockCaps := &mockCapabilities{driverType: tt.driverType}
+			tu := &TransactionUtils{capabilities: mockCaps}
 			if got := tu.quote(tt.input); got != tt.want {
 				t.Errorf("quote() = %v, want %v", got, tt.want)
 			}
@@ -88,7 +178,8 @@ func TestTransactionUtils_getPlaceholder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tu := &TransactionUtils{driverType: tt.driverType}
+			mockCaps := &mockCapabilities{driverType: tt.driverType}
+			tu := &TransactionUtils{capabilities: mockCaps}
 			if got := tu.getPlaceholder(tt.index); got != tt.want {
 				t.Errorf("getPlaceholder() = %v, want %v", got, tt.want)
 			}

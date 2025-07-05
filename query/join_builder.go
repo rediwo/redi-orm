@@ -231,34 +231,34 @@ func (b *JoinBuilder) BuildSQL() string {
 		// IMPORTANT: Commenting out SQL-level filtering for now to fix the issue
 		// where parent records are excluded when no children match the filter.
 		/*
-		if hasOpt && includeOpt.Where != nil && join.Schema != nil {
-			// Create a condition context for the joined table
-			// Create a temporary field mapper with the schema
-			fieldMapper := types.NewDefaultFieldMapper()
-			fieldMapper.RegisterSchema(join.Relation.Model, join.Schema)
-			ctx := types.NewConditionContext(fieldMapper, join.Relation.Model, join.Alias)
-			ctx.QuoteIdentifier = b.database.QuoteIdentifier
+			if hasOpt && includeOpt.Where != nil && join.Schema != nil {
+				// Create a condition context for the joined table
+				// Create a temporary field mapper with the schema
+				fieldMapper := types.NewDefaultFieldMapper()
+				fieldMapper.RegisterSchema(join.Relation.Model, join.Schema)
+				ctx := types.NewConditionContext(fieldMapper, join.Relation.Model, join.Alias)
+				ctx.QuoteIdentifier = b.database.QuoteIdentifier
 
-			// Build the WHERE condition SQL
-			whereSql, whereArgs := includeOpt.Where.ToSQL(ctx)
-			if whereSql != "" {
-				// For now, we'll embed the args as literals for the JOIN clause
-				// This is a simplified implementation - in production, we'd need better handling
-				for _, arg := range whereArgs {
-					// Replace the first placeholder with the literal value
-					switch v := arg.(type) {
-					case string:
-						whereSql = strings.Replace(whereSql, "?", fmt.Sprintf("'%s'", v), 1)
-					case bool:
-						// Use database-specific boolean literal
-						whereSql = strings.Replace(whereSql, "?", b.database.GetBooleanLiteral(v), 1)
-					default:
-						whereSql = strings.Replace(whereSql, "?", fmt.Sprintf("%v", v), 1)
+				// Build the WHERE condition SQL
+				whereSql, whereArgs := includeOpt.Where.ToSQL(ctx)
+				if whereSql != "" {
+					// For now, we'll embed the args as literals for the JOIN clause
+					// This is a simplified implementation - in production, we'd need better handling
+					for _, arg := range whereArgs {
+						// Replace the first placeholder with the literal value
+						switch v := arg.(type) {
+						case string:
+							whereSql = strings.Replace(whereSql, "?", fmt.Sprintf("'%s'", v), 1)
+						case bool:
+							// Use database-specific boolean literal
+							whereSql = strings.Replace(whereSql, "?", b.database.GetCapabilities().GetBooleanLiteral(v), 1)
+						default:
+							whereSql = strings.Replace(whereSql, "?", fmt.Sprintf("%v", v), 1)
+						}
 					}
+					condition = fmt.Sprintf("%s AND %s", condition, whereSql)
 				}
-				condition = fmt.Sprintf("%s AND %s", condition, whereSql)
 			}
-		}
 		*/
 
 		parts = append(parts, fmt.Sprintf("%s %s AS %s ON %s",

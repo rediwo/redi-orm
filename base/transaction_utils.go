@@ -13,17 +13,17 @@ import (
 
 // TransactionUtils provides shared utilities for batch operations
 type TransactionUtils struct {
-	tx         *sql.Tx
-	db         types.Database
-	driverType string
+	tx           *sql.Tx
+	db           types.Database
+	capabilities types.DriverCapabilities
 }
 
 // NewTransactionUtils creates a new TransactionUtils instance
 func NewTransactionUtils(tx *sql.Tx, db types.Database, driverType string) *TransactionUtils {
 	return &TransactionUtils{
-		tx:         tx,
-		db:         db,
-		driverType: driverType,
+		tx:           tx,
+		db:           db,
+		capabilities: db.GetCapabilities(),
 	}
 }
 
@@ -269,26 +269,14 @@ func (tu *TransactionUtils) buildDeleteSQL(tableName, modelName string, conditio
 	return sql, args, nil
 }
 
-// quote returns a quoted identifier based on the driver type
+// quote returns a quoted identifier using driver capabilities
 func (tu *TransactionUtils) quote(name string) string {
-	switch tu.driverType {
-	case "mysql":
-		return fmt.Sprintf("`%s`", name)
-	case "postgresql":
-		return fmt.Sprintf(`"%s"`, name)
-	default: // sqlite
-		return fmt.Sprintf("`%s`", name)
-	}
+	return tu.capabilities.QuoteIdentifier(name)
 }
 
-// getPlaceholder returns a placeholder based on the driver type
+// getPlaceholder returns a placeholder using driver capabilities
 func (tu *TransactionUtils) getPlaceholder(index int) string {
-	switch tu.driverType {
-	case "postgresql":
-		return fmt.Sprintf("$%d", index)
-	default: // mysql, sqlite
-		return "?"
-	}
+	return tu.capabilities.GetPlaceholder(index)
 }
 
 // fieldMapperWrapper wraps database field mapping for condition context

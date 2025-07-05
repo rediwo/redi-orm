@@ -11,7 +11,7 @@ func (jct *JSConformanceTests) runAdvancedQueryTests(t *testing.T, runner *JSTes
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Product {
 	id       Int    @id @default(autoincrement())
 	name     String
@@ -19,7 +19,7 @@ model Product {
 	category String
 	inStock  Boolean @default(true)
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -72,13 +72,13 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Article {
 	id      Int    @id @default(autoincrement())
 	title   String
 	content String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -115,13 +115,13 @@ model Article {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Score {
 	id     Int    @id @default(autoincrement())
 	player String
 	points Int
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -157,14 +157,14 @@ model Score {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Event {
 	id    Int      @id @default(autoincrement())
 	name  String
 	date  DateTime
 	price Float
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -200,14 +200,14 @@ model Event {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id      Int    @id @default(autoincrement())
 	name    String
 	role    String
 	country String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -241,14 +241,14 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Task {
 	id          Int       @id @default(autoincrement())
 	title       String
 	description String?
 	completedAt DateTime?
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -284,7 +284,7 @@ model Task {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Sale {
 	id       Int    @id @default(autoincrement())
 	product  String
@@ -292,7 +292,7 @@ model Sale {
 	quantity Int
 	region   String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data

@@ -196,7 +196,7 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 						columnNames[i] = fieldName // Fallback to field name
 					}
 				}
-				
+
 				indexSQL := migrator.GenerateCreateIndexSQL(sch.TableName, index.Name, columnNames, index.Unique)
 				if err := migrator.ApplyMigration(indexSQL); err != nil {
 					return fmt.Errorf("failed to create index %s on table %s: %w", index.Name, sch.TableName, err)
@@ -288,47 +288,6 @@ func (b *Driver) QueryRow(query string, args ...any) *sql.Row {
 	return b.DB.QueryRow(query, args...)
 }
 
-// GetBooleanLiteral returns the database-specific boolean literal
-// This default implementation returns "1" or "0" which works for SQLite and MySQL
-// PostgreSQL driver should override this to return "true" or "false"
-func (b *Driver) GetBooleanLiteral(value bool) string {
-	if value {
-		return "1"
-	}
-	return "0"
-}
-
-// QuoteIdentifier quotes an identifier (table/column name) for SQL queries
-// This default implementation returns the identifier unquoted
-// Database drivers should override this with their specific quoting mechanism
-func (b *Driver) QuoteIdentifier(name string) string {
-	return name
-}
-
-// SupportsDefaultValues returns whether the database supports DEFAULT VALUES syntax
-// This default implementation returns true - drivers should override if they don't support it
-func (b *Driver) SupportsDefaultValues() bool {
-	return true
-}
-
-// SupportsReturning returns whether the database supports RETURNING clause
-// This default implementation returns false - drivers should override if they support it
-func (b *Driver) SupportsReturning() bool {
-	return false
-}
-
-// GetNullsOrderingSQL returns the SQL clause for NULL ordering
-// This default implementation returns empty string - drivers should override if they support NULLS FIRST/LAST
-func (b *Driver) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
-	return ""
-}
-
-// RequiresLimitForOffset returns true if the database requires LIMIT when using OFFSET
-// This default implementation returns true - drivers should override if they don't require it
-func (b *Driver) RequiresLimitForOffset() bool {
-	return true
-}
-
 // syncSchemasWithDeferredConstraints handles circular dependencies by creating tables without FK first
 func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db types.Database, schemas map[string]*schema.Schema, currentTableMap map[string]bool) error {
 	migrator := db.GetMigrator()
@@ -365,7 +324,7 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 					columnNames[i] = fieldName // Fallback to field name
 				}
 			}
-			
+
 			indexSQL := migrator.GenerateCreateIndexSQL(sch.TableName, index.Name, columnNames, index.Unique)
 			if err := migrator.ApplyMigration(indexSQL); err != nil {
 				return fmt.Errorf("failed to create index %s on table %s: %w", index.Name, sch.TableName, err)

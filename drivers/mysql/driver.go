@@ -15,13 +15,18 @@ import (
 )
 
 func init() {
+	driverType := types.DriverMySQL
+
 	// Register MySQL driver
-	registry.Register("mysql", func(config types.Config) (types.Database, error) {
+	registry.Register(string(driverType), func(config types.Config) (types.Database, error) {
 		return NewMySQLDB(config)
 	})
 
+	// Register MySQL capabilities
+	registry.RegisterCapabilities(driverType, NewMySQLCapabilities())
+
 	// Register MySQL URI parser
-	registry.RegisterURIParser("mysql", NewMySQLURIParser())
+	registry.RegisterURIParser(string(driverType), NewMySQLURIParser())
 }
 
 // MySQLDB implements the Database interface for MySQL
@@ -384,26 +389,9 @@ func (m *MySQLDB) GetDriverType() string {
 	return "mysql"
 }
 
-// QuoteIdentifier quotes an identifier for MySQL using backticks
-func (m *MySQLDB) QuoteIdentifier(name string) string {
-	return "`" + name + "`"
-}
-
-// SupportsDefaultValues returns false for MySQL as it doesn't support DEFAULT VALUES syntax
-func (m *MySQLDB) SupportsDefaultValues() bool {
-	return false
-}
-
-// GetNullsOrderingSQL returns the SQL clause for NULL ordering
-// MySQL doesn't support NULLS FIRST/LAST syntax
-func (m *MySQLDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
-	return "" // MySQL doesn't support NULLS FIRST/LAST
-}
-
-// RequiresLimitForOffset returns true if the database requires LIMIT when using OFFSET
-// MySQL requires LIMIT when using OFFSET
-func (m *MySQLDB) RequiresLimitForOffset() bool {
-	return true
+// GetCapabilities returns driver capabilities
+func (m *MySQLDB) GetCapabilities() types.DriverCapabilities {
+	return NewMySQLCapabilities()
 }
 
 func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {

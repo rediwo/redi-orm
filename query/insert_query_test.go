@@ -20,16 +20,16 @@ func TestNewInsertQuery(t *testing.T) {
 			},
 		},
 	}
-	
+
 	baseQuery := &ModelQueryImpl{
 		database:    mockDB,
 		modelName:   "User",
 		fieldMapper: mapper,
 	}
-	
+
 	data := map[string]any{"name": "John"}
 	query := NewInsertQuery(baseQuery, data)
-	
+
 	if query == nil {
 		t.Fatal("NewInsertQuery returned nil")
 	}
@@ -44,20 +44,20 @@ func TestNewInsertQuery(t *testing.T) {
 func TestInsertQuery_Values(t *testing.T) {
 	query := &InsertQueryImpl{
 		ModelQueryImpl: &ModelQueryImpl{},
-		data:          []any{map[string]any{"name": "John"}},
+		data:           []any{map[string]any{"name": "John"}},
 	}
-	
+
 	// Add more values
 	newQuery := query.Values(
 		map[string]any{"name": "Jane"},
 		map[string]any{"name": "Bob"},
 	)
-	
+
 	// Original query should be unchanged
 	if len(query.data) != 1 {
 		t.Error("Values() modified original query")
 	}
-	
+
 	// New query should have all values
 	insertQuery := newQuery.(*InsertQueryImpl)
 	if len(insertQuery.data) != 3 {
@@ -70,7 +70,7 @@ func TestInsertQuery_OnConflict(t *testing.T) {
 		ModelQueryImpl: &ModelQueryImpl{},
 		conflictAction: types.ConflictIgnore,
 	}
-	
+
 	tests := []struct {
 		name   string
 		action types.ConflictAction
@@ -79,16 +79,16 @@ func TestInsertQuery_OnConflict(t *testing.T) {
 		{"update", types.ConflictUpdate},
 		{"ignore", types.ConflictIgnore},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			newQuery := query.OnConflict(tt.action)
-			
+
 			// Original query should be unchanged
 			if query.conflictAction != types.ConflictIgnore {
 				t.Error("OnConflict() modified original query")
 			}
-			
+
 			// New query should have new action
 			insertQuery := newQuery.(*InsertQueryImpl)
 			if insertQuery.conflictAction != tt.action {
@@ -103,14 +103,14 @@ func TestInsertQuery_Returning(t *testing.T) {
 		ModelQueryImpl:  &ModelQueryImpl{},
 		returningFields: []string{},
 	}
-	
+
 	newQuery := query.Returning("id", "name", "createdAt")
-	
+
 	// Original query should be unchanged
 	if len(query.returningFields) != 0 {
 		t.Error("Returning() modified original query")
 	}
-	
+
 	// New query should have returning fields
 	insertQuery := newQuery.(*InsertQueryImpl)
 	if len(insertQuery.returningFields) != 3 {
@@ -129,7 +129,7 @@ func TestInsertQuery_BuildSQL(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []struct {
 		name            string
 		modelName       string
@@ -189,21 +189,21 @@ func TestInsertQuery_BuildSQL(t *testing.T) {
 			wantErr:   true,
 		},
 		{
-			name:      "empty map - default values",
-			modelName: "User",
-			data:      []any{map[string]any{}},
-			driverType: "sqlite",
-			wantSQL:    "INSERT INTO users DEFAULT VALUES",
+			name:          "empty map - default values",
+			modelName:     "User",
+			data:          []any{map[string]any{}},
+			driverType:    "sqlite",
+			wantSQL:       "INSERT INTO users DEFAULT VALUES",
 			wantArgsCount: 0,
 		},
 		{
-			name:      "empty map with returning",
-			modelName: "User", 
-			data:      []any{map[string]any{}},
+			name:            "empty map with returning",
+			modelName:       "User",
+			data:            []any{map[string]any{}},
 			returningFields: []string{"id", "createdAt"},
-			driverType: "postgresql",
-			wantSQL:    "INSERT INTO users DEFAULT VALUES",
-			wantArgsCount: 0,
+			driverType:      "postgresql",
+			wantSQL:         "INSERT INTO users DEFAULT VALUES",
+			wantArgsCount:   0,
 		},
 		{
 			name:      "nil data item",
@@ -228,11 +228,11 @@ func TestInsertQuery_BuildSQL(t *testing.T) {
 			wantArgsCount: 2,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockDB := &mockDatabase{}
-			
+
 			query := &InsertQueryImpl{
 				ModelQueryImpl: &ModelQueryImpl{
 					database:    mockDB,
@@ -243,14 +243,14 @@ func TestInsertQuery_BuildSQL(t *testing.T) {
 				conflictAction:  tt.conflictAction,
 				returningFields: tt.returningFields,
 			}
-			
+
 			sql, args, err := query.BuildSQL()
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("BuildSQL() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if !containsSQL(sql, tt.wantSQL) {
 					t.Errorf("BuildSQL() SQL = %v, want to contain %v", sql, tt.wantSQL)
@@ -269,7 +269,7 @@ func TestInsertQuery_Exec(t *testing.T) {
 			"User": {"name": "name"},
 		},
 	}
-	
+
 	tests := []struct {
 		name       string
 		data       []any
@@ -298,18 +298,18 @@ func TestInsertQuery_Exec(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRaw := &insertMockRawQuery{
 				execResult: tt.execResult,
 				execError:  tt.execError,
 			}
-			
+
 			mockDB := &insertMockDatabase{
 				mockRaw: mockRaw,
 			}
-			
+
 			query := &InsertQueryImpl{
 				ModelQueryImpl: &ModelQueryImpl{
 					database:    mockDB,
@@ -318,14 +318,14 @@ func TestInsertQuery_Exec(t *testing.T) {
 				},
 				data: tt.data,
 			}
-			
+
 			result, err := query.Exec(context.Background())
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Exec() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if result.RowsAffected != tt.execResult.RowsAffected {
 					t.Errorf("Exec() RowsAffected = %d, want %d", result.RowsAffected, tt.execResult.RowsAffected)
@@ -347,7 +347,7 @@ func TestInsertQuery_ExecAndReturn(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []struct {
 		name            string
 		data            []any
@@ -379,18 +379,18 @@ func TestInsertQuery_ExecAndReturn(t *testing.T) {
 			wantErr:         true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRaw := &insertMockRawQuery{
 				findOneResult: tt.findResult,
 				findOneError:  tt.findError,
 			}
-			
+
 			mockDB := &insertMockDatabase{
 				mockRaw: mockRaw,
 			}
-			
+
 			query := &InsertQueryImpl{
 				ModelQueryImpl: &ModelQueryImpl{
 					database:    mockDB,
@@ -400,21 +400,21 @@ func TestInsertQuery_ExecAndReturn(t *testing.T) {
 				data:            tt.data,
 				returningFields: tt.returningFields,
 			}
-			
+
 			var result map[string]any
 			err := query.ExecAndReturn(context.Background(), &result)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ExecAndReturn() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if tt.wantErr && tt.errContains != "" {
 				if !contains(err.Error(), tt.errContains) {
 					t.Errorf("ExecAndReturn() error = %v, want to contain %v", err, tt.errContains)
 				}
 			}
-			
+
 			if !tt.wantErr && tt.findResult != nil {
 				if fmt.Sprint(result) != fmt.Sprint(tt.findResult) {
 					t.Errorf("ExecAndReturn() result = %v, want %v", result, tt.findResult)

@@ -174,7 +174,7 @@ func (q *UpdateQueryImpl) BuildSQL() (string, []any, error) {
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to map field %s: %w", fieldName, err)
 		}
-		quotedColumnName := q.database.QuoteIdentifier(columnName)
+		quotedColumnName := q.database.GetCapabilities().QuoteIdentifier(columnName)
 		setParts = append(setParts, fmt.Sprintf("%s = ?", quotedColumnName))
 		args = append(args, value)
 	}
@@ -185,7 +185,7 @@ func (q *UpdateQueryImpl) BuildSQL() (string, []any, error) {
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to map field %s: %w", fieldName, err)
 		}
-		quotedColumnName := q.database.QuoteIdentifier(columnName)
+		quotedColumnName := q.database.GetCapabilities().QuoteIdentifier(columnName)
 
 		switch op.Type {
 		case "increment":
@@ -210,14 +210,14 @@ func (q *UpdateQueryImpl) BuildSQL() (string, []any, error) {
 	}
 
 	// Add RETURNING clause if specified and supported
-	if len(q.returningFields) > 0 && q.database.SupportsReturning() {
+	if len(q.returningFields) > 0 && q.database.GetCapabilities().SupportsReturning() {
 		returningColumns, err := q.fieldMapper.SchemaFieldsToColumns(q.modelName, q.returningFields)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to map returning fields: %w", err)
 		}
 		quotedReturningColumns := make([]string, len(returningColumns))
 		for i, columnName := range returningColumns {
-			quotedReturningColumns[i] = q.database.QuoteIdentifier(columnName)
+			quotedReturningColumns[i] = q.database.GetCapabilities().QuoteIdentifier(columnName)
 		}
 		sql.WriteString(fmt.Sprintf(" RETURNING %s", strings.Join(quotedReturningColumns, ", ")))
 	}
@@ -233,7 +233,7 @@ func (q *UpdateQueryImpl) buildWhereClause(conditions []types.Condition) (string
 
 	// Create condition context (no table alias for UPDATE)
 	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, "")
-	ctx.QuoteIdentifier = q.database.QuoteIdentifier
+	ctx.QuoteIdentifier = q.database.GetCapabilities().QuoteIdentifier
 
 	var conditionSQLs []string
 	var args []any

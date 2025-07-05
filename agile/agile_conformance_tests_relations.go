@@ -14,7 +14,7 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 	act.runWithCleanup(t, db, func() {
 		t.Run("OneToManyRelations", func(t *testing.T) {
 			ctx := context.Background()
-			
+
 			// Load schema
 			err := db.LoadSchema(ctx, `
 				model User {
@@ -34,43 +34,43 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			`)
 			assertNoError(t, err, "Failed to load schema")
-			
+
 			err = db.SyncSchemas(ctx)
 			assertNoError(t, err, "Failed to sync schemas")
-			
+
 			// Create users
 			user1, err := client.Model("User").Create(`{"data": {"name": "Alice", "email": "alice@example.com"}}`)
 			assertNoError(t, err, "Failed to create user 1")
-			
+
 			user2, err := client.Model("User").Create(`{"data": {"name": "Bob", "email": "bob@example.com"}}`)
 			assertNoError(t, err, "Failed to create user 2")
-			
+
 			// Create posts
 			posts := []string{
 				fmt.Sprintf(`{"data": {"title": "Post 1", "content": "Content 1", "authorId": %v, "published": true}}`, user1["id"]),
 				fmt.Sprintf(`{"data": {"title": "Post 2", "content": "Content 2", "authorId": %v}}`, user1["id"]),
 				fmt.Sprintf(`{"data": {"title": "Post 3", "content": "Content 3", "authorId": %v, "published": true}}`, user2["id"]),
 			}
-			
+
 			for _, post := range posts {
 				_, err = client.Model("Post").Create(post)
 				assertNoError(t, err, "Failed to create post")
 			}
-			
+
 			// Test include posts with user
 			result, err := client.Model("User").FindUnique(fmt.Sprintf(`{
 				"where": {"id": %v},
 				"include": {"posts": true}
 			}`, user1["id"]))
 			assertNoError(t, err, "Failed to find user with posts")
-			
+
 			// Check included posts
 			if posts, ok := result["posts"].([]any); ok {
 				assertEqual(t, 2, len(posts), "User 1 posts count mismatch")
 			} else {
 				t.Fatal("Posts not included or wrong type")
 			}
-			
+
 			// Test include with filtering
 			result, err = client.Model("User").FindUnique(fmt.Sprintf(`{
 				"where": {"id": %v},
@@ -81,7 +81,7 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			}`, user1["id"]))
 			assertNoError(t, err, "Failed to find user with filtered posts")
-			
+
 			// Check filtered posts
 			if posts, ok := result["posts"].([]any); ok {
 				assertEqual(t, 1, len(posts), "Filtered posts count mismatch")
@@ -91,13 +91,13 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 					}
 				}
 			}
-			
+
 			// Test include author with posts
 			postsWithAuthors, err := client.Model("Post").FindMany(`{
 				"include": {"author": true}
 			}`)
 			assertNoError(t, err, "Failed to find posts with authors")
-			
+
 			assertEqual(t, 3, len(postsWithAuthors), "Posts count mismatch")
 			for _, post := range postsWithAuthors {
 				assertNotNil(t, post["author"], "Author should be included")
@@ -107,12 +107,12 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 			}
 		})
 	})
-	
+
 	// Test many-to-many relations
 	act.runWithCleanup(t, db, func() {
 		t.Run("ManyToManyRelations", func(t *testing.T) {
 			ctx := context.Background()
-			
+
 			// Load schema
 			err := db.LoadSchema(ctx, `
 				model Post {
@@ -128,39 +128,39 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			`)
 			assertNoError(t, err, "Failed to load schema")
-			
+
 			err = db.SyncSchemas(ctx)
 			assertNoError(t, err, "Failed to sync schemas")
-			
+
 			// Create categories
 			_, err = client.Model("Category").Create(`{"data": {"name": "Technology"}}`)
 			assertNoError(t, err, "Failed to create category 1")
-			
+
 			_, err = client.Model("Category").Create(`{"data": {"name": "Science"}}`)
 			assertNoError(t, err, "Failed to create category 2")
-			
+
 			_, err = client.Model("Category").Create(`{"data": {"name": "Programming"}}`)
 			assertNoError(t, err, "Failed to create category 3")
-			
+
 			// Create posts
 			// Note: Many-to-many relations typically require explicit junction table operations
 			// or nested writes which may not be fully implemented yet
 			_, err = client.Model("Post").Create(`{"data": {"title": "AI and Machine Learning"}}`)
 			assertNoError(t, err, "Failed to create post 1")
-			
+
 			_, err = client.Model("Post").Create(`{"data": {"title": "Web Development"}}`)
 			assertNoError(t, err, "Failed to create post 2")
-			
+
 			// This test may need adjustment based on how many-to-many relations are implemented
 			t.Log("Many-to-many relation tests may require junction table operations")
 		})
 	})
-	
+
 	// Test nested includes
 	act.runWithCleanup(t, db, func() {
 		t.Run("NestedIncludes", func(t *testing.T) {
 			ctx := context.Background()
-			
+
 			// Load schema
 			err := db.LoadSchema(ctx, `
 				model User {
@@ -190,17 +190,17 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			`)
 			assertNoError(t, err, "Failed to load schema")
-			
+
 			err = db.SyncSchemas(ctx)
 			assertNoError(t, err, "Failed to sync schemas")
-			
+
 			// Create test data
 			user1, err := client.Model("User").Create(`{"data": {"name": "Alice", "email": "alice@example.com"}}`)
 			assertNoError(t, err, "Failed to create user 1")
-			
+
 			user2, err := client.Model("User").Create(`{"data": {"name": "Bob", "email": "bob@example.com"}}`)
 			assertNoError(t, err, "Failed to create user 2")
-			
+
 			post, err := client.Model("Post").Create(fmt.Sprintf(`{
 				"data": {
 					"title": "Test Post",
@@ -209,7 +209,7 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			}`, user1["id"]))
 			assertNoError(t, err, "Failed to create post")
-			
+
 			// Create comments
 			_, err = client.Model("Comment").Create(fmt.Sprintf(`{
 				"data": {
@@ -219,7 +219,7 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			}`, post["id"], user2["id"]))
 			assertNoError(t, err, "Failed to create comment 1")
-			
+
 			_, err = client.Model("Comment").Create(fmt.Sprintf(`{
 				"data": {
 					"content": "Thanks!",
@@ -228,7 +228,7 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			}`, post["id"], user1["id"]))
 			assertNoError(t, err, "Failed to create comment 2")
-			
+
 			// Test nested include
 			result, err := client.Model("Post").FindUnique(fmt.Sprintf(`{
 				"where": {"id": %v},
@@ -242,13 +242,13 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			}`, post["id"]))
 			assertNoError(t, err, "Failed to find post with nested includes")
-			
+
 			// Verify nested structure
 			assertNotNil(t, result["author"], "Post author should be included")
 			if author, ok := result["author"].(map[string]any); ok {
 				assertEqual(t, "Alice", author["name"], "Post author name mismatch")
 			}
-			
+
 			if comments, ok := result["comments"].([]any); ok {
 				assertEqual(t, 2, len(comments), "Comments count mismatch")
 				for _, comment := range comments {
@@ -261,12 +261,12 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 			}
 		})
 	})
-	
+
 	// Test include with ordering and pagination
 	act.runWithCleanup(t, db, func() {
 		t.Run("IncludeWithOptions", func(t *testing.T) {
 			ctx := context.Background()
-			
+
 			// Load schema
 			err := db.LoadSchema(ctx, `
 				model Author {
@@ -285,14 +285,14 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			`)
 			assertNoError(t, err, "Failed to load schema")
-			
+
 			err = db.SyncSchemas(ctx)
 			assertNoError(t, err, "Failed to sync schemas")
-			
+
 			// Create author
 			author, err := client.Model("Author").Create(`{"data": {"name": "Jane Doe"}}`)
 			assertNoError(t, err, "Failed to create author")
-			
+
 			// Create multiple books
 			// Use MySQL-compatible datetime format
 			books := []string{
@@ -301,12 +301,12 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				fmt.Sprintf(`{"data": {"title": "Book C", "pages": 150, "publishedAt": "2024-03-01 00:00:00", "authorId": %v}}`, author["id"]),
 				fmt.Sprintf(`{"data": {"title": "Book D", "pages": 400, "publishedAt": "2024-04-01 00:00:00", "authorId": %v}}`, author["id"]),
 			}
-			
+
 			for _, book := range books {
 				_, err = client.Model("Book").Create(book)
 				assertNoError(t, err, "Failed to create book")
 			}
-			
+
 			// Test include with ordering
 			result, err := client.Model("Author").FindUnique(fmt.Sprintf(`{
 				"where": {"id": %v},
@@ -317,7 +317,7 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			}`, author["id"]))
 			assertNoError(t, err, "Failed to find author with ordered books")
-			
+
 			if books, ok := result["books"].([]any); ok {
 				assertEqual(t, 4, len(books), "Books count mismatch")
 				// Check if ordered by pages descending
@@ -327,7 +327,7 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 					}
 				}
 			}
-			
+
 			// Test include with pagination
 			result, err = client.Model("Author").FindUnique(fmt.Sprintf(`{
 				"where": {"id": %v},
@@ -340,7 +340,7 @@ func (act *AgileConformanceTests) runRelationTests(t *testing.T, client *Client,
 				}
 			}`, author["id"]))
 			assertNoError(t, err, "Failed to find author with paginated books")
-			
+
 			if books, ok := result["books"].([]any); ok {
 				// Should get 2 books starting from the second one
 				if len(books) != 2 {

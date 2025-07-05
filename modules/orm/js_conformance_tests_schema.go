@@ -11,13 +11,13 @@ func (jct *JSConformanceTests) runSchemaTests(t *testing.T, runner *JSTestRunner
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		const schema = ` + "`" + `
+		const schema = `+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 }
-` + "`" + `;
+`+"`"+`;
 		
 		await db.loadSchema(schema);
 		await db.syncSchemas();

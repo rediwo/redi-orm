@@ -11,7 +11,7 @@ func (jct *JSConformanceTests) runIncludeOptionsTests(t *testing.T, runner *JSTe
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Author {
 	id        Int      @id @default(autoincrement())
 	name      String
@@ -32,7 +32,7 @@ model Post {
 	author      Author   @relation(fields: [authorId], references: [id])
 	createdAt   DateTime @default(now())
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -124,7 +124,7 @@ model Post {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Store {
 	id       Int       @id @default(autoincrement())
 	name     String
@@ -142,7 +142,7 @@ model Product {
 	storeId     Int
 	store       Store    @relation(fields: [storeId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -226,7 +226,7 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Blog {
 	id       Int       @id @default(autoincrement())
 	name     String
@@ -242,7 +242,7 @@ model Article {
 	blogId      Int
 	blog        Blog     @relation(fields: [blogId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -329,7 +329,7 @@ model Article {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Department {
 	id         Int        @id @default(autoincrement())
 	name       String
@@ -344,7 +344,7 @@ model Employee {
 	departmentId Int
 	department   Department @relation(fields: [departmentId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -410,7 +410,7 @@ model Employee {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Company {
 	id          Int          @id @default(autoincrement())
 	name        String
@@ -441,7 +441,7 @@ model Member {
 	teamId   Int
 	team     Team   @relation(fields: [teamId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -540,7 +540,7 @@ model Member {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Category {
 	id       Int       @id @default(autoincrement())
 	name     String
@@ -554,7 +554,7 @@ model Product {
 	categoryId Int
 	category   Category @relation(fields: [categoryId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data - 5 categories with 20 products each

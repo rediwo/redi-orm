@@ -12,13 +12,13 @@ func (jct *JSConformanceTests) runMigrationTests(t *testing.T, runner *JSTestRun
 		await db.connect();
 		
 		// Load initial schema
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Verify table was created
@@ -40,13 +40,13 @@ model User {
 		await db.connect();
 		
 		// Initial schema
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Product {
 	id    Int    @id @default(autoincrement())
 	name  String
 	price Float
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Add some data
@@ -57,7 +57,7 @@ model Product {
 		// Load updated schema with new field
 		// Note: Adding non-nullable columns with defaults to existing tables
 		// is handled differently by each database
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Product {
 	id          Int     @id @default(autoincrement())
 	name        String
@@ -65,7 +65,7 @@ model Product {
 	description String?
 	inStock     Boolean? @default(true)
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Verify we can use new fields
@@ -106,7 +106,7 @@ model Product {
 		await db.connect();
 		
 		// Schema with indexes
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Article {
 	id        Int      @id @default(autoincrement())
 	title     String
@@ -117,7 +117,7 @@ model Article {
 	@@index([title])
 	@@index([published, createdAt])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Add test data
@@ -147,14 +147,14 @@ model Article {
 		await db.connect();
 		
 		// Schema with composite key
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model PostTag {
 	postId Int
 	tagId  Int
 	
 	@@id([postId, tagId])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create records
@@ -181,7 +181,7 @@ model PostTag {
 		await db.connect();
 		
 		// Schema with field mapping
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Customer {
 	id        Int    @id @default(autoincrement())
 	firstName String @map("first_name")
@@ -190,7 +190,7 @@ model Customer {
 	
 	@@map("customers")
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create record using model field names
@@ -232,7 +232,7 @@ model Customer {
 		await db.connect();
 		
 		// Schema with complex field and table mappings
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model UserProfile {
 	id              Int      @id @default(autoincrement())
 	userName        String   @map("user_name") @unique
@@ -260,7 +260,7 @@ model BlogPost {
 	@@map("blog_posts")
 	@@unique([postTitle, authorId])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// The migration system now creates composite unique indexes automatically
@@ -369,7 +369,7 @@ model BlogPost {
 		await db.connect();
 		
 		// Schema with custom table names
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model SystemConfiguration {
 	id    Int    @id @default(autoincrement())
 	key   String @unique
@@ -388,7 +388,7 @@ model ApplicationLog {
 	@@map("app_logs")
 	@@index([level, timestamp])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Test operations with custom table names
@@ -448,7 +448,7 @@ model ApplicationLog {
 		await db.connect();
 		
 		// Schema with enum
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 enum OrderStatus {
 	PENDING
 	PROCESSING
@@ -462,7 +462,7 @@ model Order {
 	status OrderStatus @default(PENDING)
 	total  Float
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create orders with different statuses
@@ -492,12 +492,12 @@ model Order {
 		await db.connect();
 		
 		// Create initial schema
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model TempData {
 	id    Int    @id @default(autoincrement())
 	value String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Add some data
@@ -538,7 +538,7 @@ model TempData {
 		await db.connect();
 		
 		// Schema with various constraints
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Account {
 	id       Int    @id @default(autoincrement())
 	username String @unique
@@ -547,7 +547,7 @@ model Account {
 	
 	@@unique([username, email])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create first account

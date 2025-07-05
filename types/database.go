@@ -3,6 +3,7 @@ package types
 import (
 	"context"
 	"database/sql"
+
 	"github.com/rediwo/redi-orm/schema"
 )
 
@@ -41,51 +42,6 @@ type Result struct {
 	RowsAffected int64
 }
 
-// JoinCondition represents a join condition
-type JoinCondition struct {
-	Left  string
-	Op    string
-	Right string
-}
-
-// BatchUpdate represents a batch update operation
-type BatchUpdate struct {
-	Condition Condition
-	Data      any
-}
-
-// DBStats represents database connection statistics
-type DBStats struct {
-	OpenConnections int
-	InUse           int
-	Idle            int
-}
-
-// TableSchema represents table schema information
-type TableSchema struct {
-	Name    string
-	Columns []ColumnSchema
-	Indexes []IndexSchema
-}
-
-// ColumnSchema represents column schema information
-type ColumnSchema struct {
-	Name          string
-	Type          string
-	Nullable      bool
-	Default       any
-	PrimaryKey    bool
-	AutoIncrement bool
-	Unique        bool
-}
-
-// IndexSchema represents index schema information
-type IndexSchema struct {
-	Name    string
-	Columns []string
-	Unique  bool
-}
-
 // Database interface defines all database operations
 type Database interface {
 	// Connection management
@@ -116,28 +72,19 @@ type Database interface {
 	GetModels() []string
 	GetModelSchema(modelName string) (*schema.Schema, error)
 	GetDriverType() string
-	
-	// SQL Utilities
-	QuoteIdentifier(name string) string
-	SupportsDefaultValues() bool
-	SupportsReturning() bool
-	GetNullsOrderingSQL(direction Order, nullsFirst bool) string
-	RequiresLimitForOffset() bool
+	GetCapabilities() DriverCapabilities
 
 	// Internal field mapping (used by driver implementations)
 	ResolveTableName(modelName string) (string, error)
 	ResolveFieldName(modelName, fieldName string) (string, error)
 	ResolveFieldNames(modelName string, fieldNames []string) ([]string, error)
 
-	// Legacy raw query support
+	// Raw query support
 	Exec(query string, args ...any) (sql.Result, error)
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryRow(query string, args ...any) *sql.Row
 
-	// Database-specific literals
-	GetBooleanLiteral(value bool) string
-
-	// Migration support (legacy)
+	// Migration support
 	GetMigrator() DatabaseMigrator
 }
 
@@ -213,7 +160,7 @@ type AggregationQuery interface {
 	// Grouping
 	GroupBy(fieldNames ...string) AggregationQuery
 	Having(condition Condition) AggregationQuery
-	
+
 	// Aggregation functions
 	Count(fieldName string, alias string) AggregationQuery
 	CountAll(alias string) AggregationQuery
@@ -221,10 +168,10 @@ type AggregationQuery interface {
 	Avg(fieldName string, alias string) AggregationQuery
 	Min(fieldName string, alias string) AggregationQuery
 	Max(fieldName string, alias string) AggregationQuery
-	
+
 	// Selection of grouped fields
 	Select(fieldNames ...string) AggregationQuery
-	
+
 	// Conditions and ordering
 	Where(fieldName string) FieldCondition
 	WhereCondition(condition Condition) AggregationQuery
@@ -232,10 +179,10 @@ type AggregationQuery interface {
 	OrderByAggregation(aggregationType string, fieldName string, direction Order) AggregationQuery
 	Limit(limit int) AggregationQuery
 	Offset(offset int) AggregationQuery
-	
+
 	// Execution
 	Exec(ctx context.Context, dest any) error
-	
+
 	// Internal methods
 	BuildSQL() (string, []any, error)
 	GetModelName() string
@@ -377,7 +324,7 @@ type FieldMapper interface {
 	ModelToTable(modelName string) (string, error)
 }
 
-// Legacy migration types for backward compatibility
+// Migration types for backward compatibility
 type TableInfo struct {
 	Name        string
 	Columns     []ColumnInfo

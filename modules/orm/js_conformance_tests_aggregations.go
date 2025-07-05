@@ -11,7 +11,7 @@ func (jct *JSConformanceTests) runAggregationTests(t *testing.T, runner *JSTestR
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id      Int     @id @default(autoincrement())
 	name    String
@@ -19,7 +19,7 @@ model User {
 	active  Boolean @default(true)
 	country String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -56,7 +56,7 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Sale {
 	id        Int    @id @default(autoincrement())
 	product   String
@@ -65,7 +65,7 @@ model Sale {
 	category  String
 	createdAt DateTime @default(now())
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -122,7 +122,7 @@ model Sale {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Order {
 	id         Int      @id @default(autoincrement())
 	product    String
@@ -132,7 +132,7 @@ model Order {
 	status     String
 	customerId Int
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -204,14 +204,14 @@ model Order {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Purchase {
 	id         Int      @id @default(autoincrement())
 	customerId Int
 	amount     Float
 	createdAt  DateTime @default(now())
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data - customers with different purchase amounts
@@ -295,7 +295,7 @@ model Purchase {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Product {
 	id       Int    @id @default(autoincrement())
 	name     String
@@ -303,7 +303,7 @@ model Product {
 	brand    String
 	price    Float
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data with duplicates
@@ -373,7 +373,7 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Transaction {
 	id         Int      @id @default(autoincrement())
 	userId     Int
@@ -382,7 +382,7 @@ model Transaction {
 	amount     Float
 	createdAt  DateTime @default(now())
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data for 3 users over multiple months

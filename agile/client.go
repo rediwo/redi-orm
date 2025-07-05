@@ -23,7 +23,7 @@ type ClientOption func(*Client)
 func NewClient(db types.Database, opts ...ClientOption) *Client {
 	client := &Client{
 		db:            db,
-		typeConverter: NewTypeConverter(db.GetDriverType()),
+		typeConverter: NewTypeConverter(db.GetCapabilities()),
 	}
 
 	// Apply options
@@ -58,7 +58,7 @@ func (c *Client) GetDB() types.Database {
 // Transaction executes a function within a database transaction
 func (c *Client) Transaction(fn func(tx *Client) error) error {
 	ctx := context.Background()
-	
+
 	// Use the Transaction method provided by the Database interface
 	return c.db.Transaction(ctx, func(tx types.Transaction) error {
 		// Create a new client with transaction-wrapped database
@@ -67,7 +67,7 @@ func (c *Client) Transaction(fn func(tx *Client) error) error {
 			db:            &transactionDatabase{tx: tx, originalDB: c.db},
 			typeConverter: c.typeConverter,
 		}
-		
+
 		return fn(txClient)
 	})
 }
@@ -150,24 +150,8 @@ func (td *transactionDatabase) GetDriverType() string {
 	return td.originalDB.GetDriverType()
 }
 
-func (td *transactionDatabase) QuoteIdentifier(name string) string {
-	return td.originalDB.QuoteIdentifier(name)
-}
-
-func (td *transactionDatabase) SupportsDefaultValues() bool {
-	return td.originalDB.SupportsDefaultValues()
-}
-
-func (td *transactionDatabase) SupportsReturning() bool {
-	return td.originalDB.SupportsReturning()
-}
-
-func (td *transactionDatabase) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
-	return td.originalDB.GetNullsOrderingSQL(direction, nullsFirst)
-}
-
-func (td *transactionDatabase) RequiresLimitForOffset() bool {
-	return td.originalDB.RequiresLimitForOffset()
+func (td *transactionDatabase) GetCapabilities() types.DriverCapabilities {
+	return td.originalDB.GetCapabilities()
 }
 
 func (td *transactionDatabase) ResolveTableName(modelName string) (string, error) {
@@ -194,14 +178,9 @@ func (td *transactionDatabase) QueryRow(query string, args ...any) *sql.Row {
 	return td.originalDB.QueryRow(query, args...)
 }
 
-func (td *transactionDatabase) GetBooleanLiteral(value bool) string {
-	return td.originalDB.GetBooleanLiteral(value)
-}
-
 func (td *transactionDatabase) GetMigrator() types.DatabaseMigrator {
 	return td.originalDB.GetMigrator()
 }
-
 
 // parseJSON parses a JSON string into a map
 func parseJSON(jsonStr string) (map[string]any, error) {

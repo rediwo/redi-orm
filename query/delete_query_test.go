@@ -56,15 +56,15 @@ func (m *deleteMockDatabase) Raw(sql string, args ...any) types.RawQuery {
 func TestNewDeleteQuery(t *testing.T) {
 	mockDB := &mockDatabase{}
 	mapper := &testFieldMapper{}
-	
+
 	baseQuery := &ModelQueryImpl{
 		database:    mockDB,
 		modelName:   "User",
 		fieldMapper: mapper,
 	}
-	
+
 	query := NewDeleteQuery(baseQuery)
-	
+
 	if query == nil {
 		t.Fatal("NewDeleteQuery returned nil")
 	}
@@ -80,7 +80,7 @@ func TestDeleteQuery_Where(t *testing.T) {
 			"User": {"id": "id"},
 		},
 	}
-	
+
 	query := &DeleteQueryImpl{
 		ModelQueryImpl: &ModelQueryImpl{
 			database:    mockDB,
@@ -89,14 +89,14 @@ func TestDeleteQuery_Where(t *testing.T) {
 			conditions:  []types.Condition{},
 		},
 	}
-	
+
 	// Test Where with field condition
 	fieldCond := query.Where("id")
-	
+
 	// Test chaining with Equals
 	condition := fieldCond.Equals(123)
 	finalQuery := query.WhereCondition(condition)
-	
+
 	// Check that condition was added
 	if deleteQuery, ok := finalQuery.(*DeleteQueryImpl); ok {
 		if len(deleteQuery.whereConditions) != 1 {
@@ -112,15 +112,15 @@ func TestDeleteQuery_WhereCondition(t *testing.T) {
 		},
 		whereConditions: []types.Condition{},
 	}
-	
+
 	condition := &deleteMockCondition{}
 	newQuery := query.WhereCondition(condition)
-	
+
 	// Original query should be unchanged
 	if len(query.whereConditions) != 0 {
 		t.Error("WhereCondition() modified original query")
 	}
-	
+
 	// New query should have condition
 	deleteQuery := newQuery.(*DeleteQueryImpl)
 	if len(deleteQuery.whereConditions) != 1 {
@@ -133,14 +133,14 @@ func TestDeleteQuery_Returning(t *testing.T) {
 		ModelQueryImpl:  &ModelQueryImpl{},
 		returningFields: []string{},
 	}
-	
+
 	newQuery := query.Returning("id", "deletedAt")
-	
+
 	// Original query should be unchanged
 	if len(query.returningFields) != 0 {
 		t.Error("Returning() modified original query")
 	}
-	
+
 	// New query should have returning fields
 	deleteQuery := newQuery.(*DeleteQueryImpl)
 	if len(deleteQuery.returningFields) != 2 {
@@ -158,7 +158,7 @@ func TestDeleteQuery_BuildSQL(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []struct {
 		name          string
 		modelName     string
@@ -199,11 +199,11 @@ func TestDeleteQuery_BuildSQL(t *testing.T) {
 			wantArgsCount: 2,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockDB := &mockDatabase{}
-			
+
 			query := &DeleteQueryImpl{
 				ModelQueryImpl: &ModelQueryImpl{
 					database:    mockDB,
@@ -212,14 +212,14 @@ func TestDeleteQuery_BuildSQL(t *testing.T) {
 					conditions:  tt.conditions,
 				},
 			}
-			
+
 			sql, args, err := query.BuildSQL()
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("BuildSQL() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if !strings.Contains(sql, tt.wantSQL) {
 					t.Errorf("BuildSQL() SQL = %v, want to contain %v", sql, tt.wantSQL)
@@ -238,7 +238,7 @@ func TestDeleteQuery_Exec(t *testing.T) {
 			"User": {"name": "name"},
 		},
 	}
-	
+
 	tests := []struct {
 		name       string
 		conditions []types.Condition
@@ -273,18 +273,18 @@ func TestDeleteQuery_Exec(t *testing.T) {
 			wantErr: true, // DELETE without WHERE is not allowed
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRaw := &deleteMockRawQuery{
 				execResult: tt.execResult,
 				execError:  tt.execError,
 			}
-			
+
 			mockDB := &deleteMockDatabase{
 				mockRaw: mockRaw,
 			}
-			
+
 			query := &DeleteQueryImpl{
 				ModelQueryImpl: &ModelQueryImpl{
 					database:    mockDB,
@@ -293,14 +293,14 @@ func TestDeleteQuery_Exec(t *testing.T) {
 					conditions:  tt.conditions,
 				},
 			}
-			
+
 			result, err := query.Exec(context.Background())
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Exec() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if result.RowsAffected != tt.execResult.RowsAffected {
 					t.Errorf("Exec() RowsAffected = %d, want %d", result.RowsAffected, tt.execResult.RowsAffected)

@@ -56,7 +56,7 @@ func cleanupTablesJS(t *testing.T, runner *orm.JSTestRunner) {
 			}
 		}
 	`
-	
+
 	err := runner.RunCleanupScript(cleanupScript)
 	if err != nil {
 		t.Logf("Failed to cleanup tables: %v", err)

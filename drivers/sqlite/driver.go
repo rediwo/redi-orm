@@ -15,13 +15,18 @@ import (
 )
 
 func init() {
+	driverType := types.DriverSQLite
+
 	// Register SQLite driver
-	registry.Register("sqlite", func(config types.Config) (types.Database, error) {
+	registry.Register(string(driverType), func(config types.Config) (types.Database, error) {
 		return NewSQLiteDB(config)
 	})
 
+	// Register SQLite capabilities
+	registry.RegisterCapabilities(driverType, NewSQLiteCapabilities())
+
 	// Register SQLite URI parser
-	registry.RegisterURIParser("sqlite", NewSQLiteURIParser())
+	registry.RegisterURIParser(string(driverType), NewSQLiteURIParser())
 }
 
 // SQLiteDB implements the Database interface for SQLite
@@ -150,6 +155,11 @@ func (s *SQLiteDB) Transaction(ctx context.Context, fn func(tx types.Transaction
 // GetDriverType returns the database driver type
 func (s *SQLiteDB) GetDriverType() string {
 	return "sqlite"
+}
+
+// GetCapabilities returns driver capabilities
+func (s *SQLiteDB) GetCapabilities() types.DriverCapabilities {
+	return NewSQLiteCapabilities()
 }
 
 // GetMigrator returns a migrator for SQLite
@@ -299,23 +309,6 @@ func (s *SQLiteDB) formatDefaultValue(value any) string {
 	default:
 		return fmt.Sprintf("%v", value)
 	}
-}
-
-// QuoteIdentifier quotes an identifier for SQLite using double quotes
-func (s *SQLiteDB) QuoteIdentifier(name string) string {
-	return "\"" + name + "\""
-}
-
-// GetNullsOrderingSQL returns the SQL clause for NULL ordering
-// SQLite doesn't support NULLS FIRST/LAST syntax
-func (s *SQLiteDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
-	return "" // SQLite doesn't support NULLS FIRST/LAST
-}
-
-// RequiresLimitForOffset returns true if the database requires LIMIT when using OFFSET
-// SQLite requires LIMIT when using OFFSET
-func (s *SQLiteDB) RequiresLimitForOffset() bool {
-	return true
 }
 
 // mapFieldTypeToSQL maps schema field types to SQLite SQL types

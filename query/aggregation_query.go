@@ -11,12 +11,12 @@ import (
 // AggregationQueryImpl implements the AggregationQuery interface
 type AggregationQueryImpl struct {
 	*ModelQueryImpl
-	selectedFields     []string
-	aggregations       []aggregation
-	groupByFields      []string
-	havingCondition    types.Condition
-	orderByClauses     []OrderClause
-	aggregationOrders  []aggregationOrder
+	selectedFields    []string
+	aggregations      []aggregation
+	groupByFields     []string
+	havingCondition   types.Condition
+	orderByClauses    []OrderClause
+	aggregationOrders []aggregationOrder
 }
 
 // aggregation represents a single aggregation function
@@ -196,7 +196,7 @@ func (q *AggregationQueryImpl) BuildSQL() (string, []any, error) {
 
 	// Build SELECT clause
 	selectParts := []string{}
-	
+
 	// Add selected fields (grouped fields)
 	for _, field := range q.selectedFields {
 		columnName, err := q.fieldMapper.SchemaToColumn(q.modelName, field)
@@ -205,7 +205,7 @@ func (q *AggregationQueryImpl) BuildSQL() (string, []any, error) {
 		}
 		selectParts = append(selectParts, columnName)
 	}
-	
+
 	// Add aggregations
 	for _, agg := range q.aggregations {
 		var aggExpr string
@@ -221,22 +221,22 @@ func (q *AggregationQueryImpl) BuildSQL() (string, []any, error) {
 		}
 		selectParts = append(selectParts, aggExpr)
 	}
-	
+
 	if len(selectParts) == 0 {
 		return "", nil, fmt.Errorf("no fields or aggregations specified")
 	}
-	
+
 	selectClause := fmt.Sprintf("SELECT %s", strings.Join(selectParts, ", "))
-	
+
 	// Build FROM clause
 	fromClause := fmt.Sprintf("FROM %s", tableName)
-	
+
 	// Build WHERE clause
 	whereClause, args, err := q.buildWhereClause()
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to build WHERE clause: %w", err)
 	}
-	
+
 	// Build GROUP BY clause
 	groupByClause := ""
 	if len(q.groupByFields) > 0 {
@@ -246,35 +246,35 @@ func (q *AggregationQueryImpl) BuildSQL() (string, []any, error) {
 		}
 		groupByClause = fmt.Sprintf("GROUP BY %s", strings.Join(columnNames, ", "))
 	}
-	
+
 	// Build HAVING clause
 	havingClause := ""
 	var havingArgs []any
 	if q.havingCondition != nil {
 		// Create condition context without table alias for aggregations
 		ctx := types.NewConditionContext(q.fieldMapper, q.modelName, "")
-		ctx.QuoteIdentifier = q.database.QuoteIdentifier
-		
+		ctx.QuoteIdentifier = q.database.GetCapabilities().QuoteIdentifier
+
 		sql, args := q.havingCondition.ToSQL(ctx)
 		if sql != "" {
 			havingClause = fmt.Sprintf("HAVING %s", sql)
 			havingArgs = args
 		}
 	}
-	
+
 	// Build ORDER BY clause
 	orderByClause, err := q.buildOrderByClause()
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to build ORDER BY clause: %w", err)
 	}
-	
+
 	// Build LIMIT and OFFSET clauses
 	limitClause := q.buildLimitClause()
 	offsetClause := q.buildOffsetClause()
-	
+
 	// Combine all parts
 	sqlParts := []string{selectClause, fromClause}
-	
+
 	if whereClause != "" {
 		sqlParts = append(sqlParts, whereClause)
 	}
@@ -294,7 +294,7 @@ func (q *AggregationQueryImpl) BuildSQL() (string, []any, error) {
 	if offsetClause != "" {
 		sqlParts = append(sqlParts, offsetClause)
 	}
-	
+
 	sql := strings.Join(sqlParts, " ")
 	// Debug logging
 	// fmt.Printf("[DEBUG AggregationQuery] SQL: %s\n", sql)
@@ -310,7 +310,7 @@ func (q *AggregationQueryImpl) buildWhereClause() (string, []any, error) {
 
 	// Create condition context
 	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, "")
-	ctx.QuoteIdentifier = q.database.QuoteIdentifier
+	ctx.QuoteIdentifier = q.database.GetCapabilities().QuoteIdentifier
 
 	// Combine all conditions with AND
 	var conditionSQLs []string
@@ -335,22 +335,22 @@ func (q *AggregationQueryImpl) buildWhereClause() (string, []any, error) {
 // buildOrderByClause builds the ORDER BY clause
 func (q *AggregationQueryImpl) buildOrderByClause() (string, error) {
 	var orderParts []string
-	
+
 	// Add regular field ordering
 	for _, order := range q.orderByClauses {
 		columnName, err := q.fieldMapper.SchemaToColumn(q.modelName, order.FieldName)
 		if err != nil {
 			return "", fmt.Errorf("failed to map field name %s: %w", order.FieldName, err)
 		}
-		
+
 		direction := "ASC"
 		if order.Direction == types.DESC {
 			direction = "DESC"
 		}
-		
+
 		orderParts = append(orderParts, fmt.Sprintf("%s %s", columnName, direction))
 	}
-	
+
 	// Add aggregation ordering
 	for _, aggOrder := range q.aggregationOrders {
 		var aggExpr string
@@ -364,19 +364,19 @@ func (q *AggregationQueryImpl) buildOrderByClause() (string, error) {
 			}
 			aggExpr = fmt.Sprintf("%s(%s)", aggOrder.Type, columnName)
 		}
-		
+
 		direction := "ASC"
 		if aggOrder.Direction == types.DESC {
 			direction = "DESC"
 		}
-		
+
 		orderParts = append(orderParts, fmt.Sprintf("%s %s", aggExpr, direction))
 	}
-	
+
 	if len(orderParts) == 0 {
 		return "", nil
 	}
-	
+
 	return fmt.Sprintf("ORDER BY %s", strings.Join(orderParts, ", ")), nil
 }
 
@@ -394,7 +394,7 @@ func (q *AggregationQueryImpl) buildOffsetClause() string {
 		return ""
 	}
 	// Some databases require LIMIT when using OFFSET
-	if q.limit == nil && q.database.RequiresLimitForOffset() {
+	if q.limit == nil && q.database.GetCapabilities().RequiresLimitForOffset() {
 		limit := int(^uint(0) >> 1) // Max int value
 		return fmt.Sprintf("LIMIT %d OFFSET %d", limit, *q.offset)
 	}

@@ -46,15 +46,15 @@ func TestEmptyInsert(t *testing.T) {
 			Default: "active",
 		}).
 		AddField(schema.Field{
-			Name:     "createdAt",
-			Type:     schema.FieldTypeDateTime,
-			Default:  "CURRENT_TIMESTAMP",
+			Name:    "createdAt",
+			Type:    schema.FieldTypeDateTime,
+			Default: "CURRENT_TIMESTAMP",
 		})
 
 	// Register schema and sync
 	err = db.RegisterSchema("User", userSchema)
 	require.NoError(t, err)
-	
+
 	err = db.SyncSchemas(ctx)
 	require.NoError(t, err)
 
@@ -75,16 +75,16 @@ func TestEmptyInsert(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), result.RowsAffected)
 		assert.Greater(t, result.LastInsertID, int64(0))
-		
+
 		// Verify data was inserted with defaults
 		var users []map[string]any
 		err = db.Model("User").Select().FindMany(ctx, &users)
 		require.NoError(t, err)
-		
+
 		assert.Len(t, users, 1)
 		user := users[0]
 		assert.Equal(t, "active", user["status"]) // Should have default status
-		assert.NotNil(t, user["createdAt"])        // Should have default timestamp
+		assert.NotNil(t, user["createdAt"])       // Should have default timestamp
 	})
 
 	// Note: MySQL doesn't support RETURNING clause, so we don't test ExecAndReturn

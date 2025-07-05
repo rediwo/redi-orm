@@ -190,7 +190,7 @@ func (rs *RelationScanner) scanRowsToMapsWithRelations(rows *sql.Rows, dest any)
 		for _, mainRecord := range mainRecords {
 			for alias, relation := range rs.relations {
 				relationName := rs.relationNames[alias]
-				
+
 				// Process one-to-many relations
 				if relation.Type == schema.RelationOneToMany {
 					if arr, ok := mainRecord[relationName].([]any); ok && len(arr) > 0 {
@@ -201,10 +201,10 @@ func (rs *RelationScanner) scanRowsToMapsWithRelations(rows *sql.Rows, dest any)
 								mapArray[i] = m
 							}
 						}
-						
+
 						// Process with include options
 						mapArray = rs.includeProcessor.ProcessRelationData(relationName, mapArray)
-						
+
 						// Convert back to any array
 						anyArray := make([]any, len(mapArray))
 						for i, m := range mapArray {

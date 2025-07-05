@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/rediwo/redi-orm/schema"
@@ -169,8 +170,39 @@ func (hs *HierarchicalScanner) scanRowsToMapsHierarchical(rows *sql.Rows, dest a
 		}
 
 		// Process joined records hierarchically
-		for alias, recordData := range recordMaps {
-			if alias == hs.mainAlias || isNullRecord(recordData) {
+		// First, collect all aliases and sort them to ensure parent tables are processed before child tables
+		aliases := make([]string, 0, len(recordMaps))
+		for alias := range recordMaps {
+			if alias != hs.mainAlias {
+				aliases = append(aliases, alias)
+			}
+		}
+		
+		// Sort aliases so parent aliases come before child aliases
+		// This is important for self-referential and nested relations
+		sort.Slice(aliases, func(i, j int) bool {
+			// Check if one is a parent of the other
+			infoI := hs.joinInfo[aliases[i]]
+			infoJ := hs.joinInfo[aliases[j]]
+			
+			if infoI != nil && infoJ != nil {
+				// If j's parent is i, then i should come first
+				if infoJ.ParentAlias == aliases[i] {
+					return true
+				}
+				// If i's parent is j, then j should come first
+				if infoI.ParentAlias == aliases[j] {
+					return false
+				}
+				// Otherwise, sort by path length (shorter paths first)
+				return len(strings.Split(infoI.Path, ".")) < len(strings.Split(infoJ.Path, "."))
+			}
+			return aliases[i] < aliases[j]
+		})
+		
+		for _, alias := range aliases {
+			recordData := recordMaps[alias]
+			if isNullRecord(recordData) {
 				continue
 			}
 
@@ -211,19 +243,18 @@ func (hs *HierarchicalScanner) scanRowsToMapsHierarchical(rows *sql.Rows, dest a
 				if parentInfo != nil {
 					// For nested relations, we need to find the parent based on the relation type
 					var parentID any
-					
+
 					// For nested relations, we always look for the parent in the current row
 					// The parent record should be in the same row as this child
 					parentRecordData := recordMaps[info.ParentAlias]
 					if parentRecordData != nil && !isNullRecord(parentRecordData) {
 						parentID = parentRecordData["id"]
 					}
-					
+
 					// fmt.Printf("[DEBUG] Nested child: looking for parent %s with ID %v (relation type: %v)\n", info.ParentAlias, parentID, info.Relation.Type)
-					
+
 					if parentID != nil {
 						if parentNode, exists := allRecords[info.ParentAlias][parentID]; exists {
-							// fmt.Printf("[DEBUG] Found parent node, adding child %s to relation %s\n", recordID, info.RelationName)
 							if _, exists := parentNode.Children[info.RelationName]; !exists {
 								parentNode.Children[info.RelationName] = make(map[any]*RecordNode)
 							}
@@ -235,7 +266,6 @@ func (hs *HierarchicalScanner) scanRowsToMapsHierarchical(rows *sql.Rows, dest a
 							}
 							parentNode.Children[info.RelationName][recordID] = node
 						} else {
-							// fmt.Printf("[DEBUG] Parent node not found for alias %s with ID %v\n", info.ParentAlias, parentID)
 						}
 					}
 				}

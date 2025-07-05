@@ -19,8 +19,8 @@ func clearRegistries() {
 // Mock URIParser implementation
 type mockURIParser struct {
 	supportedSchemes []string
-	driverType      string
-	parseFunc       func(uri string) (types.Config, error)
+	driverType       string
+	parseFunc        func(uri string) (types.Config, error)
 }
 
 func (m *mockURIParser) ParseURI(uri string) (types.Config, error) {
@@ -40,7 +40,7 @@ func (m *mockURIParser) GetDriverType() string {
 
 func TestRegister(t *testing.T) {
 	clearRegistries()
-	
+
 	tests := []struct {
 		name        string
 		driverType  string
@@ -70,7 +70,7 @@ func TestRegister(t *testing.T) {
 			if tt.shouldPanic {
 				// First register the driver
 				Register(tt.driverType, tt.factory)
-				
+
 				// Then test panic on duplicate
 				defer func() {
 					if r := recover(); r == nil {
@@ -78,9 +78,9 @@ func TestRegister(t *testing.T) {
 					}
 				}()
 			}
-			
+
 			Register(tt.driverType, tt.factory)
-			
+
 			if !tt.shouldPanic {
 				// Verify registration
 				factory, err := Get(tt.driverType)
@@ -97,7 +97,7 @@ func TestRegister(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	clearRegistries()
-	
+
 	// Register a test driver
 	testFactory := func(config types.Config) (types.Database, error) {
 		return nil, nil
@@ -136,7 +136,7 @@ func TestGet(t *testing.T) {
 
 func TestRegisterURIParser(t *testing.T) {
 	clearRegistries()
-	
+
 	tests := []struct {
 		name        string
 		driverType  string
@@ -147,7 +147,7 @@ func TestRegisterURIParser(t *testing.T) {
 			name:       "register new parser",
 			driverType: "testparser",
 			parser: &mockURIParser{
-				driverType: "testparser",
+				driverType:       "testparser",
 				supportedSchemes: []string{"test"},
 			},
 			shouldPanic: false,
@@ -156,7 +156,7 @@ func TestRegisterURIParser(t *testing.T) {
 			name:       "register duplicate parser",
 			driverType: "dupparser",
 			parser: &mockURIParser{
-				driverType: "dupparser",
+				driverType:       "dupparser",
 				supportedSchemes: []string{"dup"},
 			},
 			shouldPanic: true,
@@ -168,7 +168,7 @@ func TestRegisterURIParser(t *testing.T) {
 			if tt.shouldPanic {
 				// First register the parser
 				RegisterURIParser(tt.driverType, tt.parser)
-				
+
 				// Then test panic on duplicate
 				defer func() {
 					if r := recover(); r == nil {
@@ -176,9 +176,9 @@ func TestRegisterURIParser(t *testing.T) {
 					}
 				}()
 			}
-			
+
 			RegisterURIParser(tt.driverType, tt.parser)
-			
+
 			if !tt.shouldPanic {
 				// Verify registration
 				parser, err := GetURIParser(tt.driverType)
@@ -195,10 +195,10 @@ func TestRegisterURIParser(t *testing.T) {
 
 func TestGetURIParser(t *testing.T) {
 	clearRegistries()
-	
+
 	// Register a test parser
 	testParser := &mockURIParser{
-		driverType: "parsertest",
+		driverType:       "parsertest",
 		supportedSchemes: []string{"ptest"},
 	}
 	RegisterURIParser("parsertest", testParser)
@@ -235,26 +235,26 @@ func TestGetURIParser(t *testing.T) {
 
 func TestGetAllURIParsers(t *testing.T) {
 	clearRegistries()
-	
+
 	// Register some parsers for testing
 	parser1 := &mockURIParser{
-		driverType: "type1",
+		driverType:       "type1",
 		supportedSchemes: []string{"type1"},
 	}
 	parser2 := &mockURIParser{
-		driverType: "type2", 
+		driverType:       "type2",
 		supportedSchemes: []string{"type2"},
 	}
-	
+
 	RegisterURIParser("type1", parser1)
 	RegisterURIParser("type2", parser2)
-	
+
 	parsers := GetAllURIParsers()
-	
+
 	if len(parsers) != 2 {
 		t.Errorf("GetAllURIParsers() returned %d parsers, want 2", len(parsers))
 	}
-	
+
 	// Verify both parsers are present
 	if _, ok := parsers["type1"]; !ok {
 		t.Error("GetAllURIParsers() missing type1 parser")
@@ -266,10 +266,10 @@ func TestGetAllURIParsers(t *testing.T) {
 
 func TestParseURI(t *testing.T) {
 	clearRegistries()
-	
+
 	// Parser that accepts URIs starting with "valid://"
 	validParser := &mockURIParser{
-		driverType: "valid",
+		driverType:       "valid",
 		supportedSchemes: []string{"valid"},
 		parseFunc: func(uri string) (types.Config, error) {
 			if len(uri) > 8 && uri[:8] == "valid://" {
@@ -281,10 +281,10 @@ func TestParseURI(t *testing.T) {
 			return types.Config{}, fmt.Errorf("not a valid URI")
 		},
 	}
-	
+
 	// Parser that accepts URIs starting with "test://"
 	testParser := &mockURIParser{
-		driverType: "test",
+		driverType:       "test",
 		supportedSchemes: []string{"test"},
 		parseFunc: func(uri string) (types.Config, error) {
 			if len(uri) > 7 && uri[:7] == "test://" {
@@ -296,10 +296,10 @@ func TestParseURI(t *testing.T) {
 			return types.Config{}, fmt.Errorf("not a test URI")
 		},
 	}
-	
+
 	RegisterURIParser("valid", validParser)
 	RegisterURIParser("test", testParser)
-	
+
 	tests := []struct {
 		name     string
 		uri      string
@@ -332,23 +332,23 @@ func TestParseURI(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config, err := ParseURI(tt.uri)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseURI() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			
+
 			if tt.wantErr {
 				return
 			}
-			
+
 			if config.Type != tt.wantType {
 				t.Errorf("ParseURI() Type = %v, want %v", config.Type, tt.wantType)
 			}
-			
+
 			if config.Host != tt.wantHost {
 				t.Errorf("ParseURI() Host = %v, want %v", config.Host, tt.wantHost)
 			}
@@ -358,7 +358,7 @@ func TestParseURI(t *testing.T) {
 
 func TestParseURINoParserRegistered(t *testing.T) {
 	clearRegistries()
-	
+
 	// No parsers registered
 	_, err := ParseURI("test://something")
 	if err == nil {
@@ -371,11 +371,11 @@ func TestParseURINoParserRegistered(t *testing.T) {
 
 func TestConcurrentAccess(t *testing.T) {
 	clearRegistries()
-	
+
 	// Test concurrent driver registration and retrieval
 	var wg sync.WaitGroup
 	numGoroutines := 10
-	
+
 	// Start multiple goroutines registering different drivers
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
@@ -388,7 +388,7 @@ func TestConcurrentAccess(t *testing.T) {
 			Register(driverType, factory)
 		}(i)
 	}
-	
+
 	// Start multiple goroutines reading drivers
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
@@ -399,10 +399,10 @@ func TestConcurrentAccess(t *testing.T) {
 			Get(driverType)
 		}(i)
 	}
-	
+
 	// Wait for all goroutines to complete
 	wg.Wait()
-	
+
 	// Verify all drivers were registered
 	for i := 0; i < numGoroutines; i++ {
 		driverType := fmt.Sprintf("driver%d", i)

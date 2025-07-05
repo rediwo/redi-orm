@@ -72,20 +72,19 @@ func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
-
 func TestNewUpdateQuery(t *testing.T) {
 	mockDB := &mockDatabase{}
 	mapper := &testFieldMapper{}
-	
+
 	baseQuery := &ModelQueryImpl{
 		database:    mockDB,
 		modelName:   "User",
 		fieldMapper: mapper,
 	}
-	
+
 	data := map[string]any{"name": "John"}
 	query := NewUpdateQuery(baseQuery, data)
-	
+
 	if query == nil {
 		t.Fatal("NewUpdateQuery returned nil")
 	}
@@ -99,15 +98,15 @@ func TestUpdateQuery_Set(t *testing.T) {
 		ModelQueryImpl: &ModelQueryImpl{},
 		setData:        map[string]any{"name": "John"},
 	}
-	
+
 	newData := map[string]any{"email": "john@example.com"}
 	newQuery := query.Set(newData)
-	
+
 	// Original query should be unchanged
 	if len(query.setData) != 1 {
 		t.Error("Set() modified original query")
 	}
-	
+
 	// New query should have new data
 	updateQuery := newQuery.(*UpdateQueryImpl)
 	if len(updateQuery.setData) != 2 {
@@ -122,7 +121,7 @@ func TestUpdateQuery_Where(t *testing.T) {
 			"User": {"id": "id"},
 		},
 	}
-	
+
 	query := &UpdateQueryImpl{
 		ModelQueryImpl: &ModelQueryImpl{
 			database:    mockDB,
@@ -132,14 +131,14 @@ func TestUpdateQuery_Where(t *testing.T) {
 		},
 		setData: map[string]any{"name": "John"},
 	}
-	
+
 	// Test Where with field condition
 	fieldCond := query.Where("id")
-	
+
 	// Test chaining with Equals and WhereCondition
 	condition := fieldCond.Equals(123)
 	finalQuery := query.WhereCondition(condition)
-	
+
 	// Check that condition was added
 	if updateQuery, ok := finalQuery.(*UpdateQueryImpl); ok {
 		if len(updateQuery.whereConditions) != 1 {
@@ -156,15 +155,15 @@ func TestUpdateQuery_WhereCondition(t *testing.T) {
 		setData:         map[string]any{"name": "John"},
 		whereConditions: []types.Condition{},
 	}
-	
+
 	condition := &updateMockCondition{}
 	newQuery := query.WhereCondition(condition)
-	
+
 	// Original query should be unchanged
 	if query.whereConditions != nil && len(query.whereConditions) != 0 {
 		t.Error("WhereCondition() modified original query")
 	}
-	
+
 	// New query should have condition
 	updateQuery := newQuery.(*UpdateQueryImpl)
 	if len(updateQuery.whereConditions) != 1 {
@@ -181,7 +180,7 @@ func TestUpdateQuery_Increment_Decrement(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []struct {
 		name      string
 		method    string
@@ -204,7 +203,7 @@ func TestUpdateQuery_Increment_Decrement(t *testing.T) {
 			wantOp:    "-",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			query := &UpdateQueryImpl{
@@ -215,14 +214,14 @@ func TestUpdateQuery_Increment_Decrement(t *testing.T) {
 				setData:   map[string]any{},
 				atomicOps: map[string]AtomicOperation{},
 			}
-			
+
 			var newQuery types.UpdateQuery
 			if tt.method == "increment" {
 				newQuery = query.Increment(tt.fieldName, tt.value)
 			} else {
 				newQuery = query.Decrement(tt.fieldName, tt.value)
 			}
-			
+
 			// Check that increment/decrement was recorded
 			updateQuery := newQuery.(*UpdateQueryImpl)
 			op, exists := updateQuery.atomicOps[tt.fieldName]
@@ -247,14 +246,14 @@ func TestUpdateQuery_Returning(t *testing.T) {
 		setData:         map[string]any{"name": "John"},
 		returningFields: []string{},
 	}
-	
+
 	newQuery := query.Returning("id", "updatedAt")
-	
+
 	// Original query should be unchanged
 	if len(query.returningFields) != 0 {
 		t.Error("Returning() modified original query")
 	}
-	
+
 	// New query should have returning fields
 	updateQuery := newQuery.(*UpdateQueryImpl)
 	if len(updateQuery.returningFields) != 2 {
@@ -274,7 +273,7 @@ func TestUpdateQuery_BuildSQL(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []struct {
 		name            string
 		modelName       string
@@ -288,11 +287,11 @@ func TestUpdateQuery_BuildSQL(t *testing.T) {
 		wantErr         bool
 	}{
 		{
-			name:      "simple update",
-			modelName: "User",
-			setData:   map[string]any{"name": "John", "email": "john@example.com"},
-			driverType: "sqlite",
-			wantSQL:   "UPDATE users SET",
+			name:          "simple update",
+			modelName:     "User",
+			setData:       map[string]any{"name": "John", "email": "john@example.com"},
+			driverType:    "sqlite",
+			wantSQL:       "UPDATE users SET",
 			wantArgsCount: 2,
 		},
 		{
@@ -307,31 +306,31 @@ func TestUpdateQuery_BuildSQL(t *testing.T) {
 			wantArgsCount: 2,
 		},
 		{
-			name:       "update with increment",
-			modelName:  "User",
-			setData:    map[string]any{},
+			name:      "update with increment",
+			modelName: "User",
+			setData:   map[string]any{},
 			atomicOps: map[string]AtomicOperation{
 				"loginCount": {Type: "increment", Value: 1},
 			},
-			driverType: "postgresql",
-			wantSQL:    "UPDATE users SET `login_count` = `login_count` +",
+			driverType:    "postgresql",
+			wantSQL:       "UPDATE users SET `login_count` = `login_count` +",
 			wantArgsCount: 1,
 		},
 		{
-			name:       "update with decrement",
-			modelName:  "User",
-			setData:    map[string]any{},
+			name:      "update with decrement",
+			modelName: "User",
+			setData:   map[string]any{},
 			atomicOps: map[string]AtomicOperation{
 				"loginCount": {Type: "decrement", Value: 5},
 			},
-			driverType: "postgresql",
-			wantSQL:    "UPDATE users SET `login_count` = `login_count` -",
+			driverType:    "postgresql",
+			wantSQL:       "UPDATE users SET `login_count` = `login_count` -",
 			wantArgsCount: 1,
 		},
 		{
-			name:      "update with returning",
-			modelName: "User",
-			setData:   map[string]any{"name": "John"},
+			name:            "update with returning",
+			modelName:       "User",
+			setData:         map[string]any{"name": "John"},
 			returningFields: []string{"id", "updatedAt"},
 			driverType:      "postgresql",
 			wantSQL:         "UPDATE users SET `name` = ?",
@@ -355,11 +354,11 @@ func TestUpdateQuery_BuildSQL(t *testing.T) {
 			wantArgsCount: 2,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockDB := &mockDatabase{}
-			
+
 			query := &UpdateQueryImpl{
 				ModelQueryImpl: &ModelQueryImpl{
 					database:    mockDB,
@@ -371,14 +370,14 @@ func TestUpdateQuery_BuildSQL(t *testing.T) {
 				atomicOps:       tt.atomicOps,
 				returningFields: tt.returningFields,
 			}
-			
+
 			sql, args, err := query.BuildSQL()
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("BuildSQL() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if !containsSQL(sql, tt.wantSQL) {
 					t.Errorf("BuildSQL() SQL = %v, want to contain %v", sql, tt.wantSQL)
@@ -397,7 +396,7 @@ func TestUpdateQuery_Exec(t *testing.T) {
 			"User": {"name": "name"},
 		},
 	}
-	
+
 	tests := []struct {
 		name       string
 		setData    map[string]any
@@ -425,18 +424,18 @@ func TestUpdateQuery_Exec(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRaw := &updateMockRawQuery{
 				execResult: tt.execResult,
 				execError:  tt.execError,
 			}
-			
+
 			mockDB := &updateMockDatabase{
 				mockRaw: mockRaw,
 			}
-			
+
 			query := &UpdateQueryImpl{
 				ModelQueryImpl: &ModelQueryImpl{
 					database:    mockDB,
@@ -445,14 +444,14 @@ func TestUpdateQuery_Exec(t *testing.T) {
 				},
 				setData: tt.setData,
 			}
-			
+
 			result, err := query.Exec(context.Background())
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Exec() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if result.RowsAffected != tt.execResult.RowsAffected {
 					t.Errorf("Exec() RowsAffected = %d, want %d", result.RowsAffected, tt.execResult.RowsAffected)
@@ -472,7 +471,7 @@ func TestUpdateQuery_ExecAndReturn(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []struct {
 		name            string
 		setData         map[string]any
@@ -506,18 +505,18 @@ func TestUpdateQuery_ExecAndReturn(t *testing.T) {
 			wantErr:         true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRaw := &updateMockRawQuery{
-				findResult:  tt.findResult,
-				findError:   tt.findError,
+				findResult: tt.findResult,
+				findError:  tt.findError,
 			}
-			
+
 			mockDB := &updateMockDatabase{
 				mockRaw: mockRaw,
 			}
-			
+
 			query := &UpdateQueryImpl{
 				ModelQueryImpl: &ModelQueryImpl{
 					database:    mockDB,
@@ -527,21 +526,21 @@ func TestUpdateQuery_ExecAndReturn(t *testing.T) {
 				setData:         tt.setData,
 				returningFields: tt.returningFields,
 			}
-			
+
 			var result []map[string]any
 			err := query.ExecAndReturn(context.Background(), &result)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ExecAndReturn() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if tt.wantErr && tt.errContains != "" {
 				if !strings.Contains(err.Error(), tt.errContains) {
 					t.Errorf("ExecAndReturn() error = %v, want to contain %v", err, tt.errContains)
 				}
 			}
-			
+
 			if !tt.wantErr && len(result) > 0 {
 				if len(result) != len(tt.findResult) {
 					t.Errorf("ExecAndReturn() result length = %d, want %d", len(result), len(tt.findResult))

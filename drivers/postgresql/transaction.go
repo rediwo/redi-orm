@@ -148,24 +148,9 @@ func (t *PostgreSQLTransactionDB) GetDriverType() string {
 	return t.PostgreSQLDB.GetDriverType()
 }
 
-// GetBooleanLiteral returns PostgreSQL-specific boolean literal
-func (t *PostgreSQLTransactionDB) GetBooleanLiteral(value bool) string {
-	return t.PostgreSQLDB.GetBooleanLiteral(value)
-}
-
-// QuoteIdentifier quotes an identifier for PostgreSQL
-func (t *PostgreSQLTransactionDB) QuoteIdentifier(name string) string {
-	return t.PostgreSQLDB.QuoteIdentifier(name)
-}
-
-// SupportsDefaultValues delegates to the main database
-func (t *PostgreSQLTransactionDB) SupportsDefaultValues() bool {
-	return t.PostgreSQLDB.SupportsDefaultValues()
-}
-
-// SupportsReturning delegates to the main database
-func (t *PostgreSQLTransactionDB) SupportsReturning() bool {
-	return t.PostgreSQLDB.SupportsReturning()
+// GetCapabilities returns driver capabilities
+func (t *PostgreSQLTransactionDB) GetCapabilities() types.DriverCapabilities {
+	return t.PostgreSQLDB.GetCapabilities()
 }
 
 // Raw creates a raw query within the transaction

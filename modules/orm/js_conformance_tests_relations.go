@@ -11,7 +11,7 @@ func (jct *JSConformanceTests) runRelationTests(t *testing.T, runner *JSTestRunn
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
@@ -25,7 +25,7 @@ model Post {
 	userId   Int
 	user     User   @relation(fields: [userId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create user with posts
@@ -58,7 +58,7 @@ model Post {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Category {
 	id       Int       @id @default(autoincrement())
 	name     String
@@ -71,7 +71,7 @@ model Product {
 	categoryId Int
 	category   Category @relation(fields: [categoryId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create category and product
@@ -100,7 +100,7 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id       Int       @id @default(autoincrement())
 	name     String
@@ -124,7 +124,7 @@ model Comment {
 	post   Post   @relation(fields: [postId], references: [id])
 	user   User   @relation(fields: [userId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -189,7 +189,7 @@ model Comment {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Publisher {
 	id    Int    @id @default(autoincrement())
 	name  String
@@ -203,7 +203,7 @@ model Book {
 	publisherId Int
 	publisher   Publisher @relation(fields: [publisherId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -232,7 +232,7 @@ model Book {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Post {
 	id      Int        @id @default(autoincrement())
 	title   String
@@ -254,7 +254,7 @@ model PostTag {
 	
 	@@id([postId, tagId])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create posts
@@ -330,7 +330,7 @@ model PostTag {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Student {
 	id      Int      @id @default(autoincrement())
 	name    String
@@ -344,7 +344,7 @@ model Course {
 	code     String    @unique
 	students Student[]
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create students
@@ -399,7 +399,7 @@ model Course {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Category {
 	id       Int       @id @default(autoincrement())
 	name     String
@@ -413,7 +413,7 @@ model Product {
 	categoryId Int
 	category   Category @relation(fields: [categoryId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -445,7 +445,7 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Store {
 	id       Int       @id @default(autoincrement())
 	name     String
@@ -458,7 +458,7 @@ model Product {
 	storeId Int
 	store   Store  @relation(fields: [storeId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -491,7 +491,7 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Employee {
 	id         Int        @id @default(autoincrement())
 	name       String
@@ -500,7 +500,7 @@ model Employee {
 	manager    Employee?  @relation("EmployeeManager", fields: [managerId], references: [id])
 	reports    Employee[] @relation("EmployeeManager")
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create organizational hierarchy
@@ -585,7 +585,7 @@ model Employee {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Node {
 	id       Int    @id @default(autoincrement())
 	name     String
@@ -593,7 +593,7 @@ model Node {
 	parent   Node?  @relation("NodeHierarchy", fields: [parentId], references: [id])
 	children Node[] @relation("NodeHierarchy")
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create a simple tree structure

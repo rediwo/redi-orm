@@ -63,7 +63,7 @@ func cleanupTablesJS(t *testing.T, runner *orm.JSTestRunner) {
 		// Re-enable foreign key constraints
 		await db.executeRaw('PRAGMA foreign_keys = ON');
 	`
-	
+
 	err := runner.RunCleanupScript(cleanupScript)
 	if err != nil {
 		t.Logf("Failed to cleanup tables: %v", err)

@@ -101,7 +101,7 @@ func (m *mockDifferMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]
 	if m.generateSQLFn != nil {
 		return m.generateSQLFn(plan)
 	}
-	
+
 	var sqls []string
 	for range plan.AddColumns {
 		sqls = append(sqls, "ALTER TABLE ADD COLUMN")
@@ -112,7 +112,7 @@ func (m *mockDifferMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]
 func TestNewDiffer(t *testing.T) {
 	migrator := newMockDifferMigrator()
 	differ := NewDiffer(migrator)
-	
+
 	if differ == nil {
 		t.Error("NewDiffer returned nil")
 	}
@@ -187,21 +187,21 @@ func TestDiffer_ComputeDiff(t *testing.T) {
 			migrator := newMockDifferMigrator()
 			migrator.tables = tt.existingTables
 			migrator.shouldError = tt.shouldError
-			
+
 			differ := NewDiffer(migrator)
 			changes, err := differ.ComputeDiff(tt.schemas)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ComputeDiff() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if len(changes) != len(tt.wantChanges) {
 					t.Errorf("ComputeDiff() returned %d changes, want %d", len(changes), len(tt.wantChanges))
 					return
 				}
-				
+
 				for i, change := range changes {
 					if i < len(tt.wantChanges) && change.Type != tt.wantChanges[i] {
 						t.Errorf("ComputeDiff() change[%d].Type = %v, want %v", i, change.Type, tt.wantChanges[i])
@@ -214,8 +214,8 @@ func TestDiffer_ComputeDiff(t *testing.T) {
 
 func TestDiffer_computeTableDiff(t *testing.T) {
 	tests := []struct {
-		name         string
-		schema       *schema.Schema
+		name          string
+		schema        *schema.Schema
 		migrationPlan *types.MigrationPlan
 		sqlStatements []string
 		shouldError   map[string]bool
@@ -293,27 +293,27 @@ func TestDiffer_computeTableDiff(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			migrator := newMockDifferMigrator()
 			migrator.shouldError = tt.shouldError
-			
+
 			if tt.migrationPlan != nil {
 				migrator.compareSchemaFn = func(*types.TableInfo, any) (*types.MigrationPlan, error) {
 					return tt.migrationPlan, nil
 				}
 			}
-			
+
 			if tt.sqlStatements != nil {
 				migrator.generateSQLFn = func(*types.MigrationPlan) ([]string, error) {
 					return tt.sqlStatements, nil
 				}
 			}
-			
+
 			differ := NewDiffer(migrator)
 			changes, err := differ.computeTableDiff(tt.schema)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("computeTableDiff() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr && len(changes) != tt.wantChanges {
 				t.Errorf("computeTableDiff() returned %d changes, want %d", len(changes), tt.wantChanges)
 			}
@@ -360,12 +360,12 @@ func TestComputeChecksum(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ComputeChecksum(tt.changes)
-			
+
 			// Checksum should be 64 characters (SHA256 hex)
 			if len(got) != 64 {
 				t.Errorf("ComputeChecksum() returned %d chars, want 64", len(got))
 			}
-			
+
 			// Test that same changes produce same checksum
 			got2 := ComputeChecksum(tt.changes)
 			if got != got2 {
@@ -373,14 +373,14 @@ func TestComputeChecksum(t *testing.T) {
 			}
 		})
 	}
-	
+
 	// Test that different changes produce different checksums
 	changes1 := []types.SchemaChange{{Type: "CREATE", TableName: "users", SQL: "CREATE TABLE users"}}
 	changes2 := []types.SchemaChange{{Type: "CREATE", TableName: "posts", SQL: "CREATE TABLE posts"}}
-	
+
 	checksum1 := ComputeChecksum(changes1)
 	checksum2 := ComputeChecksum(changes2)
-	
+
 	if checksum1 == checksum2 {
 		t.Error("Different changes produced same checksum")
 	}

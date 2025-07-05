@@ -22,6 +22,6 @@ func init() {
 		tempFile.Close()
 		tempFileURI = "sqlite://" + tempFile.Name()
 	})
-	
+
 	test.RegisterTestDatabaseUri("sqlite", tempFileURI)
 }

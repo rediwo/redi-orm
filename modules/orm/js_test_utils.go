@@ -164,7 +164,7 @@ func (r *JSTestRunner) CopyTestAssets() error {
 			filepath.Join(cwd, "..", "..", "modules", "orm", "testdata"),
 			filepath.Join(cwd, "..", "..", "..", "modules", "orm", "testdata"),
 		}
-		
+
 		for _, path := range possiblePaths {
 			if _, err := os.Stat(filepath.Join(path, "assert.js")); err == nil {
 				moduleDir = filepath.Dir(path)
@@ -172,9 +172,9 @@ func (r *JSTestRunner) CopyTestAssets() error {
 			}
 		}
 	}
-	
+
 	testdataDir := filepath.Join(moduleDir, "testdata")
-	
+
 	for _, asset := range assets {
 		srcPath := filepath.Join(testdataDir, asset)
 		content, err := os.ReadFile(srcPath)

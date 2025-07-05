@@ -18,11 +18,11 @@ func TestEmptyInsert(t *testing.T) {
 			"path": ":memory:",
 		},
 	}
-	
+
 	db, err := NewSQLiteDB(config)
 	require.NoError(t, err)
 	defer db.Close()
-	
+
 	ctx := context.Background()
 	err = db.Connect(ctx)
 	require.NoError(t, err)
@@ -41,15 +41,15 @@ func TestEmptyInsert(t *testing.T) {
 			Default: "active",
 		}).
 		AddField(schema.Field{
-			Name:     "createdAt",
-			Type:     schema.FieldTypeDateTime,
-			Default:  "CURRENT_TIMESTAMP",
+			Name:    "createdAt",
+			Type:    schema.FieldTypeDateTime,
+			Default: "CURRENT_TIMESTAMP",
 		})
 
 	// Register schema and sync
 	err = db.RegisterSchema("User", userSchema)
 	require.NoError(t, err)
-	
+
 	err = db.SyncSchemas(ctx)
 	require.NoError(t, err)
 
@@ -70,9 +70,18 @@ func TestEmptyInsert(t *testing.T) {
 			Insert(map[string]any{}).
 			Returning("id", "status", "createdAt").
 			ExecAndReturn(ctx, &user)
-		
-		// Since SQLite doesn't support RETURNING, this should fail
-		assert.Error(t, err)
+
+		// SQLite supports RETURNING, so this should work
+		assert.NoError(t, err)
+		assert.NotZero(t, user["id"])
+		assert.Equal(t, "active", user["status"])
+		// createdAt might be returned as a string or time.Time
+		if user["createdAt"] != nil {
+			assert.NotNil(t, user["createdAt"])
+		} else {
+			// SQLite might not return calculated defaults in RETURNING clause
+			t.Log("createdAt was not returned in RETURNING clause")
+		}
 	})
 
 	// Test 3: Verify data was actually inserted

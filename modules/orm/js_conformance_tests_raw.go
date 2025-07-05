@@ -11,13 +11,13 @@ func (jct *JSConformanceTests) runRawQueryTests(t *testing.T, runner *JSTestRunn
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id   Int    @id @default(autoincrement())
 	name String
 	age  Int
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -43,13 +43,13 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id   Int    @id @default(autoincrement())
 	name String
 	age  Int
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Test raw execute
@@ -69,7 +69,7 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model TestData {
 	id        Int      @id @default(autoincrement())
 	name      String
@@ -77,7 +77,7 @@ model TestData {
 	active    Boolean
 	createdAt DateTime @default(now())
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data

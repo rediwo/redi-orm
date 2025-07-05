@@ -11,14 +11,14 @@ func (jct *JSConformanceTests) runPerformanceTests(t *testing.T, runner *JSTestR
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model BulkItem {
 	id    Int    @id @default(autoincrement())
 	name  String
 	value Int
 	active Boolean @default(true)
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Measure bulk insert time
@@ -59,7 +59,7 @@ model BulkItem {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Author {
 	id    Int    @id @default(autoincrement())
 	name  String
@@ -73,7 +73,7 @@ model Book {
 	authorId Int
 	author   Author @relation(fields: [authorId], references: [id])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -143,7 +143,7 @@ model Book {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model LogEntry {
 	id        Int      @id @default(autoincrement())
 	level     String
@@ -154,7 +154,7 @@ model LogEntry {
 	@@index([level, timestamp])
 	@@index([userId])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create large dataset
@@ -211,7 +211,7 @@ model LogEntry {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Product {
 	id          Int      @id @default(autoincrement())
 	name        String
@@ -223,7 +223,7 @@ model Product {
 	@@index([category])
 	@@index([createdAt])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create dataset
@@ -284,13 +284,13 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Counter {
 	id    Int @id @default(autoincrement())
 	name  String @unique
 	value Int @default(0)
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create initial counter
@@ -355,7 +355,7 @@ model Counter {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Sale {
 	id         Int      @id @default(autoincrement())
 	productId  Int
@@ -368,7 +368,7 @@ model Sale {
 	@@index([date])
 	@@index([categoryId])
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create sales data in batches to avoid locking issues

@@ -116,25 +116,25 @@ func (q *InsertQueryImpl) BuildSQL() (string, []any, error) {
 	// Check if we have any fields to insert
 	if len(fields) == 0 {
 		// Check if database supports DEFAULT VALUES
-		if !q.database.SupportsDefaultValues() {
+		if !q.database.GetCapabilities().SupportsDefaultValues() {
 			return "", nil, fmt.Errorf("cannot insert empty record - at least one field value is required")
 		}
 		// Use DEFAULT VALUES for empty insert
 		sql.WriteString(" DEFAULT VALUES")
-		
+
 		// RETURNING clause is still supported with DEFAULT VALUES if database supports it
-		if len(q.returningFields) > 0 && q.database.SupportsReturning() {
+		if len(q.returningFields) > 0 && q.database.GetCapabilities().SupportsReturning() {
 			returningColumns, err := q.fieldMapper.SchemaFieldsToColumns(q.modelName, q.returningFields)
 			if err != nil {
 				return "", nil, fmt.Errorf("failed to map returning fields: %w", err)
 			}
 			quotedReturningColumns := make([]string, len(returningColumns))
 			for i, columnName := range returningColumns {
-				quotedReturningColumns[i] = q.database.QuoteIdentifier(columnName)
+				quotedReturningColumns[i] = q.database.GetCapabilities().QuoteIdentifier(columnName)
 			}
 			sql.WriteString(fmt.Sprintf(" RETURNING %s", strings.Join(quotedReturningColumns, ", ")))
 		}
-		
+
 		return sql.String(), args, nil
 	}
 
@@ -147,7 +147,7 @@ func (q *InsertQueryImpl) BuildSQL() (string, []any, error) {
 	// Quote column names to handle reserved keywords
 	quotedColumnNames := make([]string, len(columnNames))
 	for i, columnName := range columnNames {
-		quotedColumnNames[i] = q.database.QuoteIdentifier(columnName)
+		quotedColumnNames[i] = q.database.GetCapabilities().QuoteIdentifier(columnName)
 	}
 
 	// Add column names
@@ -182,14 +182,14 @@ func (q *InsertQueryImpl) BuildSQL() (string, []any, error) {
 	sql.WriteString(strings.Join(valuePlaceholders, ", "))
 
 	// Add RETURNING clause if specified and supported
-	if len(q.returningFields) > 0 && q.database.SupportsReturning() {
+	if len(q.returningFields) > 0 && q.database.GetCapabilities().SupportsReturning() {
 		returningColumns, err := q.fieldMapper.SchemaFieldsToColumns(q.modelName, q.returningFields)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to map returning fields: %w", err)
 		}
 		quotedReturningColumns := make([]string, len(returningColumns))
 		for i, columnName := range returningColumns {
-			quotedReturningColumns[i] = q.database.QuoteIdentifier(columnName)
+			quotedReturningColumns[i] = q.database.GetCapabilities().QuoteIdentifier(columnName)
 		}
 		sql.WriteString(fmt.Sprintf(" RETURNING %s", strings.Join(quotedReturningColumns, ", ")))
 	}

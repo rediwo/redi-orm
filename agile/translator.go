@@ -71,15 +71,15 @@ func executeCreate(ctx context.Context, model types.ModelQuery, options map[stri
 	processedData := processNestedWrites(data, "create", modelName, db)
 
 	query := model.Insert(processedData)
-	
+
 	// Add RETURNING clause for databases that support it
-	if db.SupportsReturning() {
+	if db.GetCapabilities().SupportsReturning() {
 		// Get schema to determine which fields to return
 		schema, err := db.GetSchema(modelName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get schema: %w", err)
 		}
-		
+
 		// Build the list of fields to return (all fields by default)
 		returningFields := make([]string, 0, len(schema.Fields))
 		for _, field := range schema.Fields {
@@ -97,7 +97,7 @@ func executeCreate(ctx context.Context, model types.ModelQuery, options map[stri
 
 	// Use ExecAndReturn for databases that support RETURNING clause
 	var createdRecord map[string]any
-	if db.SupportsReturning() {
+	if db.GetCapabilities().SupportsReturning() {
 		// Database supports RETURNING clause
 		err := query.ExecAndReturn(ctx, &createdRecord)
 		if err != nil {
@@ -109,13 +109,13 @@ func executeCreate(ctx context.Context, model types.ModelQuery, options map[stri
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Fetch the created record using LastInsertID
 		selectQuery := model.Select()
 		if result.LastInsertID > 0 {
 			selectQuery = applySimpleWhereConditions(selectQuery, map[string]any{"id": result.LastInsertID}).(types.SelectQuery)
 		}
-		
+
 		err = selectQuery.FindFirst(ctx, &createdRecord)
 		if err != nil {
 			// If we can't fetch the created record, return what we have
@@ -275,7 +275,7 @@ func executeFindMany(ctx context.Context, model types.ModelQuery, options map[st
 	var includesFromSelect map[string]any
 	if selectFields, ok := options["select"]; ok {
 		selectedFields = extractFieldNames(selectFields)
-		
+
 		// Extract nested includes from select
 		if selectMap, ok := selectFields.(map[string]any); ok {
 			includesFromSelect = make(map[string]any)
@@ -287,7 +287,7 @@ func executeFindMany(ctx context.Context, model types.ModelQuery, options map[st
 			}
 		}
 	}
-	
+
 	// Create query with selected fields (or all fields if none specified)
 	var query types.SelectQuery
 	if len(selectedFields) > 0 {
@@ -318,7 +318,7 @@ func executeFindMany(ctx context.Context, model types.ModelQuery, options map[st
 	if include, ok := options["include"]; ok {
 		query = applyInclude(query, include).(types.SelectQuery)
 	}
-	
+
 	// Apply includes from select if any
 	if includesFromSelect != nil && len(includesFromSelect) > 0 {
 		query = applyInclude(query, includesFromSelect).(types.SelectQuery)
@@ -780,7 +780,7 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 
 	// Build SELECT clause
 	var selectParts []string
-	
+
 	// Add grouped fields
 	for _, field := range groupByFields {
 		// Resolve field name to column name
@@ -793,7 +793,7 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 		// Quote the alias to preserve case in PostgreSQL
 		selectParts = append(selectParts, fmt.Sprintf("%s AS \"%s\"", columnName, field))
 	}
-	
+
 	// Handle _count, _sum, _avg, _min, _max aggregations
 	aggregations := []string{"_count", "_sum", "_avg", "_min", "_max"}
 	for _, agg := range aggregations {
@@ -822,15 +822,15 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 			}
 		}
 	}
-	
+
 	// Build the SQL query
 	tableName, err := db.ResolveTableName(modelName)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	sql := fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectParts, ", "), tableName)
-	
+
 	// Add WHERE clause if provided
 	if where, ok := options["where"]; ok {
 		// Build simple WHERE conditions for groupBy
@@ -839,7 +839,7 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 			sql += " WHERE " + whereSQL
 		}
 	}
-	
+
 	// Add GROUP BY clause
 	if len(groupByFields) > 0 {
 		var groupByColumns []string
@@ -852,7 +852,7 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 		}
 		sql += fmt.Sprintf(" GROUP BY %s", strings.Join(groupByColumns, ", "))
 	}
-	
+
 	// Add HAVING clause if provided
 	if having, ok := options["having"]; ok {
 		// Build simple HAVING conditions
@@ -861,7 +861,7 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 			sql += " HAVING " + havingSQL
 		}
 	}
-	
+
 	// Add ORDER BY if provided
 	if orderBy, ok := options["orderBy"]; ok {
 		orderSQL := buildOrderBySQL(orderBy, modelName, db)
@@ -869,7 +869,7 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 			sql += " ORDER BY " + orderSQL
 		}
 	}
-	
+
 	// Apply pagination
 	if take, ok := options["take"]; ok {
 		sql += fmt.Sprintf(" LIMIT %d", int(utils.ToInt64(take)))
@@ -877,24 +877,24 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 	if skip, ok := options["skip"]; ok {
 		sql += fmt.Sprintf(" OFFSET %d", int(utils.ToInt64(skip)))
 	}
-	
+
 	// Execute raw query
 	rows, err := db.Query(sql)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	// Scan results into maps
 	results, err := utils.ScanRowsToMaps(rows)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Post-process results to convert field_agg format to nested objects
 	for i, result := range results {
 		processedResult := make(map[string]any)
-		
+
 		// Copy grouped fields and _count
 		for k, v := range result {
 			if !strings.Contains(k, "_") {
@@ -905,7 +905,7 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 				processedResult[k] = utils.ToInt64(v)
 			}
 		}
-		
+
 		// Transform field_agg to nested format
 		aggregations := []string{"_sum", "_avg", "_min", "_max"}
 		for _, agg := range aggregations {
@@ -929,17 +929,17 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 				processedResult[agg] = aggMap
 			}
 		}
-		
+
 		results[i] = processedResult
 	}
-	
+
 	return results, nil
 }
 
 // buildOrderBySQL builds ORDER BY SQL from orderBy options
 func buildOrderBySQL(orderBy any, modelName string, db types.Database) string {
 	var orderParts []string
-	
+
 	switch ob := orderBy.(type) {
 	case map[string]any:
 		// Single orderBy object: {field: "asc"|"desc"} or {_sum: {field: "asc"}}
@@ -988,7 +988,7 @@ func buildOrderBySQL(orderBy any, modelName string, db types.Database) string {
 			}
 		}
 	}
-	
+
 	return strings.Join(orderParts, ", ")
 }
 
@@ -998,21 +998,21 @@ func buildSimpleWhereSQL(where any, modelName string, db types.Database) string 
 	if !ok {
 		return ""
 	}
-	
+
 	var whereParts []string
-	
+
 	for field, value := range whereMap {
 		// Skip complex operators for now
 		if _, isMap := value.(map[string]any); isMap {
 			continue
 		}
-		
+
 		// Resolve field name to column name
 		columnName, err := db.ResolveFieldName(modelName, field)
 		if err != nil {
 			columnName = field
 		}
-		
+
 		// Format value based on type
 		var valueStr string
 		switch v := value.(type) {
@@ -1024,10 +1024,10 @@ func buildSimpleWhereSQL(where any, modelName string, db types.Database) string 
 		default:
 			valueStr = fmt.Sprintf("%v", v)
 		}
-		
+
 		whereParts = append(whereParts, fmt.Sprintf("%s = %s", columnName, valueStr))
 	}
-	
+
 	return strings.Join(whereParts, " AND ")
 }
 
@@ -1037,18 +1037,18 @@ func buildSimpleHavingSQL(having any) string {
 	if !ok {
 		return ""
 	}
-	
+
 	var havingParts []string
-	
+
 	// Handle aggregation conditions like _sum, _avg, etc.
 	for aggType, conditions := range havingMap {
 		if !strings.HasPrefix(aggType, "_") {
 			continue
 		}
-		
+
 		// Get the aggregation function name
 		aggFunc := strings.ToUpper(strings.TrimPrefix(aggType, "_"))
-		
+
 		if condMap, ok := conditions.(map[string]any); ok {
 			for field, operators := range condMap {
 				// Build the aggregation expression
@@ -1059,7 +1059,7 @@ func buildSimpleHavingSQL(having any) string {
 				} else {
 					aggExpr = fmt.Sprintf("%s(%s)", aggFunc, field)
 				}
-				
+
 				if opMap, ok := operators.(map[string]any); ok {
 					for op, value := range opMap {
 						// Handle different operators
@@ -1079,7 +1079,7 @@ func buildSimpleHavingSQL(having any) string {
 							// Default to equals
 							condition = fmt.Sprintf("%s = %v", aggExpr, value)
 						}
-						
+
 						if condition != "" {
 							havingParts = append(havingParts, condition)
 						}
@@ -1088,6 +1088,6 @@ func buildSimpleHavingSQL(having any) string {
 			}
 		}
 	}
-	
+
 	return strings.Join(havingParts, " AND ")
 }

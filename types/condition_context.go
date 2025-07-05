@@ -6,7 +6,7 @@ type ConditionContext struct {
 	ModelName       string
 	TableAlias      string
 	JoinedTables    map[string]JoinInfo // For complex queries with joins
-	QuoteIdentifier func(string) string  // Function to quote identifiers
+	QuoteIdentifier func(string) string // Function to quote identifiers
 }
 
 // JoinInfo contains information about a joined table

@@ -11,13 +11,13 @@ func (jct *JSConformanceTests) runCRUDTests(t *testing.T, runner *JSTestRunner) 
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		const user = await db.models.User.create({
@@ -39,13 +39,13 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -63,13 +63,13 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create user
@@ -95,13 +95,13 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create user
@@ -132,13 +132,13 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create user
@@ -166,14 +166,14 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model User {
 	id    Int    @id @default(autoincrement())
 	name  String
 	email String @unique
 	age   Int?
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -196,14 +196,14 @@ model User {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Product {
 	id       Int     @id @default(autoincrement())
 	name     String
 	category String
 	active   Boolean @default(true)
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -235,13 +235,13 @@ model Product {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Config {
 	id    Int    @id @default(autoincrement())
 	key   String @unique
 	value String
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// First upsert - should create
@@ -270,13 +270,13 @@ model Config {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Task {
 	id     Int    @id @default(autoincrement())
 	title  String
 	status String @default("pending")
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create multiple records
@@ -313,13 +313,13 @@ model Task {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Task {
 	id     Int    @id @default(autoincrement())
 	title  String
 	status String @default("pending")
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -354,14 +354,14 @@ model Task {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model TempData {
 	id        Int      @id @default(autoincrement())
 	data      String
 	createdAt DateTime @default(now())
 	temp      Boolean  @default(true)
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data

@@ -195,36 +195,36 @@ func (q *ModelQueryImpl) Exists(ctx context.Context) (bool, error) {
 func (q *ModelQueryImpl) Sum(ctx context.Context, fieldName string) (float64, error) {
 	// Create a select query to leverage its SQL building capabilities
 	selectQuery := q.Select()
-	
+
 	// Get the built SQL and modify it for aggregation
 	baseSql, args, err := selectQuery.BuildSQL()
 	if err != nil {
 		return 0, fmt.Errorf("failed to build base SQL: %w", err)
 	}
-	
+
 	// Convert field name to column name
 	columnName, err := q.fieldMapper.SchemaToColumn(q.modelName, fieldName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to map field name: %w", err)
 	}
-	
+
 	// Replace SELECT clause with SUM
 	// Find the FROM clause position
 	fromIndex := strings.Index(baseSql, " FROM ")
 	if fromIndex == -1 {
 		return 0, fmt.Errorf("invalid SQL: no FROM clause found")
 	}
-	
+
 	// Build new SQL with SUM
 	sqlQuery := fmt.Sprintf("SELECT SUM(%s.%s)%s", q.tableAlias, columnName, baseSql[fromIndex:])
-	
+
 	// Execute query
 	var result sql.NullFloat64
 	err = q.database.QueryRow(sqlQuery, args...).Scan(&result)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute sum query: %w", err)
 	}
-	
+
 	if !result.Valid {
 		return 0, nil
 	}
@@ -234,36 +234,36 @@ func (q *ModelQueryImpl) Sum(ctx context.Context, fieldName string) (float64, er
 func (q *ModelQueryImpl) Avg(ctx context.Context, fieldName string) (float64, error) {
 	// Create a select query to leverage its SQL building capabilities
 	selectQuery := q.Select()
-	
+
 	// Get the built SQL and modify it for aggregation
 	baseSql, args, err := selectQuery.BuildSQL()
 	if err != nil {
 		return 0, fmt.Errorf("failed to build base SQL: %w", err)
 	}
-	
+
 	// Convert field name to column name
 	columnName, err := q.fieldMapper.SchemaToColumn(q.modelName, fieldName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to map field name: %w", err)
 	}
-	
+
 	// Replace SELECT clause with AVG
 	// Find the FROM clause position
 	fromIndex := strings.Index(baseSql, " FROM ")
 	if fromIndex == -1 {
 		return 0, fmt.Errorf("invalid SQL: no FROM clause found")
 	}
-	
+
 	// Build new SQL with AVG
 	sqlQuery := fmt.Sprintf("SELECT AVG(%s.%s)%s", q.tableAlias, columnName, baseSql[fromIndex:])
-	
+
 	// Execute query
 	var result sql.NullFloat64
 	err = q.database.QueryRow(sqlQuery, args...).Scan(&result)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute avg query: %w", err)
 	}
-	
+
 	if !result.Valid {
 		return 0, nil
 	}
@@ -273,29 +273,29 @@ func (q *ModelQueryImpl) Avg(ctx context.Context, fieldName string) (float64, er
 func (q *ModelQueryImpl) Max(ctx context.Context, fieldName string) (any, error) {
 	// Create a select query to leverage its SQL building capabilities
 	selectQuery := q.Select()
-	
+
 	// Get the built SQL and modify it for aggregation
 	baseSql, args, err := selectQuery.BuildSQL()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build base SQL: %w", err)
 	}
-	
+
 	// Convert field name to column name
 	columnName, err := q.fieldMapper.SchemaToColumn(q.modelName, fieldName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to map field name: %w", err)
 	}
-	
+
 	// Replace SELECT clause with MAX
 	// Find the FROM clause position
 	fromIndex := strings.Index(baseSql, " FROM ")
 	if fromIndex == -1 {
 		return nil, fmt.Errorf("invalid SQL: no FROM clause found")
 	}
-	
+
 	// Build new SQL with MAX
 	sqlQuery := fmt.Sprintf("SELECT MAX(%s.%s)%s", q.tableAlias, columnName, baseSql[fromIndex:])
-	
+
 	// Execute query
 	var result any
 	err = q.database.QueryRow(sqlQuery, args...).Scan(&result)
@@ -305,36 +305,36 @@ func (q *ModelQueryImpl) Max(ctx context.Context, fieldName string) (any, error)
 		}
 		return nil, fmt.Errorf("failed to execute max query: %w", err)
 	}
-	
+
 	return result, nil
 }
 
 func (q *ModelQueryImpl) Min(ctx context.Context, fieldName string) (any, error) {
 	// Create a select query to leverage its SQL building capabilities
 	selectQuery := q.Select()
-	
+
 	// Get the built SQL and modify it for aggregation
 	baseSql, args, err := selectQuery.BuildSQL()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build base SQL: %w", err)
 	}
-	
+
 	// Convert field name to column name
 	columnName, err := q.fieldMapper.SchemaToColumn(q.modelName, fieldName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to map field name: %w", err)
 	}
-	
+
 	// Replace SELECT clause with MIN
 	// Find the FROM clause position
 	fromIndex := strings.Index(baseSql, " FROM ")
 	if fromIndex == -1 {
 		return nil, fmt.Errorf("invalid SQL: no FROM clause found")
 	}
-	
+
 	// Build new SQL with MIN
 	sqlQuery := fmt.Sprintf("SELECT MIN(%s.%s)%s", q.tableAlias, columnName, baseSql[fromIndex:])
-	
+
 	// Execute query
 	var result any
 	err = q.database.QueryRow(sqlQuery, args...).Scan(&result)
@@ -344,7 +344,7 @@ func (q *ModelQueryImpl) Min(ctx context.Context, fieldName string) (any, error)
 		}
 		return nil, fmt.Errorf("failed to execute min query: %w", err)
 	}
-	
+
 	return result, nil
 }
 

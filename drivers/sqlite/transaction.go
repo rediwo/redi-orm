@@ -148,28 +148,8 @@ func (td *SQLiteTransactionDB) GetDriverType() string {
 	return td.database.GetDriverType()
 }
 
-func (td *SQLiteTransactionDB) GetBooleanLiteral(value bool) string {
-	return td.database.GetBooleanLiteral(value)
-}
-
-func (td *SQLiteTransactionDB) QuoteIdentifier(name string) string {
-	return td.database.QuoteIdentifier(name)
-}
-
-func (td *SQLiteTransactionDB) SupportsDefaultValues() bool {
-	return td.database.SupportsDefaultValues()
-}
-
-func (td *SQLiteTransactionDB) SupportsReturning() bool {
-	return td.database.SupportsReturning()
-}
-
-func (td *SQLiteTransactionDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
-	return td.database.GetNullsOrderingSQL(direction, nullsFirst)
-}
-
-func (td *SQLiteTransactionDB) RequiresLimitForOffset() bool {
-	return td.database.RequiresLimitForOffset()
+func (td *SQLiteTransactionDB) GetCapabilities() types.DriverCapabilities {
+	return td.database.GetCapabilities()
 }
 
 func (td *SQLiteTransactionDB) ResolveTableName(modelName string) (string, error) {

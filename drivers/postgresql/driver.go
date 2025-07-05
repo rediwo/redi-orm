@@ -17,16 +17,23 @@ import (
 
 // Add init function to register the driver
 func init() {
+	driverType := types.DriverPostgreSQL
+
 	// Register PostgreSQL driver
-	registry.Register("postgresql", func(config types.Config) (types.Database, error) {
+	registry.Register(string(driverType), func(config types.Config) (types.Database, error) {
 		return NewPostgreSQLDB(config)
 	})
+	// Also register with "postgres" alias for compatibility
 	registry.Register("postgres", func(config types.Config) (types.Database, error) {
 		return NewPostgreSQLDB(config)
 	})
 
+	// Register PostgreSQL capabilities
+	registry.RegisterCapabilities(driverType, NewPostgreSQLCapabilities())
+
 	// Register PostgreSQL URI parser
-	registry.RegisterURIParser("postgresql", NewPostgreSQLURIParser())
+	registry.RegisterURIParser(string(driverType), NewPostgreSQLURIParser())
+	// Also register with "postgres" alias
 	registry.RegisterURIParser("postgres", NewPostgreSQLURIParser())
 }
 
@@ -45,6 +52,11 @@ func NewPostgreSQLDB(config types.Config) (*PostgreSQLDB, error) {
 // GetDriverType returns the database driver type
 func (p *PostgreSQLDB) GetDriverType() string {
 	return "postgresql"
+}
+
+// GetCapabilities returns driver capabilities
+func (p *PostgreSQLDB) GetCapabilities() types.DriverCapabilities {
+	return NewPostgreSQLCapabilities()
 }
 
 // GetBooleanLiteral returns PostgreSQL-specific boolean literal
@@ -405,31 +417,6 @@ func (p *PostgreSQLDB) formatDefaultValue(value any, fieldType schema.FieldType)
 // quoteIdentifier quotes an identifier for PostgreSQL
 func (p *PostgreSQLDB) quoteIdentifier(name string) string {
 	return fmt.Sprintf(`"%s"`, name)
-}
-
-// QuoteIdentifier quotes an identifier for PostgreSQL using double quotes
-func (p *PostgreSQLDB) QuoteIdentifier(name string) string {
-	return p.quoteIdentifier(name)
-}
-
-// SupportsReturning returns true for PostgreSQL as it supports RETURNING clause
-func (p *PostgreSQLDB) SupportsReturning() bool {
-	return true
-}
-
-// GetNullsOrderingSQL returns the SQL clause for NULL ordering
-// PostgreSQL supports NULLS FIRST/LAST syntax
-func (p *PostgreSQLDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
-	if nullsFirst {
-		return " NULLS FIRST"
-	}
-	return " NULLS LAST"
-}
-
-// RequiresLimitForOffset returns true if the database requires LIMIT when using OFFSET
-// PostgreSQL doesn't require LIMIT when using OFFSET
-func (p *PostgreSQLDB) RequiresLimitForOffset() bool {
-	return false
 }
 
 // convertPlaceholders converts ? placeholders to $1, $2, etc. for PostgreSQL

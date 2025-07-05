@@ -11,13 +11,13 @@ func (jct *JSConformanceTests) runTransactionTests(t *testing.T, runner *JSTestR
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Account {
 	id      Int    @id @default(autoincrement())
 	name    String
 	balance Float
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create accounts
@@ -58,13 +58,13 @@ model Account {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Account {
 	id      Int    @id @default(autoincrement())
 	name    String
 	balance Float
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create account
@@ -100,13 +100,13 @@ model Account {
 		const db = fromUri(TEST_DATABASE_URI);
 		await db.connect();
 		
-		await db.loadSchema(` + "`" + `
+		await db.loadSchema(`+"`"+`
 model Counter {
 	id    Int    @id @default(autoincrement())
 	name  String
 	value Int
 }
-` + "`" + `);
+`+"`"+`);
 		await db.syncSchemas();
 		
 		// Create test data
@@ -146,18 +146,18 @@ model Counter {
 	`)
 
 	// Test transaction isolation
-	if (!jct.shouldSkip("TestTransactionIsolation")) {
+	if !jct.shouldSkip("TestTransactionIsolation") {
 		jct.runWithCleanup(t, runner, "TransactionIsolation", `
 			const db = fromUri(TEST_DATABASE_URI);
 			await db.connect();
 			
-			await db.loadSchema(` + "`" + `
+			await db.loadSchema(`+"`"+`
 model Counter {
 	id    Int    @id @default(autoincrement())
 	name  String
 	value Int
 }
-` + "`" + `);
+`+"`"+`);
 			await db.syncSchemas();
 			
 			// Create test data
@@ -200,18 +200,18 @@ model Counter {
 	}
 
 	// Test concurrent transactions
-	if (!jct.shouldSkip("TestTransactionConcurrentAccess")) {
+	if !jct.shouldSkip("TestTransactionConcurrentAccess") {
 		jct.runWithCleanup(t, runner, "TransactionConcurrentAccess", `
 			const db = fromUri(TEST_DATABASE_URI);
 			await db.connect();
 			
-			await db.loadSchema(` + "`" + `
+			await db.loadSchema(`+"`"+`
 model Balance {
 	id     Int    @id @default(autoincrement())
 	userId String @unique
 	amount Float
 }
-` + "`" + `);
+`+"`"+`);
 			await db.syncSchemas();
 			
 			// Create test data

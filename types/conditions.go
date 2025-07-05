@@ -233,18 +233,18 @@ func (f *MappedFieldCondition) Not() Condition {
 type AggregationCondition struct {
 	BaseCondition
 	AggregationType string // "sum", "avg", "min", "max", "count"
-	FieldName      string
-	Operator       string
-	Value          any
+	FieldName       string
+	Operator        string
+	Value           any
 }
 
 // NewAggregationCondition creates a new aggregation condition
 func NewAggregationCondition(aggType, fieldName, operator string, value any) *AggregationCondition {
 	return &AggregationCondition{
 		AggregationType: aggType,
-		FieldName:      fieldName,
-		Operator:       operator,
-		Value:          value,
+		FieldName:       fieldName,
+		Operator:        operator,
+		Value:           value,
 	}
 }
 
@@ -257,7 +257,7 @@ func (a *AggregationCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 			columnName = mapped
 		}
 	}
-	
+
 	// Build aggregation expression
 	var aggExpr string
 	switch a.AggregationType {
@@ -278,7 +278,7 @@ func (a *AggregationCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 	default:
 		return "", nil
 	}
-	
+
 	// Map operator
 	var sqlOp string
 	switch a.Operator {
@@ -297,7 +297,7 @@ func (a *AggregationCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 	default:
 		sqlOp = "="
 	}
-	
+
 	return fmt.Sprintf("%s %s ?", aggExpr, sqlOp), []any{a.Value}
 }
 

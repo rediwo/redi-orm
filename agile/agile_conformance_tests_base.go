@@ -29,7 +29,7 @@ type AgileConformanceTests struct {
 	SkipTests       map[string]bool
 	Characteristics AgileDriverCharacteristics
 	NewDatabase     func(uri string) (types.Database, error) // Function to create database instance
-	CleanupTables   func(t *testing.T, db types.Database)   // Driver-specific table cleanup
+	CleanupTables   func(t *testing.T, db types.Database)    // Driver-specific table cleanup
 }
 
 // RunAll runs all agile conformance tests

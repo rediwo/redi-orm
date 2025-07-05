@@ -8,16 +8,16 @@ import (
 type JSDriverCharacteristics struct {
 	// SupportsArrayTypes indicates if the driver supports array field types
 	SupportsArrayTypes bool
-	
+
 	// SupportsJSONTypes indicates if the driver supports JSON/JSONB field types
 	SupportsJSONTypes bool
-	
+
 	// SupportsEnumTypes indicates if the driver supports enum field types
 	SupportsEnumTypes bool
-	
+
 	// MaxConnectionPoolSize is the maximum number of connections in the pool
 	MaxConnectionPoolSize int
-	
+
 	// SupportsNestedTransactions indicates if the driver supports savepoints
 	SupportsNestedTransactions bool
 }
@@ -174,7 +174,7 @@ func (jct *JSConformanceTests) runWithCleanup(t *testing.T, runner *JSTestRunner
 	if jct.CleanupTables != nil {
 		jct.CleanupTables(t, runner)
 	}
-	
+
 	// Run the test
 	runner.RunInlineTest(t, testName, testCode)
 }

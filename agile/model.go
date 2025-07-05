@@ -30,7 +30,7 @@ func (m *Model) Query(jsonQuery string) (any, error) {
 			// Some operations might not have parameters
 			paramsMap = make(map[string]any)
 		}
-		
+
 		return executeOperation(m.db, m.modelName, operation, paramsMap, m.client.typeConverter)
 	}
 

@@ -3,7 +3,7 @@ package query
 import (
 	"regexp"
 	"strings"
-	
+
 	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi-orm/utils"
 )
@@ -79,7 +79,7 @@ func (ce *ConditionEvaluator) evaluateMappedFieldCondition(cond *types.MappedFie
 	// The SQL is in format "fieldName operator ?"
 	sql := cond.GetSQL()
 	args := cond.GetArgs()
-	
+
 	// Parse the SQL to extract field name and operator
 	fieldName, operator, value := ce.parseFieldCondition(sql, args)
 	if fieldName == "" {
@@ -102,7 +102,7 @@ func (ce *ConditionEvaluator) evaluateBaseCondition(cond *types.BaseCondition, r
 	// For base conditions, we need to parse the SQL
 	sql := cond.SQL
 	args := cond.Args
-	
+
 	// Parse the SQL to extract field name and operator
 	fieldName, operator, value := ce.parseFieldCondition(sql, args)
 	if fieldName == "" {
@@ -124,7 +124,7 @@ func (ce *ConditionEvaluator) evaluateBaseCondition(cond *types.BaseCondition, r
 func (ce *ConditionEvaluator) parseFieldCondition(sql string, args []any) (fieldName string, operator string, value any) {
 	// Remove extra spaces and convert to lowercase for comparison
 	sql = strings.TrimSpace(sql)
-	
+
 	// Common patterns
 	patterns := []struct {
 		regex    string
@@ -147,7 +147,7 @@ func (ce *ConditionEvaluator) parseFieldCondition(sql string, args []any) (field
 		{`^(\w+)\s+NOT\s+IN\s+\(\?\)$`, 1, "NOT IN", true},
 		{`^(\w+)\s+BETWEEN\s+\?\s+AND\s+\?$`, 1, "BETWEEN", true},
 	}
-	
+
 	for _, pattern := range patterns {
 		re := regexp.MustCompile("(?i)" + pattern.regex)
 		if matches := re.FindStringSubmatch(sql); matches != nil {
@@ -163,7 +163,7 @@ func (ce *ConditionEvaluator) parseFieldCondition(sql string, args []any) (field
 			return
 		}
 	}
-	
+
 	return "", "", nil
 }
 
@@ -211,7 +211,7 @@ func (ce *ConditionEvaluator) evaluateOperator(fieldValue any, operator string, 
 		// _ -> .
 		pattern = strings.ReplaceAll(pattern, "%", ".*")
 		pattern = strings.ReplaceAll(pattern, "_", ".")
-		matched, _ := regexp.MatchString("^" + pattern + "$", text)
+		matched, _ := regexp.MatchString("^"+pattern+"$", text)
 		return matched
 	case "NOT LIKE":
 		// Inverse of LIKE
@@ -219,7 +219,7 @@ func (ce *ConditionEvaluator) evaluateOperator(fieldValue any, operator string, 
 		text := utils.ToString(fieldValue)
 		pattern = strings.ReplaceAll(pattern, "%", ".*")
 		pattern = strings.ReplaceAll(pattern, "_", ".")
-		matched, _ := regexp.MatchString("^" + pattern + "$", text)
+		matched, _ := regexp.MatchString("^"+pattern+"$", text)
 		return !matched
 	case "IS NULL":
 		return fieldValue == nil
@@ -228,8 +228,8 @@ func (ce *ConditionEvaluator) evaluateOperator(fieldValue any, operator string, 
 	case "BETWEEN":
 		// Between requires two values
 		if values, ok := value.([]any); ok && len(values) == 2 {
-			return ce.compareValues(fieldValue, values[0]) >= 0 && 
-			       ce.compareValues(fieldValue, values[1]) <= 0
+			return ce.compareValues(fieldValue, values[0]) >= 0 &&
+				ce.compareValues(fieldValue, values[1]) <= 0
 		}
 		return false
 	default:

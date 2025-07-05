@@ -2,7 +2,6 @@ package types
 
 import (
 	"fmt"
-	"unicode"
 
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/utils"
@@ -110,40 +109,4 @@ func (m *DefaultFieldMapper) ModelToTable(modelName string) (string, error) {
 func ModelNameToTableName(modelName string) string {
 	snakeCase := utils.ToSnakeCase(modelName)
 	return utils.Pluralize(snakeCase)
-}
-
-// ValidateFieldName checks if a field name is valid
-func ValidateFieldName(fieldName string) error {
-	if fieldName == "" {
-		return fmt.Errorf("field name cannot be empty")
-	}
-
-	// Check if it starts with a letter or underscore
-	first := rune(fieldName[0])
-	if !unicode.IsLetter(first) && first != '_' {
-		return fmt.Errorf("field name must start with a letter or underscore")
-	}
-
-	// Check remaining characters
-	for _, r := range fieldName[1:] {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
-			return fmt.Errorf("field name can only contain letters, digits, and underscores")
-		}
-	}
-
-	return nil
-}
-
-// ValidateColumnName checks if a column name is valid for database
-func ValidateColumnName(columnName string) error {
-	if columnName == "" {
-		return fmt.Errorf("column name cannot be empty")
-	}
-
-	// Basic validation - extend as needed for specific databases
-	if len(columnName) > 64 {
-		return fmt.Errorf("column name too long (max 64 characters)")
-	}
-
-	return ValidateFieldName(columnName)
 }

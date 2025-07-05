@@ -91,7 +91,7 @@ func ScanRow(rows *sql.Rows, dest any) error {
 	if destType.Elem().Kind() == reflect.Map &&
 		destType.Elem().Key().Kind() == reflect.String &&
 		destType.Elem().Elem().Kind() == reflect.Interface {
-		
+
 		// Scan into a single map
 		values := make([]any, len(columns))
 		valuePtrs := make([]any, len(columns))

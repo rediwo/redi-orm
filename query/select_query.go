@@ -293,7 +293,7 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 			selectClause = q.buildSelectClause()
 			q.selectedFields = originalSelectedFields
 		}
-		
+
 		// Add GROUP BY for the distinct fields to simulate DISTINCT ON
 		if len(q.groupBy) == 0 {
 			q.groupBy = q.distinctOn
@@ -468,7 +468,7 @@ func (q *SelectQueryImpl) buildWhereClause() (string, []any, error) {
 
 	// Create condition context
 	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, q.tableAlias)
-	ctx.QuoteIdentifier = q.database.QuoteIdentifier
+	ctx.QuoteIdentifier = q.database.GetCapabilities().QuoteIdentifier
 
 	// Combine all conditions with AND
 	var conditionSQLs []string
@@ -508,9 +508,9 @@ func (q *SelectQueryImpl) buildOrderByClause() (string, error) {
 		if order.Direction == types.DESC {
 			direction = "DESC"
 		}
-		
+
 		// Get database-specific NULL ordering SQL
-		nullsClause := q.database.GetNullsOrderingSQL(order.Direction, !nullsLast)
+		nullsClause := q.database.GetCapabilities().GetNullsOrderingSQL(order.Direction, !nullsLast)
 
 		// Add table alias if present to avoid ambiguity
 		fullColumnName := columnName
@@ -546,7 +546,7 @@ func (q *SelectQueryImpl) buildHavingClause() (string, []any, error) {
 
 	// Create condition context
 	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, q.tableAlias)
-	ctx.QuoteIdentifier = q.database.QuoteIdentifier
+	ctx.QuoteIdentifier = q.database.GetCapabilities().QuoteIdentifier
 
 	sql, args := q.having.ToSQL(ctx)
 	if sql == "" {
@@ -570,7 +570,7 @@ func (q *SelectQueryImpl) buildOffsetClause() string {
 		return ""
 	}
 	// Some databases require LIMIT when using OFFSET
-	if q.limit == nil && q.database.RequiresLimitForOffset() {
+	if q.limit == nil && q.database.GetCapabilities().RequiresLimitForOffset() {
 		limit := int(^uint(0) >> 1) // Max int value
 		return fmt.Sprintf("LIMIT %d OFFSET %d", limit, *q.offset)
 	}

@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"regexp"
 	"strings"
 )
 
@@ -238,22 +237,4 @@ func Singularize(s string) string {
 	}
 
 	return s
-}
-
-// ValidateFieldName checks if a field name is valid
-func ValidateFieldName(name string) bool {
-	if name == "" {
-		return false
-	}
-
-	// Must start with letter or underscore
-	if !((name[0] >= 'a' && name[0] <= 'z') ||
-		(name[0] >= 'A' && name[0] <= 'Z') ||
-		name[0] == '_') {
-		return false
-	}
-
-	// Check rest of characters
-	validChars := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
-	return validChars.MatchString(name)
 }

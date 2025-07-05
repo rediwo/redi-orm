@@ -133,34 +133,9 @@ func (tdb *MySQLTransactionDB) GetDriverType() string {
 	return tdb.db.GetDriverType()
 }
 
-// GetBooleanLiteral delegates to the main database
-func (tdb *MySQLTransactionDB) GetBooleanLiteral(value bool) string {
-	return tdb.db.GetBooleanLiteral(value)
-}
-
-// QuoteIdentifier delegates to the main database
-func (tdb *MySQLTransactionDB) QuoteIdentifier(name string) string {
-	return tdb.db.QuoteIdentifier(name)
-}
-
-// SupportsDefaultValues delegates to the main database
-func (tdb *MySQLTransactionDB) SupportsDefaultValues() bool {
-	return tdb.db.SupportsDefaultValues()
-}
-
-// SupportsReturning delegates to the main database
-func (tdb *MySQLTransactionDB) SupportsReturning() bool {
-	return tdb.db.SupportsReturning()
-}
-
-// GetNullsOrderingSQL delegates to the main database
-func (tdb *MySQLTransactionDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
-	return tdb.db.GetNullsOrderingSQL(direction, nullsFirst)
-}
-
-// RequiresLimitForOffset delegates to the main database
-func (tdb *MySQLTransactionDB) RequiresLimitForOffset() bool {
-	return tdb.db.RequiresLimitForOffset()
+// GetCapabilities delegates to the main database
+func (tdb *MySQLTransactionDB) GetCapabilities() types.DriverCapabilities {
+	return tdb.db.GetCapabilities()
 }
 
 // ResolveTableName delegates to the main database
