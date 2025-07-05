@@ -15,7 +15,11 @@ func TestMySQLConformance(t *testing.T) {
 	}
 
 	// Skip if MySQL is not available
-	config := test.GetTestConfig("mysql")
+	uri := test.GetTestDatabaseUri("mysql")
+	config, err := NewMySQLURIParser().ParseURI(uri)
+	if err != nil {
+		t.Skipf("Failed to parse MySQL URI: %v", err)
+	}
 	db, err := NewMySQLDB(config)
 	if err != nil {
 		t.Skip("MySQL not available for testing")

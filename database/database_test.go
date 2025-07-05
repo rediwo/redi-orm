@@ -134,6 +134,18 @@ func (m *mockDatabase) SyncSchemas(ctx context.Context) error {
 	return nil
 }
 
+func (m *mockDatabase) QuoteIdentifier(name string) string {
+	return "`" + name + "`"
+}
+
+func (m *mockDatabase) SupportsDefaultValues() bool {
+	return true
+}
+
+func (m *mockDatabase) SupportsReturning() bool {
+	return false
+}
+
 // Mock factory function
 func mockFactory(config types.Config) (types.Database, error) {
 	if config.Type != "mock" {

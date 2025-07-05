@@ -152,6 +152,18 @@ func (td *SQLiteTransactionDB) GetBooleanLiteral(value bool) string {
 	return td.database.GetBooleanLiteral(value)
 }
 
+func (td *SQLiteTransactionDB) QuoteIdentifier(name string) string {
+	return td.database.QuoteIdentifier(name)
+}
+
+func (td *SQLiteTransactionDB) SupportsDefaultValues() bool {
+	return td.database.SupportsDefaultValues()
+}
+
+func (td *SQLiteTransactionDB) SupportsReturning() bool {
+	return td.database.SupportsReturning()
+}
+
 func (td *SQLiteTransactionDB) ResolveTableName(modelName string) (string, error) {
 	return td.database.ResolveTableName(modelName)
 }

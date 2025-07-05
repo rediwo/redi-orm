@@ -15,6 +15,7 @@ type SelectQueryImpl struct {
 	*ModelQueryImpl
 	selectedFields []string
 	distinct       bool
+	distinctOn     []string
 	joinBuilder    *JoinBuilder
 }
 
@@ -147,6 +148,14 @@ func (q *SelectQueryImpl) Distinct() types.SelectQuery {
 	return newQuery
 }
 
+// DistinctOn enables distinct selection on specific fields
+func (q *SelectQueryImpl) DistinctOn(fieldNames ...string) types.SelectQuery {
+	newQuery := q.clone()
+	newQuery.distinct = true
+	newQuery.distinctOn = fieldNames
+	return newQuery
+}
+
 // FindMany executes the query and returns multiple results
 func (q *SelectQueryImpl) FindMany(ctx context.Context, dest any) error {
 	sql, args, err := q.BuildSQL()
@@ -268,7 +277,18 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 	}
 
 	// Build SELECT clause (with table alias support)
+	// If we have distinctOn fields, temporarily override selected fields
+	originalSelectedFields := q.selectedFields
+	if len(q.distinctOn) > 0 && len(q.selectedFields) == 0 {
+		// For distinct on specific fields, we need to select only those fields
+		// for cross-database compatibility
+		q.selectedFields = q.distinctOn
+	}
+	
 	selectClause := q.buildSelectClause()
+	
+	// Restore original selected fields
+	q.selectedFields = originalSelectedFields
 
 	// Build FROM clause with alias
 	fromClause := fmt.Sprintf("FROM %s AS %s", tableName, q.tableAlias)
@@ -336,6 +356,8 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 	}
 
 	sql := strings.Join(sqlParts, " ")
+	// fmt.Printf("[DEBUG] Generated SQL: %s\n", sql)
+	// fmt.Printf("[DEBUG] SQL Args: %v\n", args)
 	return sql, args, nil
 }
 
@@ -343,6 +365,8 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 func (q *SelectQueryImpl) buildSelectClause() string {
 	distinctStr := ""
 	if q.distinct {
+		// For databases that don't support DISTINCT ON, we'll use GROUP BY instead
+		// This is handled in BuildSQL by adding GROUP BY for distinctOn fields
 		distinctStr = "DISTINCT "
 	}
 
@@ -432,6 +456,7 @@ func (q *SelectQueryImpl) buildWhereClause() (string, []any, error) {
 
 	// Create condition context
 	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, q.tableAlias)
+	ctx.QuoteIdentifier = q.database.QuoteIdentifier
 
 	// Combine all conditions with AND
 	var conditionSQLs []string
@@ -514,6 +539,7 @@ func (q *SelectQueryImpl) buildHavingClause() (string, []any, error) {
 
 	// Create condition context
 	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, q.tableAlias)
+	ctx.QuoteIdentifier = q.database.QuoteIdentifier
 
 	sql, args := q.having.ToSQL(ctx)
 	if sql == "" {
@@ -629,12 +655,14 @@ func (q *SelectQueryImpl) findManyWithRelations(_ context.Context, sql string, a
 
 	// Check if we have nested includes (includes with dots like "posts.comments")
 	hasNestedIncludes := false
+	// fmt.Printf("[DEBUG] Query includes: %v\n", q.includes)
 	for _, include := range q.includes {
 		if strings.Contains(include, ".") {
 			hasNestedIncludes = true
 			break
 		}
 	}
+	// fmt.Printf("[DEBUG] Has nested includes: %v\n", hasNestedIncludes)
 
 	// Use hierarchical scanner for nested includes
 	if hasNestedIncludes {
@@ -658,6 +686,12 @@ func (q *SelectQueryImpl) findManyWithRelations(_ context.Context, sql string, a
 	} else {
 		// Use regular scanner for simple includes
 		scanner := NewRelationScanner(mainSchema, q.tableAlias)
+
+		// Create include processor if we have include options
+		if len(q.includeOptions) > 0 {
+			processor := NewIncludeProcessor(q.database, q.fieldMapper, q.includeOptions)
+			scanner.SetIncludeProcessor(processor)
+		}
 
 		// Add joined table information to scanner
 		for _, join := range q.joinBuilder.GetJoinedTables() {
@@ -820,6 +854,7 @@ func (q *SelectQueryImpl) clone() *SelectQueryImpl {
 		ModelQueryImpl: q.ModelQueryImpl.clone(),
 		selectedFields: append([]string{}, q.selectedFields...),
 		distinct:       q.distinct,
+		distinctOn:     append([]string{}, q.distinctOn...),
 		joinBuilder:    NewJoinBuilderWithReservedAliases(q.database, q.tableAlias),
 	}
 

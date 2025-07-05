@@ -250,7 +250,7 @@ func (g *Generator) generateCreateIndexSQL(change types.SchemaChange) string {
 		// If no index definition is available, return a comment
 		return fmt.Sprintf("-- Cannot recreate index %s without stored definition", change.IndexName)
 	}
-	
+
 	// Use the migrator to generate the correct SQL for the database type
 	return g.migrator.GenerateCreateIndexSQL(
 		change.TableName,

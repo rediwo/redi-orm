@@ -301,6 +301,11 @@ func (s *SQLiteDB) formatDefaultValue(value any) string {
 	}
 }
 
+// QuoteIdentifier quotes an identifier for SQLite using double quotes
+func (s *SQLiteDB) QuoteIdentifier(name string) string {
+	return "\"" + name + "\""
+}
+
 // mapFieldTypeToSQL maps schema field types to SQLite SQL types
 func (s *SQLiteDB) mapFieldTypeToSQL(fieldType schema.FieldType) string {
 	switch fieldType {

@@ -3,35 +3,30 @@ package test
 import (
 	"fmt"
 	"sync"
-
-	"github.com/rediwo/redi-orm/types"
 )
 
-// TestConfigFactory is a function that returns a test configuration for a driver
-type TestConfigFactory func() types.Config
-
-// testConfigRegistry holds registered test config factories
+// testDatabaseURIRegistry holds registered test database URIs
 var (
-	testConfigRegistry = make(map[string]TestConfigFactory)
-	registryMutex      sync.RWMutex
+	testDatabaseURIRegistry = make(map[string]string)
+	registryMutex           sync.RWMutex
 )
 
-// RegisterTestConfig registers a test configuration factory for a driver
-func RegisterTestConfig(driverType string, factory TestConfigFactory) {
+// RegisterTestDatabaseUri registers a test database URI for a driver
+func RegisterTestDatabaseUri(driverType string, uri string) {
 	registryMutex.Lock()
 	defer registryMutex.Unlock()
-	testConfigRegistry[driverType] = factory
+	testDatabaseURIRegistry[driverType] = uri
 }
 
-// GetTestConfig returns test configuration for a specific driver
-func GetTestConfig(driverType string) types.Config {
+// GetTestDatabaseUri returns test database URI for a specific driver
+func GetTestDatabaseUri(driverType string) string {
 	registryMutex.RLock()
-	factory, exists := testConfigRegistry[driverType]
+	uri, exists := testDatabaseURIRegistry[driverType]
 	registryMutex.RUnlock()
 
 	if !exists {
-		panic(fmt.Sprintf("no test config factory registered for driver: %s", driverType))
+		panic(fmt.Sprintf("no test database URI registered for driver: %s", driverType))
 	}
 
-	return factory()
+	return uri
 }

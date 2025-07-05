@@ -184,10 +184,11 @@ func (f *MappedFieldCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 	if f.modelName != "" && ctx.ModelName != f.modelName {
 		// Create a new context with the field's model name for correct mapping
 		mappingCtx = &ConditionContext{
-			FieldMapper:  ctx.FieldMapper,
-			ModelName:    f.modelName,
-			TableAlias:   ctx.TableAlias,
-			JoinedTables: ctx.JoinedTables,
+			FieldMapper:     ctx.FieldMapper,
+			ModelName:       f.modelName,
+			TableAlias:      ctx.TableAlias,
+			JoinedTables:    ctx.JoinedTables,
+			QuoteIdentifier: ctx.QuoteIdentifier,
 		}
 	}
 

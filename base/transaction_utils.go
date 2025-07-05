@@ -170,7 +170,7 @@ func (tu *TransactionUtils) buildBulkInsertSQL(tableName string, schema *schema.
 		for _, fieldName := range fieldOrder {
 			value := recordMap[fieldName]
 			args = append(args, value)
-			
+
 			placeholder := tu.getPlaceholder(placeholderIndex)
 			placeholders = append(placeholders, placeholder)
 			placeholderIndex++
@@ -200,9 +200,9 @@ func (tu *TransactionUtils) buildUpdateSQL(tableName, modelName string, data map
 			// Skip unknown fields
 			continue
 		}
-		
-		setClauses = append(setClauses, fmt.Sprintf("%s = %s", 
-			tu.quote(columnName), 
+
+		setClauses = append(setClauses, fmt.Sprintf("%s = %s",
+			tu.quote(columnName),
 			tu.getPlaceholder(placeholderIndex)))
 		args = append(args, value)
 		placeholderIndex++
@@ -242,7 +242,7 @@ func (tu *TransactionUtils) buildUpdateSQL(tableName, modelName string, data map
 // buildDeleteSQL builds a DELETE statement
 func (tu *TransactionUtils) buildDeleteSQL(tableName, modelName string, condition types.Condition) (string, []any, error) {
 	var args []any
-	
+
 	// Build WHERE clause
 	whereSQL := ""
 	if condition != nil {

@@ -72,26 +72,63 @@ func (m *ModelsModule) executeCreate(ctx context.Context, model types.ModelQuery
 	processedData := m.processNestedWrites(data, "create", modelName, db)
 
 	query := model.Insert(processedData)
+	
+	// Only add RETURNING clause for PostgreSQL
+	if db.GetDriverType() == "postgresql" {
+		// Get schema to determine which fields to return
+		schema, err := db.GetSchema(modelName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get schema: %w", err)
+		}
+		
+		// Build the list of fields to return (all fields by default)
+		returningFields := make([]string, 0, len(schema.Fields))
+		for _, field := range schema.Fields {
+			returningFields = append(returningFields, field.Name)
+		}
 
-	// Handle returning specific fields
-	if selectFields, ok := options["select"]; ok {
-		fields := m.extractFieldNames(selectFields)
-		query = query.Returning(fields...)
+		query = query.Returning(returningFields...)
+
+		// Handle returning specific fields if requested
+		if selectFields, ok := options["select"]; ok {
+			fields := m.extractFieldNames(selectFields)
+			query = query.Returning(fields...)
+		}
 	}
 
-	result, err := query.Exec(ctx)
-	if err != nil {
-		return nil, err
+	// Use ExecAndReturn for databases that support RETURNING clause
+	var createdRecord map[string]any
+	if db.GetDriverType() == "postgresql" {
+		// PostgreSQL supports RETURNING clause
+		err := query.ExecAndReturn(ctx, &createdRecord)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// SQLite and MySQL don't support RETURNING properly, use the old method
+		result, err := query.Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Fetch the created record using LastInsertID
+		selectQuery := model.Select()
+		if result.LastInsertID > 0 {
+			selectQuery = m.applySimpleWhereConditions(selectQuery, map[string]any{"id": result.LastInsertID}).(types.SelectQuery)
+		}
+		
+		err = selectQuery.FindFirst(ctx, &createdRecord)
+		if err != nil {
+			// If we can't fetch the created record, return what we have
+			if dataMap, ok := processedData.(map[string]any); ok {
+				dataMap["id"] = result.LastInsertID
+				return dataMap, nil
+			}
+			return processedData, nil
+		}
 	}
 
-	// For now, return the created data with ID
-	// In a real implementation, we'd fetch the created record
-	if dataMap, ok := processedData.(map[string]any); ok {
-		dataMap["id"] = result.LastInsertID
-		return dataMap, nil
-	}
-
-	return processedData, nil
+	return createdRecord, nil
 }
 
 func (m *ModelsModule) executeCreateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any, db types.Database) (any, error) {
@@ -188,6 +225,8 @@ func (m *ModelsModule) executeFindUnique(ctx context.Context, model types.ModelQ
 
 	// Handle include (relations)
 	if include, ok := options["include"]; ok {
+		// Debug: log what includes are being applied
+		// fmt.Printf("[DEBUG] Applying includes: %+v\n", include)
 		query = m.applyInclude(query, include).(types.SelectQuery)
 	}
 
@@ -210,7 +249,7 @@ func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQu
 
 	// Apply orderBy if provided
 	if orderBy, ok := options["orderBy"]; ok {
-		m.applyOrderBy(query, orderBy)
+		query = m.applyOrderBy(query, orderBy).(types.SelectQuery)
 	}
 
 	// Handle select fields
@@ -221,6 +260,8 @@ func (m *ModelsModule) executeFindFirst(ctx context.Context, model types.ModelQu
 
 	// Handle include (relations)
 	if include, ok := options["include"]; ok {
+		// Debug: log what includes are being applied
+		// fmt.Printf("[DEBUG] Applying includes: %+v\n", include)
 		query = m.applyInclude(query, include).(types.SelectQuery)
 	}
 
@@ -243,7 +284,7 @@ func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQue
 
 	// Apply orderBy if provided
 	if orderBy, ok := options["orderBy"]; ok {
-		m.applyOrderBy(query, orderBy)
+		query = m.applyOrderBy(query, orderBy).(types.SelectQuery)
 	}
 
 	// Apply pagination
@@ -262,6 +303,8 @@ func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQue
 
 	// Handle include (relations)
 	if include, ok := options["include"]; ok {
+		// Debug: log what includes are being applied
+		// fmt.Printf("[DEBUG] Applying includes: %+v\n", include)
 		query = m.applyInclude(query, include).(types.SelectQuery)
 	}
 
@@ -274,9 +317,20 @@ func (m *ModelsModule) executeFindMany(ctx context.Context, model types.ModelQue
 			}
 		case []any:
 			// Distinct on specific fields
-			// For now, just use general distinct if any fields are specified
 			if len(d) > 0 {
-				query = query.Distinct()
+				// Convert []any to []string
+				fields := make([]string, 0, len(d))
+				for _, field := range d {
+					if fieldStr, ok := field.(string); ok {
+						fields = append(fields, fieldStr)
+					}
+				}
+				if len(fields) > 0 {
+					query = query.DistinctOn(fields...)
+				} else {
+					// Fallback to general distinct if no valid fields
+					query = query.Distinct()
+				}
 			}
 		}
 	}
@@ -341,77 +395,88 @@ func (m *ModelsModule) executeAggregate(ctx context.Context, model types.ModelQu
 
 	// Handle different aggregation types
 	if count, ok := options["_count"]; ok {
-		if countMap, ok := count.(map[string]any); ok {
-			for field := range countMap {
+		switch c := count.(type) {
+		case bool:
+			if c {
+				// Simple count
+				cnt, err := model.Count(ctx)
+				if err != nil {
+					return nil, err
+				}
+				result["_count"] = cnt
+			}
+		case map[string]any:
+			// Field-specific count
+			for field := range c {
 				// For simplicity, just count all records
-				c, err := model.Count(ctx)
+				cnt, err := model.Count(ctx)
 				if err != nil {
 					return nil, err
 				}
 				if _, ok := result["_count"]; !ok {
 					result["_count"] = make(map[string]any)
 				}
-				result["_count"].(map[string]any)[field] = c
+				result["_count"].(map[string]any)[field] = cnt
 			}
 		}
 	}
 
 	if avg, ok := options["_avg"]; ok {
 		if avgMap, ok := avg.(map[string]any); ok {
-			for field := range avgMap {
-				a, err := model.Avg(ctx, field)
-				if err != nil {
-					return nil, err
+			result["_avg"] = make(map[string]any)
+			for field, val := range avgMap {
+				if enabled, ok := val.(bool); ok && enabled {
+					a, err := model.Avg(ctx, field)
+					if err != nil {
+						return nil, err
+					}
+					result["_avg"].(map[string]any)[field] = a
 				}
-				if _, ok := result["_avg"]; !ok {
-					result["_avg"] = make(map[string]any)
-				}
-				result["_avg"].(map[string]any)[field] = a
 			}
 		}
 	}
 
 	if sum, ok := options["_sum"]; ok {
 		if sumMap, ok := sum.(map[string]any); ok {
-			for field := range sumMap {
-				s, err := model.Sum(ctx, field)
-				if err != nil {
-					return nil, err
+			result["_sum"] = make(map[string]any)
+			for field, val := range sumMap {
+				if enabled, ok := val.(bool); ok && enabled {
+					s, err := model.Sum(ctx, field)
+					if err != nil {
+						return nil, err
+					}
+					result["_sum"].(map[string]any)[field] = s
 				}
-				if _, ok := result["_sum"]; !ok {
-					result["_sum"] = make(map[string]any)
-				}
-				result["_sum"].(map[string]any)[field] = s
 			}
 		}
 	}
 
 	if min, ok := options["_min"]; ok {
 		if minMap, ok := min.(map[string]any); ok {
-			for field := range minMap {
-				m, err := model.Min(ctx, field)
-				if err != nil {
-					return nil, err
+			result["_min"] = make(map[string]any)
+			for field, val := range minMap {
+				if enabled, ok := val.(bool); ok && enabled {
+					m, err := model.Min(ctx, field)
+					if err != nil {
+						return nil, err
+					}
+					result["_min"].(map[string]any)[field] = m
 				}
-				if _, ok := result["_min"]; !ok {
-					result["_min"] = make(map[string]any)
-				}
-				result["_min"].(map[string]any)[field] = m
 			}
 		}
 	}
 
 	if max, ok := options["_max"]; ok {
 		if maxMap, ok := max.(map[string]any); ok {
-			for field := range maxMap {
-				m, err := model.Max(ctx, field)
-				if err != nil {
-					return nil, err
+			result["_max"] = make(map[string]any)
+			for field, val := range maxMap {
+				if enabled, ok := val.(bool); ok && enabled {
+					m, err := model.Max(ctx, field)
+					if err != nil {
+						return nil, err
+					}
+					result["_max"].(map[string]any)[field] = m
 				}
-				if _, ok := result["_max"]; !ok {
-					result["_max"] = make(map[string]any)
-				}
-				result["_max"].(map[string]any)[field] = m
 			}
 		}
 	}
@@ -567,6 +632,40 @@ func (m *ModelsModule) executeGroupBy(ctx context.Context, _ types.ModelQuery, m
 		return nil, err
 	}
 
+	// Transform results to match expected structure
+	// Convert field__agg format to nested structure { _agg: { field: value } }
+	for i, result := range results {
+		transformedResult := make(map[string]any)
+		
+		// First, copy over the grouped fields
+		for _, field := range groupByFields {
+			if val, ok := result[field]; ok {
+				transformedResult[field] = val
+			}
+		}
+		
+		// Process aggregations
+		for key, val := range result {
+			// Check if this is an aggregation result (format: field__agg)
+			parts := strings.Split(key, "_")
+			if len(parts) >= 3 { // e.g., "amount__sum"
+				aggType := "_" + parts[len(parts)-1] // e.g., "_sum"
+				fieldName := strings.Join(parts[:len(parts)-2], "_") // e.g., "amount"
+				
+				// Create nested structure
+				if _, ok := transformedResult[aggType]; !ok {
+					transformedResult[aggType] = make(map[string]any)
+				}
+				transformedResult[aggType].(map[string]any)[fieldName] = val
+			} else if key == "_count" {
+				// Simple _count field
+				transformedResult[key] = val
+			}
+		}
+		
+		results[i] = transformedResult
+	}
+
 	return results, nil
 }
 
@@ -597,16 +696,24 @@ func (m *ModelsModule) executeUpdate(ctx context.Context, model types.ModelQuery
 		query = query.Returning(fields...)
 	}
 
-	result, err := query.Exec(ctx)
+	_, err := query.Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Return updated data (simplified - should fetch from DB)
-	return map[string]any{
-		"id":           result.LastInsertID,
-		"rowsAffected": result.RowsAffected,
-	}, nil
+	// After update, fetch the updated record
+	// Use the same where conditions to find the updated record
+	selectQuery := model.Select()
+	selectQuery = m.applySimpleWhereConditions(selectQuery, where).(types.SelectQuery)
+	
+	var updatedRecord map[string]any
+	err = selectQuery.FindFirst(ctx, &updatedRecord)
+	if err != nil {
+		// If not found, it might have been deleted by another process
+		return nil, fmt.Errorf("updated record not found: %w", err)
+	}
+	
+	return updatedRecord, nil
 }
 
 func (m *ModelsModule) executeUpdateMany(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any) (any, error) {
@@ -976,18 +1083,22 @@ func (m *ModelsModule) applyInclude(query any, include any) any {
 	case map[string]any:
 		// Object format: { relationName: true } or { relationName: { include: {...} } }
 		for relationName, relationOptions := range inc {
+			// fmt.Printf("[DEBUG] Processing relation: %s with options: %+v\n", relationName, relationOptions)
 			// Check if it's a simple include (true) or nested
 			switch opts := relationOptions.(type) {
 			case bool:
 				if opts {
 					// Simple include
+					// fmt.Printf("[DEBUG] Adding simple include: %s\n", relationName)
 					selectQuery = selectQuery.Include(relationName)
 				}
 			case map[string]any:
 				// Handle nested include with options
+				// fmt.Printf("[DEBUG] Parsing nested includes for: %s\n", relationName)
 				includeOpts := m.parseNestedIncludes(relationName, opts)
 				// Apply include options to the query
 				for path, opt := range includeOpts {
+					// fmt.Printf("[DEBUG] Applying include option for path: %s\n", path)
 					selectQuery = m.applyIncludeOption(selectQuery, path, opt)
 				}
 			}
@@ -1005,7 +1116,6 @@ func (m *ModelsModule) applyIncludeOption(query types.SelectQuery, path string, 
 // parseNestedIncludes parses nested include options and returns include options
 func (m *ModelsModule) parseNestedIncludes(relationName string, options map[string]any) map[string]*types.IncludeOption {
 	result := make(map[string]*types.IncludeOption)
-	hasNestedIncludes := false
 
 	// Create the include option for this relation
 	includeOpt := &types.IncludeOption{
@@ -1067,7 +1177,6 @@ func (m *ModelsModule) parseNestedIncludes(relationName string, options map[stri
 		case map[string]any:
 			// Parse nested relations
 			for nestedRelation, nestedOpts := range nested {
-				hasNestedIncludes = true
 				fullPath := relationName + "." + nestedRelation
 				switch opts := nestedOpts.(type) {
 				case bool:
@@ -1087,11 +1196,9 @@ func (m *ModelsModule) parseNestedIncludes(relationName string, options map[stri
 		}
 	}
 
-	// Only include the parent relation if there are no nested includes
-	// This prevents duplicate joins when we have both "posts" and "posts.comments"
-	if !hasNestedIncludes {
-		result[relationName] = includeOpt
-	}
+	// Always include the parent relation
+	// The join builder will handle deduplication if needed
+	result[relationName] = includeOpt
 
 	return result
 }

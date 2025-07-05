@@ -50,6 +50,7 @@ func (hs *HierarchicalScanner) SetIncludeProcessor(processor *IncludeProcessor) 
 
 // AddJoinedTable adds information about a joined table with its parent
 func (hs *HierarchicalScanner) AddJoinedTable(alias string, schema *schema.Schema, relation *schema.Relation, relationName string, parentAlias string, path string) {
+	// fmt.Printf("[DEBUG] AddJoinedTable: alias=%s, relation=%s, path=%s, parent=%s\n", alias, relationName, path, parentAlias)
 	hs.joinInfo[alias] = &JoinInfo{
 		Schema:       schema,
 		Relation:     relation,
@@ -175,8 +176,10 @@ func (hs *HierarchicalScanner) scanRowsToMapsHierarchical(rows *sql.Rows, dest a
 
 			info, exists := hs.joinInfo[alias]
 			if !exists {
+				// fmt.Printf("[DEBUG] No join info for alias: %s\n", alias)
 				continue
 			}
+			// fmt.Printf("[DEBUG] Processing joined record for alias: %s, relation: %s, path: %s, parent: %s\n", alias, info.RelationName, info.Path, info.ParentAlias)
 
 			recordID := recordData["id"]
 			if recordID == nil {
@@ -206,14 +209,33 @@ func (hs *HierarchicalScanner) scanRowsToMapsHierarchical(rows *sql.Rows, dest a
 				// Nested child - find parent
 				parentInfo := hs.joinInfo[info.ParentAlias]
 				if parentInfo != nil {
-					// Get parent record ID from the joined data
-					parentFK := recordData[info.Relation.ForeignKey]
-					if parentFK != nil {
-						if parentNode, exists := allRecords[info.ParentAlias][parentFK]; exists {
+					// For nested relations, we need to find the parent based on the relation type
+					var parentID any
+					
+					// For nested relations, we always look for the parent in the current row
+					// The parent record should be in the same row as this child
+					parentRecordData := recordMaps[info.ParentAlias]
+					if parentRecordData != nil && !isNullRecord(parentRecordData) {
+						parentID = parentRecordData["id"]
+					}
+					
+					// fmt.Printf("[DEBUG] Nested child: looking for parent %s with ID %v (relation type: %v)\n", info.ParentAlias, parentID, info.Relation.Type)
+					
+					if parentID != nil {
+						if parentNode, exists := allRecords[info.ParentAlias][parentID]; exists {
+							// fmt.Printf("[DEBUG] Found parent node, adding child %s to relation %s\n", recordID, info.RelationName)
 							if _, exists := parentNode.Children[info.RelationName]; !exists {
 								parentNode.Children[info.RelationName] = make(map[any]*RecordNode)
 							}
+							// Check if this is a single-value relation (many-to-one or one-to-one)
+							if info.Relation.Type == schema.RelationManyToOne || info.Relation.Type == schema.RelationOneToOne {
+								// For single-value relations, we should only have one child
+								// Clear any existing entries (in case of duplicates)
+								parentNode.Children[info.RelationName] = make(map[any]*RecordNode)
+							}
 							parentNode.Children[info.RelationName][recordID] = node
+						} else {
+							// fmt.Printf("[DEBUG] Parent node not found for alias %s with ID %v\n", info.ParentAlias, parentID)
 						}
 					}
 				}
@@ -251,6 +273,7 @@ func (hs *HierarchicalScanner) nodeToMap(node *RecordNode) map[string]any {
 
 	// Add nested relations
 	for relationName, children := range node.Children {
+		// fmt.Printf("[DEBUG] nodeToMap: processing relation %s with %d children\n", relationName, len(children))
 		// Find the relation info to determine if it's one-to-many or many-to-one
 		var relationType schema.RelationType
 		for _, info := range hs.joinInfo {

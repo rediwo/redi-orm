@@ -10,7 +10,11 @@ import (
 )
 
 func TestPostgreSQLArrayTypes(t *testing.T) {
-	config := test.GetTestConfig("postgresql")
+	uri := test.GetTestDatabaseUri("postgresql")
+	config, err := NewPostgreSQLURIParser().ParseURI(uri)
+	if err != nil {
+		t.Skipf("Failed to parse PostgreSQL URI: %v", err)
+	}
 	if config.Host == "" {
 		t.Skip("PostgreSQL test connection not configured")
 	}
@@ -23,6 +27,9 @@ func TestPostgreSQLArrayTypes(t *testing.T) {
 	err = db.Connect(ctx)
 	require.NoError(t, err)
 
+	// Clean up any existing tables first
+	cleanupTables(t, db)
+	
 	// Create test database with cleanup
 	td := test.NewTestDatabase(t, db, config, func() {
 		cleanupTables(t, db)
@@ -37,9 +44,9 @@ func TestPostgreSQLArrayTypes(t *testing.T) {
 	_, err = db.Exec("ALTER TABLE users ADD COLUMN tags TEXT[]")
 	require.NoError(t, err)
 
-	// Insert user with array
-	_, err = db.Exec("INSERT INTO users (name, email, age, tags) VALUES ($1, $2, $3, $4)",
-		"Henry", "henry@example.com", 28, "{developer,golang,postgres}")
+	// Insert user with array (include active field to satisfy NOT NULL constraint)
+	_, err = db.Exec("INSERT INTO users (name, email, age, active, tags) VALUES ($1, $2, $3, $4, $5)",
+		"Henry", "henry@example.com", 28, true, "{developer,golang,postgres}")
 	require.NoError(t, err)
 
 	// Query array contains
@@ -63,7 +70,11 @@ func TestPostgreSQLArrayTypes(t *testing.T) {
 }
 
 func TestPostgreSQLJSONTypes(t *testing.T) {
-	config := test.GetTestConfig("postgresql")
+	uri := test.GetTestDatabaseUri("postgresql")
+	config, err := NewPostgreSQLURIParser().ParseURI(uri)
+	if err != nil {
+		t.Skipf("Failed to parse PostgreSQL URI: %v", err)
+	}
 	if config.Host == "" {
 		t.Skip("PostgreSQL test connection not configured")
 	}
@@ -129,7 +140,11 @@ func TestPostgreSQLJSONTypes(t *testing.T) {
 }
 
 func TestPostgreSQLCaseSensitivity(t *testing.T) {
-	config := test.GetTestConfig("postgresql")
+	uri := test.GetTestDatabaseUri("postgresql")
+	config, err := NewPostgreSQLURIParser().ParseURI(uri)
+	if err != nil {
+		t.Skipf("Failed to parse PostgreSQL URI: %v", err)
+	}
 	if config.Host == "" {
 		t.Skip("PostgreSQL test connection not configured")
 	}

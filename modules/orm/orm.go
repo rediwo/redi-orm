@@ -17,7 +17,7 @@ import (
 // ModelsModule provides Prisma-like database operations
 type ModelsModule struct {
 	loop    *eventloop.EventLoop
-	db      types.Database // TODO: Currently unused, will be used for transaction support
+	db      types.Database // Used for storing database reference
 	schemas map[string]*schema.Schema
 }
 

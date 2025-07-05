@@ -122,6 +122,7 @@ func (b *JoinBuilder) AddRelationJoin(
 		RelationPath: relationName, // Will be updated in AddNestedRelationJoin for nested paths
 	}
 
+	// fmt.Printf("[DEBUG] Adding join: %s AS %s (relation: %s, parent: %s)\n", relatedTable, alias, relationName, fromAlias)
 	b.joins = append(b.joins, join)
 	return nil
 }
@@ -229,6 +230,7 @@ func (b *JoinBuilder) BuildSQL() string {
 			fieldMapper := types.NewDefaultFieldMapper()
 			fieldMapper.RegisterSchema(join.Relation.Model, join.Schema)
 			ctx := types.NewConditionContext(fieldMapper, join.Relation.Model, join.Alias)
+			ctx.QuoteIdentifier = b.database.QuoteIdentifier
 
 			// Build the WHERE condition SQL
 			whereSql, whereArgs := includeOpt.Where.ToSQL(ctx)

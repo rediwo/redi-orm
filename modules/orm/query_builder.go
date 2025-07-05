@@ -131,52 +131,72 @@ func (m *ModelsModule) BuildCondition(where any) types.Condition {
 func (m *ModelsModule) buildFieldCondition(field string, value any) types.Condition {
 	// Create a field condition that supports proper mapping
 	fieldCond := types.NewFieldCondition("", field)
-	
+
 	// Check if value is an operator object
 	if valueMap, ok := value.(map[string]any); ok {
-		// Handle operators
+		// Handle operators - collect all conditions for this field
+		var fieldConditions []types.Condition
+		
 		for op, val := range valueMap {
+			var cond types.Condition
 			switch op {
 			case "equals":
-				return fieldCond.Equals(val)
+				cond = fieldCond.Equals(val)
 			case "not":
-				return fieldCond.NotEquals(val)
+				if val == nil {
+					cond = fieldCond.IsNotNull()
+				} else {
+					cond = fieldCond.NotEquals(val)
+				}
 			case "in":
 				if values, ok := val.([]any); ok {
-					return fieldCond.In(values...)
+					cond = fieldCond.In(values...)
 				}
-				return nil
 			case "notIn":
 				if values, ok := val.([]any); ok {
-					return fieldCond.NotIn(values...)
+					cond = fieldCond.NotIn(values...)
 				}
-				return nil
 			case "lt":
-				return fieldCond.LessThan(val)
+				cond = fieldCond.LessThan(val)
 			case "lte":
-				return fieldCond.LessThanOrEqual(val)
+				cond = fieldCond.LessThanOrEqual(val)
 			case "gt":
-				return fieldCond.GreaterThan(val)
+				cond = fieldCond.GreaterThan(val)
 			case "gte":
-				return fieldCond.GreaterThanOrEqual(val)
+				cond = fieldCond.GreaterThanOrEqual(val)
 			case "contains":
 				if strVal, ok := val.(string); ok {
-					return fieldCond.Contains(strVal)
+					cond = fieldCond.Contains(strVal)
+				} else {
+					cond = fieldCond.Contains(fmt.Sprintf("%v", val))
 				}
-				return fieldCond.Contains(fmt.Sprintf("%v", val))
 			case "startsWith":
 				if strVal, ok := val.(string); ok {
-					return fieldCond.StartsWith(strVal)
+					cond = fieldCond.StartsWith(strVal)
+				} else {
+					cond = fieldCond.StartsWith(fmt.Sprintf("%v", val))
 				}
-				return fieldCond.StartsWith(fmt.Sprintf("%v", val))
 			case "endsWith":
 				if strVal, ok := val.(string); ok {
-					return fieldCond.EndsWith(strVal)
+					cond = fieldCond.EndsWith(strVal)
+				} else {
+					cond = fieldCond.EndsWith(fmt.Sprintf("%v", val))
 				}
-				return fieldCond.EndsWith(fmt.Sprintf("%v", val))
+			}
+			
+			if cond != nil {
+				fieldConditions = append(fieldConditions, cond)
 			}
 		}
-		return nil
+		
+		// If we have multiple conditions for the same field, combine them with AND
+		if len(fieldConditions) == 0 {
+			return nil
+		}
+		if len(fieldConditions) == 1 {
+			return fieldConditions[0]
+		}
+		return types.NewAndCondition(fieldConditions...)
 	}
 
 	// Direct value comparison
@@ -199,17 +219,12 @@ func (m *ModelsModule) buildNotInCondition(field string, values []any) types.Con
 }
 
 // applyOrderBy applies orderBy conditions to a query
-func (m *ModelsModule) applyOrderBy(query any, orderBy any) {
-	switch q := query.(type) {
-	case types.SelectQuery:
-		m.applyOrderByToQuery(q, orderBy)
-	case types.ModelQuery:
-		m.applyOrderByToQuery(q, orderBy)
-	}
+func (m *ModelsModule) applyOrderBy(query any, orderBy any) any {
+	return m.applyOrderByToQuery(query, orderBy)
 }
 
 // applyOrderByToQuery handles different orderBy formats
-func (m *ModelsModule) applyOrderByToQuery(query any, orderBy any) {
+func (m *ModelsModule) applyOrderByToQuery(query any, orderBy any) any {
 	// Handle single orderBy object: { field: 'asc' }
 	if orderMap, ok := orderBy.(map[string]any); ok {
 		for field, direction := range orderMap {
@@ -220,12 +235,12 @@ func (m *ModelsModule) applyOrderByToQuery(query any, orderBy any) {
 
 			switch q := query.(type) {
 			case types.SelectQuery:
-				q.OrderBy(field, dir)
+				query = q.OrderBy(field, dir)
 			case types.ModelQuery:
-				q.OrderBy(field, dir)
+				query = q.OrderBy(field, dir)
 			}
 		}
-		return
+		return query
 	}
 
 	// Handle array of orderBy objects: [{ field: 'asc' }, { field2: 'desc' }]
@@ -240,12 +255,15 @@ func (m *ModelsModule) applyOrderByToQuery(query any, orderBy any) {
 
 					switch q := query.(type) {
 					case types.SelectQuery:
-						q.OrderBy(field, dir)
+						query = q.OrderBy(field, dir)
 					case types.ModelQuery:
-						q.OrderBy(field, dir)
+						query = q.OrderBy(field, dir)
 					}
 				}
 			}
 		}
+		return query
 	}
+	
+	return query
 }

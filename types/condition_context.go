@@ -2,10 +2,11 @@ package types
 
 // ConditionContext provides context information for SQL generation
 type ConditionContext struct {
-	FieldMapper  FieldMapper
-	ModelName    string
-	TableAlias   string
-	JoinedTables map[string]JoinInfo // For complex queries with joins
+	FieldMapper     FieldMapper
+	ModelName       string
+	TableAlias      string
+	JoinedTables    map[string]JoinInfo // For complex queries with joins
+	QuoteIdentifier func(string) string  // Function to quote identifiers
 }
 
 // JoinInfo contains information about a joined table
@@ -38,8 +39,16 @@ func (ctx *ConditionContext) MapFieldToColumn(fieldName string) (string, error) 
 		columnName = fieldName
 	}
 
+	// Quote the column name if quote function is available
+	if ctx.QuoteIdentifier != nil {
+		columnName = ctx.QuoteIdentifier(columnName)
+	}
+
 	// Add table alias if present
 	if ctx.TableAlias != "" {
+		if ctx.QuoteIdentifier != nil {
+			return ctx.QuoteIdentifier(ctx.TableAlias) + "." + columnName, nil
+		}
 		return ctx.TableAlias + "." + columnName, nil
 	}
 

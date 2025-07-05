@@ -174,7 +174,8 @@ func (q *UpdateQueryImpl) BuildSQL() (string, []any, error) {
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to map field %s: %w", fieldName, err)
 		}
-		setParts = append(setParts, fmt.Sprintf("%s = ?", columnName))
+		quotedColumnName := q.database.QuoteIdentifier(columnName)
+		setParts = append(setParts, fmt.Sprintf("%s = ?", quotedColumnName))
 		args = append(args, value)
 	}
 
@@ -184,12 +185,13 @@ func (q *UpdateQueryImpl) BuildSQL() (string, []any, error) {
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to map field %s: %w", fieldName, err)
 		}
+		quotedColumnName := q.database.QuoteIdentifier(columnName)
 
 		switch op.Type {
 		case "increment":
-			setParts = append(setParts, fmt.Sprintf("%s = %s + ?", columnName, columnName))
+			setParts = append(setParts, fmt.Sprintf("%s = %s + ?", quotedColumnName, quotedColumnName))
 		case "decrement":
-			setParts = append(setParts, fmt.Sprintf("%s = %s - ?", columnName, columnName))
+			setParts = append(setParts, fmt.Sprintf("%s = %s - ?", quotedColumnName, quotedColumnName))
 		}
 		args = append(args, op.Value)
 	}
@@ -207,13 +209,17 @@ func (q *UpdateQueryImpl) BuildSQL() (string, []any, error) {
 		args = append(args, whereArgs...)
 	}
 
-	// Add RETURNING clause if specified
-	if len(q.returningFields) > 0 {
+	// Add RETURNING clause if specified and supported
+	if len(q.returningFields) > 0 && q.database.SupportsReturning() {
 		returningColumns, err := q.fieldMapper.SchemaFieldsToColumns(q.modelName, q.returningFields)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to map returning fields: %w", err)
 		}
-		sql.WriteString(fmt.Sprintf(" RETURNING %s", strings.Join(returningColumns, ", ")))
+		quotedReturningColumns := make([]string, len(returningColumns))
+		for i, columnName := range returningColumns {
+			quotedReturningColumns[i] = q.database.QuoteIdentifier(columnName)
+		}
+		sql.WriteString(fmt.Sprintf(" RETURNING %s", strings.Join(quotedReturningColumns, ", ")))
 	}
 
 	return sql.String(), args, nil
@@ -227,6 +233,7 @@ func (q *UpdateQueryImpl) buildWhereClause(conditions []types.Condition) (string
 
 	// Create condition context (no table alias for UPDATE)
 	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, "")
+	ctx.QuoteIdentifier = q.database.QuoteIdentifier
 
 	var conditionSQLs []string
 	var args []any

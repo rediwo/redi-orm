@@ -2,8 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/rediwo/redi-orm/test"
@@ -12,14 +10,10 @@ import (
 )
 
 func TestSQLiteCaseSensitivity(t *testing.T) {
-	// Create temporary directory for SQLite database
-	tempDir, err := os.MkdirTemp("", "sqlite-test-*")
+	// Get test database URI and parse it
+	uri := test.GetTestDatabaseUri("sqlite")
+	config, err := NewSQLiteURIParser().ParseURI(uri)
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
-	dbPath := filepath.Join(tempDir, "test.db")
-	config := test.GetTestConfig("sqlite")
-	config.FilePath = dbPath
 
 	db, err := NewSQLiteDB(config)
 	require.NoError(t, err)
@@ -29,6 +23,9 @@ func TestSQLiteCaseSensitivity(t *testing.T) {
 	err = db.Connect(ctx)
 	require.NoError(t, err)
 
+	// Clean up any existing tables first
+	cleanupTables(t, db)
+	
 	// Create test database with cleanup
 	td := test.NewTestDatabase(t, db, config, func() {
 		cleanupTables(t, db)

@@ -153,7 +153,7 @@ func (d *Differ) computeTableDiff(s *schema.Schema) ([]types.SchemaChange, error
 			IndexName: change.IndexName,
 			SQL:       d.migrator.GenerateDropIndexSQL(change.IndexName),
 		}
-		
+
 		// Store index definition for rollback
 		if change.OldIndex != nil {
 			schemaChange.IndexDef = &types.IndexDefinition{
@@ -162,7 +162,7 @@ func (d *Differ) computeTableDiff(s *schema.Schema) ([]types.SchemaChange, error
 				Unique:  change.OldIndex.Unique,
 			}
 		}
-		
+
 		changes = append(changes, schemaChange)
 	}
 

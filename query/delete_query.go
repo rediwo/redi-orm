@@ -106,6 +106,7 @@ func (q *DeleteQueryImpl) buildWhereClause(conditions []types.Condition) (string
 
 	// Create condition context (no table alias for DELETE)
 	ctx := types.NewConditionContext(q.fieldMapper, q.modelName, "")
+	ctx.QuoteIdentifier = q.database.QuoteIdentifier
 
 	var conditionSQLs []string
 	var args []any

@@ -407,6 +407,16 @@ func (p *PostgreSQLDB) quoteIdentifier(name string) string {
 	return fmt.Sprintf(`"%s"`, name)
 }
 
+// QuoteIdentifier quotes an identifier for PostgreSQL using double quotes
+func (p *PostgreSQLDB) QuoteIdentifier(name string) string {
+	return p.quoteIdentifier(name)
+}
+
+// SupportsReturning returns true for PostgreSQL as it supports RETURNING clause
+func (p *PostgreSQLDB) SupportsReturning() bool {
+	return true
+}
+
 // convertPlaceholders converts ? placeholders to $1, $2, etc. for PostgreSQL
 func convertPlaceholders(sql string) string {
 	var result strings.Builder

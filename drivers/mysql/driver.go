@@ -384,6 +384,16 @@ func (m *MySQLDB) GetDriverType() string {
 	return "mysql"
 }
 
+// QuoteIdentifier quotes an identifier for MySQL using backticks
+func (m *MySQLDB) QuoteIdentifier(name string) string {
+	return "`" + name + "`"
+}
+
+// SupportsDefaultValues returns false for MySQL as it doesn't support DEFAULT VALUES syntax
+func (m *MySQLDB) SupportsDefaultValues() bool {
+	return false
+}
+
 func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {
 	return NewMySQLMigrator(m.DB, m)
 }

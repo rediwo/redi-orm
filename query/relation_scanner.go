@@ -11,11 +11,12 @@ import (
 
 // RelationScanner handles scanning results from queries with joins
 type RelationScanner struct {
-	mainSchema    *schema.Schema
-	mainAlias     string                      // alias of the main table
-	joinedSchemas map[string]*schema.Schema   // alias -> schema
-	relations     map[string]*schema.Relation // alias -> relation
-	relationNames map[string]string           // alias -> relation field name
+	mainSchema       *schema.Schema
+	mainAlias        string                      // alias of the main table
+	joinedSchemas    map[string]*schema.Schema   // alias -> schema
+	relations        map[string]*schema.Relation // alias -> relation
+	relationNames    map[string]string           // alias -> relation field name
+	includeProcessor *IncludeProcessor           // processor for include options
 }
 
 // NewRelationScanner creates a new relation scanner
@@ -27,6 +28,11 @@ func NewRelationScanner(mainSchema *schema.Schema, mainAlias string) *RelationSc
 		relations:     make(map[string]*schema.Relation),
 		relationNames: make(map[string]string),
 	}
+}
+
+// SetIncludeProcessor sets the include processor for filtering and ordering
+func (rs *RelationScanner) SetIncludeProcessor(processor *IncludeProcessor) {
+	rs.includeProcessor = processor
 }
 
 // AddJoinedTable adds information about a joined table
@@ -177,6 +183,38 @@ func (rs *RelationScanner) scanRowsToMapsWithRelations(rows *sql.Rows, dest any)
 
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	// Apply include processing to relation data if processor is set
+	if rs.includeProcessor != nil {
+		for _, mainRecord := range mainRecords {
+			for alias, relation := range rs.relations {
+				relationName := rs.relationNames[alias]
+				
+				// Process one-to-many relations
+				if relation.Type == schema.RelationOneToMany {
+					if arr, ok := mainRecord[relationName].([]any); ok && len(arr) > 0 {
+						// Convert to map array for processing
+						mapArray := make([]map[string]any, len(arr))
+						for i, item := range arr {
+							if m, ok := item.(map[string]any); ok {
+								mapArray[i] = m
+							}
+						}
+						
+						// Process with include options
+						mapArray = rs.includeProcessor.ProcessRelationData(relationName, mapArray)
+						
+						// Convert back to any array
+						anyArray := make([]any, len(mapArray))
+						for i, m := range mapArray {
+							anyArray[i] = m
+						}
+						mainRecord[relationName] = anyArray
+					}
+				}
+			}
+		}
 	}
 
 	// Build final result array in original order

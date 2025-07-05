@@ -131,7 +131,7 @@ func (c *Converter) convertField(field *Field) (schema.Field, error) {
 				// Check if the default value is autoincrement()
 				if fc, ok := attr.Args[0].(*FunctionCall); ok && fc.Name == "autoincrement" {
 					f.AutoIncrement = true
-					f.Default = "AUTO_INCREMENT"
+					// Don't set Default value for autoincrement - it's handled by the AutoIncrement flag
 				} else {
 					defaultValue, err := c.convertExpression(attr.Args[0])
 					if err != nil {
@@ -251,7 +251,8 @@ func (c *Converter) convertExpression(expr Expression) (any, error) {
 	case *FunctionCall:
 		switch e.Name {
 		case "autoincrement":
-			return "AUTO_INCREMENT", nil
+			// autoincrement should be handled by the AutoIncrement flag, not as a default value
+			return "", nil
 		case "now":
 			return "CURRENT_TIMESTAMP", nil
 		case "uuid":
@@ -579,11 +580,11 @@ func (c *Converter) fixInverseRelationForeignKeys() error {
 				if !exists {
 					continue
 				}
-				
+
 				// Look for the inverse ManyToOne relation
 				for _, relatedRelation := range relatedSchema.Relations {
-					if relatedRelation.Type == schema.RelationManyToOne && 
-					   relatedRelation.Model == modelName {
+					if relatedRelation.Type == schema.RelationManyToOne &&
+						relatedRelation.Model == modelName {
 						// Found the inverse relation - copy its foreign key
 						if relatedRelation.ForeignKey != "" {
 							relation.ForeignKey = relatedRelation.ForeignKey
@@ -596,6 +597,6 @@ func (c *Converter) fixInverseRelationForeignKeys() error {
 			}
 		}
 	}
-	
+
 	return nil
 }

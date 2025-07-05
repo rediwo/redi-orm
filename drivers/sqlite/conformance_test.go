@@ -3,8 +3,6 @@ package sqlite
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/rediwo/redi-orm/test"
@@ -16,20 +14,11 @@ func TestSQLiteConformance(t *testing.T) {
 		t.Skip("Skipping conformance tests in short mode")
 	}
 
-	// Create a temporary directory for SQLite database
-	tempDir, err := os.MkdirTemp("", "sqlite-test-*")
+	// Get test database URI and parse it
+	uri := test.GetTestDatabaseUri("sqlite")
+	config, err := NewSQLiteURIParser().ParseURI(uri)
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	t.Cleanup(func() {
-		os.RemoveAll(tempDir)
-	})
-
-	dbPath := filepath.Join(tempDir, "test.db")
-
-	config := types.Config{
-		Type:     "sqlite",
-		FilePath: dbPath,
+		t.Fatalf("Failed to parse SQLite URI: %v", err)
 	}
 
 	suite := &test.DriverConformanceTests{
@@ -40,8 +29,8 @@ func TestSQLiteConformance(t *testing.T) {
 		Config: config,
 		SkipTests: map[string]bool{
 			// SQLite-specific skips
-			"TestTransactionIsolation":        true, // SQLite has limited transaction isolation support
-			"TestTransactionConcurrentAccess": true, // SQLite file-based DB has locking issues with concurrent transactions
+			"TestTransactionIsolation":        true, // SQLite doesn't support concurrent write transactions
+			"TestTransactionConcurrentAccess": true, // SQLite uses database-level locking preventing concurrent writes
 		},
 		CleanupTables: func(t *testing.T, db types.Database) {
 			// SQLite with file-based database might benefit from cleanup

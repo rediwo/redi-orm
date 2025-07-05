@@ -280,6 +280,25 @@ func (b *Driver) GetBooleanLiteral(value bool) string {
 	return "0"
 }
 
+// QuoteIdentifier quotes an identifier (table/column name) for SQL queries
+// This default implementation returns the identifier unquoted
+// Database drivers should override this with their specific quoting mechanism
+func (b *Driver) QuoteIdentifier(name string) string {
+	return name
+}
+
+// SupportsDefaultValues returns whether the database supports DEFAULT VALUES syntax
+// This default implementation returns true - drivers should override if they don't support it
+func (b *Driver) SupportsDefaultValues() bool {
+	return true
+}
+
+// SupportsReturning returns whether the database supports RETURNING clause
+// This default implementation returns false - drivers should override if they support it
+func (b *Driver) SupportsReturning() bool {
+	return false
+}
+
 // syncSchemasWithDeferredConstraints handles circular dependencies by creating tables without FK first
 func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db types.Database, schemas map[string]*schema.Schema, currentTableMap map[string]bool) error {
 	migrator := db.GetMigrator()

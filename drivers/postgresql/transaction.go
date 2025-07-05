@@ -153,6 +153,21 @@ func (t *PostgreSQLTransactionDB) GetBooleanLiteral(value bool) string {
 	return t.PostgreSQLDB.GetBooleanLiteral(value)
 }
 
+// QuoteIdentifier quotes an identifier for PostgreSQL
+func (t *PostgreSQLTransactionDB) QuoteIdentifier(name string) string {
+	return t.PostgreSQLDB.QuoteIdentifier(name)
+}
+
+// SupportsDefaultValues delegates to the main database
+func (t *PostgreSQLTransactionDB) SupportsDefaultValues() bool {
+	return t.PostgreSQLDB.SupportsDefaultValues()
+}
+
+// SupportsReturning delegates to the main database
+func (t *PostgreSQLTransactionDB) SupportsReturning() bool {
+	return t.PostgreSQLDB.SupportsReturning()
+}
+
 // Raw creates a raw query within the transaction
 func (t *PostgreSQLTransactionDB) Raw(query string, args ...any) types.RawQuery {
 	return &PostgreSQLTransactionRawQuery{

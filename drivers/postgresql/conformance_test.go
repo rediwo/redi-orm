@@ -15,7 +15,11 @@ func TestPostgreSQLConformance(t *testing.T) {
 	}
 
 	// Skip if PostgreSQL is not available
-	config := test.GetTestConfig("postgresql")
+	uri := test.GetTestDatabaseUri("postgresql")
+	config, err := NewPostgreSQLURIParser().ParseURI(uri)
+	if err != nil {
+		t.Skipf("Failed to parse PostgreSQL URI: %v", err)
+	}
 	db, err := NewPostgreSQLDB(config)
 	if err != nil {
 		t.Skip("PostgreSQL not available for testing")

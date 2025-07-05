@@ -66,6 +66,18 @@ func (m *mockDatabase) GetBooleanLiteral(value bool) string {
 	return "0"
 }
 
+func (m *mockDatabase) QuoteIdentifier(name string) string {
+	return "`" + name + "`"
+}
+
+func (m *mockDatabase) SupportsDefaultValues() bool {
+	return true
+}
+
+func (m *mockDatabase) SupportsReturning() bool {
+	return false
+}
+
 type mockFieldMapper struct{}
 
 func (m *mockFieldMapper) SchemaToColumn(modelName, fieldName string) (string, error) {
@@ -202,7 +214,7 @@ func TestSelectQuery_IncludeWithWhere(t *testing.T) {
 
 	// Verify WHERE clause has table alias
 	assert.Contains(t, sql, "WHERE")
-	assert.Contains(t, sql, "u.id = ?")
+	assert.Contains(t, sql, "`u`.`id` = ?")
 
 	// Verify join is present
 	assert.Contains(t, sql, "LEFT JOIN")

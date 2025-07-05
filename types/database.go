@@ -116,6 +116,11 @@ type Database interface {
 	GetModels() []string
 	GetModelSchema(modelName string) (*schema.Schema, error)
 	GetDriverType() string
+	
+	// SQL Utilities
+	QuoteIdentifier(name string) string
+	SupportsDefaultValues() bool
+	SupportsReturning() bool
 
 	// Internal field mapping (used by driver implementations)
 	ResolveTableName(modelName string) (string, error)
@@ -188,6 +193,7 @@ type SelectQuery interface {
 	Limit(limit int) SelectQuery
 	Offset(offset int) SelectQuery
 	Distinct() SelectQuery
+	DistinctOn(fieldNames ...string) SelectQuery
 
 	// Execution
 	FindMany(ctx context.Context, dest any) error

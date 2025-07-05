@@ -1,10 +1,12 @@
 package query
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // IncludeProcessor handles processing of include options for relation loading
@@ -43,8 +45,7 @@ func (ip *IncludeProcessor) ProcessRelationData(relationPath string, data []map[
 
 	// Apply ordering
 	if len(opt.OrderBy) > 0 {
-		// TODO: Implement ordering
-		// This would require a custom sort function
+		ip.sortData(data, opt.OrderBy, relationPath)
 	}
 
 	// Apply limit and offset
@@ -151,4 +152,102 @@ func (ip *IncludeProcessor) GetSelectFields(relationPath string, schema *schema.
 	}
 
 	return fields
+}
+
+// sortData sorts the data array based on the orderBy options
+func (ip *IncludeProcessor) sortData(data []map[string]any, orderBy []types.OrderByOption, relationPath string) {
+	if len(data) == 0 || len(orderBy) == 0 {
+		return
+	}
+
+	sort.Slice(data, func(i, j int) bool {
+		for _, order := range orderBy {
+			// Get values from both records
+			valI, okI := data[i][order.Field]
+			valJ, okJ := data[j][order.Field]
+
+			// Handle nil/missing values
+			if !okI && !okJ {
+				continue // Both nil, check next order field
+			}
+			if !okI {
+				return order.Direction == types.DESC // nil values go to end for ASC, start for DESC
+			}
+			if !okJ {
+				return order.Direction == types.ASC // nil values go to end for ASC, start for DESC
+			}
+
+			// Compare values based on type
+			cmp := ip.compareValues(valI, valJ)
+			if cmp == 0 {
+				continue // Equal, check next order field
+			}
+
+			if order.Direction == types.ASC {
+				return cmp < 0
+			}
+			return cmp > 0
+		}
+		return false // All fields equal
+	})
+}
+
+// compareValues compares two values and returns -1, 0, or 1
+func (ip *IncludeProcessor) compareValues(a, b any) int {
+	// Handle same types
+	switch va := a.(type) {
+	case int:
+		vb, ok := b.(int)
+		if ok {
+			if va < vb {
+				return -1
+			} else if va > vb {
+				return 1
+			}
+			return 0
+		}
+	case int64:
+		vb, ok := b.(int64)
+		if ok {
+			if va < vb {
+				return -1
+			} else if va > vb {
+				return 1
+			}
+			return 0
+		}
+	case float64:
+		vb, ok := b.(float64)
+		if ok {
+			if va < vb {
+				return -1
+			} else if va > vb {
+				return 1
+			}
+			return 0
+		}
+	case string:
+		vb, ok := b.(string)
+		if ok {
+			return strings.Compare(va, vb)
+		}
+	}
+
+	// Try to convert to common types for comparison
+	// Try float64 first (works for all numeric types)
+	fa := utils.ToFloat64(a)
+	fb := utils.ToFloat64(b)
+	if fa < fb {
+		return -1
+	} else if fa > fb {
+		return 1
+	} else if fa != 0 || fb != 0 {
+		// At least one value was numeric and they're equal
+		return 0
+	}
+
+	// Try string comparison as fallback
+	sa := utils.ToString(a)
+	sb := utils.ToString(b)
+	return strings.Compare(sa, sb)
 }

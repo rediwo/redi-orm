@@ -138,6 +138,21 @@ func (tdb *MySQLTransactionDB) GetBooleanLiteral(value bool) string {
 	return tdb.db.GetBooleanLiteral(value)
 }
 
+// QuoteIdentifier delegates to the main database
+func (tdb *MySQLTransactionDB) QuoteIdentifier(name string) string {
+	return tdb.db.QuoteIdentifier(name)
+}
+
+// SupportsDefaultValues delegates to the main database
+func (tdb *MySQLTransactionDB) SupportsDefaultValues() bool {
+	return tdb.db.SupportsDefaultValues()
+}
+
+// SupportsReturning delegates to the main database
+func (tdb *MySQLTransactionDB) SupportsReturning() bool {
+	return tdb.db.SupportsReturning()
+}
+
 // ResolveTableName delegates to the main database
 func (tdb *MySQLTransactionDB) ResolveTableName(modelName string) (string, error) {
 	return tdb.db.ResolveTableName(modelName)

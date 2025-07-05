@@ -10,7 +10,11 @@ import (
 )
 
 func TestMySQLCaseSensitivity(t *testing.T) {
-	config := test.GetTestConfig("mysql")
+	uri := test.GetTestDatabaseUri("mysql")
+	config, err := NewMySQLURIParser().ParseURI(uri)
+	if err != nil {
+		t.Skipf("Failed to parse MySQL URI: %v", err)
+	}
 	if config.Host == "" {
 		t.Skip("MySQL test connection not configured")
 	}
