@@ -47,6 +47,9 @@ func cleanupTablesJS(t *testing.T, runner *orm.JSTestRunner) {
 			"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
 		);
 		
+		// Disable foreign key constraints temporarily
+		await db.executeRaw('PRAGMA foreign_keys = OFF');
+		
 		// Drop each table
 		for (const table of tables) {
 			try {
@@ -56,6 +59,9 @@ func cleanupTablesJS(t *testing.T, runner *orm.JSTestRunner) {
 				console.error('Failed to drop table', table.name, ':', err.message);
 			}
 		}
+		
+		// Re-enable foreign key constraints
+		await db.executeRaw('PRAGMA foreign_keys = ON');
 	`
 	
 	err := runner.RunCleanupScript(cleanupScript)

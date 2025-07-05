@@ -14,6 +14,7 @@ type IncludeProcessor struct {
 	database       types.Database
 	fieldMapper    types.FieldMapper
 	includeOptions types.IncludeOptions
+	evaluator      *ConditionEvaluator
 }
 
 // NewIncludeProcessor creates a new include processor
@@ -22,6 +23,7 @@ func NewIncludeProcessor(database types.Database, fieldMapper types.FieldMapper,
 		database:       database,
 		fieldMapper:    fieldMapper,
 		includeOptions: includeOptions,
+		evaluator:      NewConditionEvaluator(fieldMapper),
 	}
 }
 
@@ -92,6 +94,10 @@ func (ip *IncludeProcessor) ProcessRelationData(relationPath string, data []map[
 
 // matchesCondition checks if a record matches the given condition
 func (ip *IncludeProcessor) matchesCondition(record map[string]any, condition types.Condition, relationPath string) bool {
+	if condition == nil {
+		return true
+	}
+
 	// Extract model name from relation path
 	parts := strings.Split(relationPath, ".")
 	modelName := ""
@@ -99,19 +105,11 @@ func (ip *IncludeProcessor) matchesCondition(record map[string]any, condition ty
 		// Get the last part as the relation name
 		relationName := parts[len(parts)-1]
 		// Try to infer the model name from the relation name
-		// This is a simplified approach - in production, we'd need better mapping
 		modelName = ip.inferModelName(relationName)
 	}
 
-	// Create a simple condition context for evaluation
-	_ = types.NewConditionContext(ip.fieldMapper, modelName, "")
-
-	// For now, we'll do a simple evaluation
-	// In a real implementation, we'd need to properly evaluate the condition
-	// against the record data
-
-	// This is a placeholder - actual condition evaluation would be more complex
-	return true
+	// Use the condition evaluator to check if the record matches
+	return ip.evaluator.Evaluate(condition, record, modelName)
 }
 
 // inferModelName tries to infer the model name from a relation name

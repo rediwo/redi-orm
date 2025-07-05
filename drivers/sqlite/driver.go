@@ -306,6 +306,18 @@ func (s *SQLiteDB) QuoteIdentifier(name string) string {
 	return "\"" + name + "\""
 }
 
+// GetNullsOrderingSQL returns the SQL clause for NULL ordering
+// SQLite doesn't support NULLS FIRST/LAST syntax
+func (s *SQLiteDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return "" // SQLite doesn't support NULLS FIRST/LAST
+}
+
+// RequiresLimitForOffset returns true if the database requires LIMIT when using OFFSET
+// SQLite requires LIMIT when using OFFSET
+func (s *SQLiteDB) RequiresLimitForOffset() bool {
+	return true
+}
+
 // mapFieldTypeToSQL maps schema field types to SQLite SQL types
 func (s *SQLiteDB) mapFieldTypeToSQL(fieldType schema.FieldType) string {
 	switch fieldType {

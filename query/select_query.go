@@ -277,18 +277,30 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 	}
 
 	// Build SELECT clause (with table alias support)
-	// If we have distinctOn fields, temporarily override selected fields
-	originalSelectedFields := q.selectedFields
-	if len(q.distinctOn) > 0 && len(q.selectedFields) == 0 {
-		// For distinct on specific fields, we need to select only those fields
-		// for cross-database compatibility
-		q.selectedFields = q.distinctOn
+	// Handle DISTINCT ON for cross-database compatibility
+	var selectClause string
+	if len(q.distinctOn) > 0 {
+		// For DISTINCT ON specific fields, we need special handling
+		// Most databases don't support DISTINCT ON, so we'll use GROUP BY instead
+		// But first, let's build the select clause with the requested fields
+		if len(q.selectedFields) > 0 {
+			// Use the selected fields
+			selectClause = q.buildSelectClause()
+		} else {
+			// If no fields selected, use the distinct fields
+			originalSelectedFields := q.selectedFields
+			q.selectedFields = q.distinctOn
+			selectClause = q.buildSelectClause()
+			q.selectedFields = originalSelectedFields
+		}
+		
+		// Add GROUP BY for the distinct fields to simulate DISTINCT ON
+		if len(q.groupBy) == 0 {
+			q.groupBy = q.distinctOn
+		}
+	} else {
+		selectClause = q.buildSelectClause()
 	}
-	
-	selectClause := q.buildSelectClause()
-	
-	// Restore original selected fields
-	q.selectedFields = originalSelectedFields
 
 	// Build FROM clause with alias
 	fromClause := fmt.Sprintf("FROM %s AS %s", tableName, q.tableAlias)
@@ -492,18 +504,13 @@ func (q *SelectQueryImpl) buildOrderByClause() (string, error) {
 		}
 
 		direction := "ASC"
-		nullsClause := ""
+		nullsLast := true // We want NULL values at the end by default
 		if order.Direction == types.DESC {
 			direction = "DESC"
-			// PostgreSQL sorts NULL values first in DESC order by default
-			// We want consistent behavior across all databases, so add NULLS LAST for PostgreSQL
-			if q.database.GetDriverType() == "postgresql" {
-				nullsClause = " NULLS LAST"
-			}
-		} else {
-			// For ASC order, PostgreSQL sorts NULL values last by default, which is what we want
-			// No need to add NULLS clause for ASC
 		}
+		
+		// Get database-specific NULL ordering SQL
+		nullsClause := q.database.GetNullsOrderingSQL(order.Direction, !nullsLast)
 
 		// Add table alias if present to avoid ambiguity
 		fullColumnName := columnName
@@ -562,9 +569,8 @@ func (q *SelectQueryImpl) buildOffsetClause() string {
 	if q.offset == nil {
 		return ""
 	}
-	// SQLite requires LIMIT when using OFFSET
-	// If no limit is set, use a very large number
-	if q.limit == nil {
+	// Some databases require LIMIT when using OFFSET
+	if q.limit == nil && q.database.RequiresLimitForOffset() {
 		limit := int(^uint(0) >> 1) // Max int value
 		return fmt.Sprintf("LIMIT %d OFFSET %d", limit, *q.offset)
 	}

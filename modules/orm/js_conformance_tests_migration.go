@@ -226,6 +226,222 @@ model Customer {
 		// await db.close();
 	`)
 
+	// Test advanced field mapping scenarios
+	jct.runWithCleanup(t, runner, "AdvancedFieldMapping", `
+		const db = fromUri(TEST_DATABASE_URI);
+		await db.connect();
+		
+		// Schema with complex field and table mappings
+		await db.loadSchema(` + "`" + `
+model UserProfile {
+	id              Int      @id @default(autoincrement())
+	userName        String   @map("user_name") @unique
+	emailAddress    String   @map("email_address")
+	phoneNumber     String?  @map("phone_number")
+	dateOfBirth     DateTime @map("date_of_birth")
+	isEmailVerified Boolean  @default(false) @map("is_email_verified")
+	lastLoginTime   DateTime? @map("last_login_time")
+	profilePicture  String?   @map("profile_picture_url")
+	
+	@@map("user_profiles")
+	@@index([emailAddress])
+	@@index([isEmailVerified, lastLoginTime])
+}
+
+model BlogPost {
+	id            Int       @id @default(autoincrement())
+	postTitle     String    @map("post_title")
+	postContent   String    @map("post_content")
+	authorId      Int       @map("author_id")
+	publishedDate DateTime? @map("published_date")
+	viewCount     Int       @default(0) @map("view_count")
+	isPublished   Boolean   @default(false) @map("is_published")
+	
+	@@map("blog_posts")
+	@@unique([postTitle, authorId])
+}
+` + "`" + `);
+		await db.syncSchemas();
+		
+		// The migration system now creates composite unique indexes automatically
+		// No need to manually create the index
+		
+		
+		// Test creating records with mapped fields
+		const now = new Date();
+		const dob = new Date('1990-01-15');
+		
+		const profile = await db.models.UserProfile.create({
+			data: {
+				userName: 'john_doe',
+				emailAddress: 'john@example.com',
+				phoneNumber: '+1234567890',
+				dateOfBirth: dob,
+				isEmailVerified: true,
+				lastLoginTime: now,
+				profilePicture: 'https://example.com/avatar.jpg'
+			}
+		});
+		
+		console.log('Created profile:', JSON.stringify(profile, null, 2));
+		
+		// Test querying with mapped fields
+		const verifiedUsers = await db.models.UserProfile.findMany({
+			where: { isEmailVerified: true },
+			select: {
+				id: true,
+				userName: true,
+				emailAddress: true
+			}
+		});
+		
+		assert(verifiedUsers.length === 1, 'Should find 1 verified user');
+		
+		// Test complex queries with mapped fields
+		const recentUsers = await db.models.UserProfile.findMany({
+			where: {
+				AND: [
+					{ isEmailVerified: true },
+					{ lastLoginTime: { not: null } }
+				]
+			},
+			orderBy: { lastLoginTime: 'desc' }
+		});
+		
+		assert(recentUsers.length === 1, 'Should find 1 recent user');
+		
+		// Test creating blog post with mapped fields
+		const post = await db.models.BlogPost.create({
+			data: {
+				postTitle: 'My First Blog Post',
+				postContent: 'This is the content of my first blog post.',
+				authorId: profile.id,
+				isPublished: true,
+				publishedDate: now
+			}
+		});
+		
+		// Test unique constraint with mapped fields
+		try {
+			await db.models.BlogPost.create({
+				data: {
+					postTitle: 'My First Blog Post', // Same title
+					postContent: 'Different content',
+					authorId: profile.id, // Same author
+					isPublished: false
+				}
+			});
+			throw new Error('Should have failed with unique constraint');
+		} catch (err) {
+			if (err.message === 'Should have failed with unique constraint') {
+				throw err;
+			}
+			// Expected unique constraint error
+			assert(
+				err.message.includes('unique') || 
+				err.message.includes('UNIQUE') ||
+				err.message.includes('duplicate') ||
+				err.message.includes('Duplicate entry'),
+				'Should get unique constraint error'
+			);
+		}
+		
+		// Test updating with mapped fields
+		await db.models.BlogPost.update({
+			where: { id: post.id },
+			data: { viewCount: 100 }
+		});
+		
+		const updatedPost = await db.models.BlogPost.findUnique({
+			where: { id: post.id }
+		});
+		
+		// Handle field name variations
+		const viewCount = updatedPost.viewCount !== undefined ? updatedPost.viewCount : updatedPost.view_count;
+		assert(viewCount === 100, 'View count should be 100');
+		
+		// await db.close();
+	`)
+
+	// Test table name mapping
+	jct.runWithCleanup(t, runner, "TableNameMapping", `
+		const db = fromUri(TEST_DATABASE_URI);
+		await db.connect();
+		
+		// Schema with custom table names
+		await db.loadSchema(` + "`" + `
+model SystemConfiguration {
+	id    Int    @id @default(autoincrement())
+	key   String @unique
+	value String
+	
+	@@map("sys_config")
+}
+
+model ApplicationLog {
+	id        Int      @id @default(autoincrement())
+	level     String
+	message   String
+	context   String?
+	timestamp DateTime @default(now())
+	
+	@@map("app_logs")
+	@@index([level, timestamp])
+}
+` + "`" + `);
+		await db.syncSchemas();
+		
+		// Test operations with custom table names
+		await db.models.SystemConfiguration.create({
+			data: { key: 'app.version', value: '1.0.0' }
+		});
+		
+		await db.models.SystemConfiguration.create({
+			data: { key: 'app.name', value: 'TestApp' }
+		});
+		
+		// Query using model name, not table name
+		const configs = await db.models.SystemConfiguration.findMany({
+			orderBy: { key: 'asc' }
+		});
+		
+		assert(configs.length === 2, 'Should have 2 configurations');
+		assert(configs[0].key === 'app.name');
+		assert(configs[1].key === 'app.version');
+		
+		// Test with raw query to verify actual table name
+		const rawResult = await db.queryRaw('SELECT COUNT(*) as count FROM sys_config');
+		const count = rawResult[0].count || rawResult[0].COUNT;
+		assert(count == 2, 'Raw query should find 2 records in sys_config table');
+		
+		// Test logging with mapped table
+		await db.models.ApplicationLog.create({
+			data: {
+				level: 'INFO',
+				message: 'Application started',
+				context: JSON.stringify({ version: '1.0.0' })
+			}
+		});
+		
+		await db.models.ApplicationLog.create({
+			data: {
+				level: 'ERROR',
+				message: 'Failed to connect to service',
+				context: JSON.stringify({ service: 'auth', error: 'timeout' })
+			}
+		});
+		
+		// Query logs
+		const errorLogs = await db.models.ApplicationLog.findMany({
+			where: { level: 'ERROR' }
+		});
+		
+		assert(errorLogs.length === 1, 'Should have 1 error log');
+		assert(errorLogs[0].message.includes('Failed to connect'));
+		
+		// await db.close();
+	`)
+
 	// Test enum fields
 	jct.runWithCleanup(t, runner, "EnumFields", `
 		const db = fromUri(TEST_DATABASE_URI);

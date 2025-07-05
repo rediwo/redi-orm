@@ -417,6 +417,21 @@ func (p *PostgreSQLDB) SupportsReturning() bool {
 	return true
 }
 
+// GetNullsOrderingSQL returns the SQL clause for NULL ordering
+// PostgreSQL supports NULLS FIRST/LAST syntax
+func (p *PostgreSQLDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	if nullsFirst {
+		return " NULLS FIRST"
+	}
+	return " NULLS LAST"
+}
+
+// RequiresLimitForOffset returns true if the database requires LIMIT when using OFFSET
+// PostgreSQL doesn't require LIMIT when using OFFSET
+func (p *PostgreSQLDB) RequiresLimitForOffset() bool {
+	return false
+}
+
 // convertPlaceholders converts ? placeholders to $1, $2, etc. for PostgreSQL
 func convertPlaceholders(sql string) string {
 	var result strings.Builder

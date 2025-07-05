@@ -184,6 +184,24 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 			if err := migrator.ApplyMigration(sql); err != nil {
 				return fmt.Errorf("failed to create table %s: %w", sch.TableName, err)
 			}
+
+			// Create indexes for the new table
+			for _, index := range sch.Indexes {
+				// Convert field names to column names
+				columnNames := make([]string, len(index.Fields))
+				for i, fieldName := range index.Fields {
+					if field := sch.GetFieldByName(fieldName); field != nil {
+						columnNames[i] = field.GetColumnName()
+					} else {
+						columnNames[i] = fieldName // Fallback to field name
+					}
+				}
+				
+				indexSQL := migrator.GenerateCreateIndexSQL(sch.TableName, index.Name, columnNames, index.Unique)
+				if err := migrator.ApplyMigration(indexSQL); err != nil {
+					return fmt.Errorf("failed to create index %s on table %s: %w", index.Name, sch.TableName, err)
+				}
+			}
 		} else {
 			// Table exists, check for differences
 			tableInfo, err := migrator.GetTableInfo(sch.TableName)
@@ -299,6 +317,18 @@ func (b *Driver) SupportsReturning() bool {
 	return false
 }
 
+// GetNullsOrderingSQL returns the SQL clause for NULL ordering
+// This default implementation returns empty string - drivers should override if they support NULLS FIRST/LAST
+func (b *Driver) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return ""
+}
+
+// RequiresLimitForOffset returns true if the database requires LIMIT when using OFFSET
+// This default implementation returns true - drivers should override if they don't require it
+func (b *Driver) RequiresLimitForOffset() bool {
+	return true
+}
+
 // syncSchemasWithDeferredConstraints handles circular dependencies by creating tables without FK first
 func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db types.Database, schemas map[string]*schema.Schema, currentTableMap map[string]bool) error {
 	migrator := db.GetMigrator()
@@ -322,6 +352,24 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 			// Try to create without the schema reference to handle circular deps
 			// This is a simplified approach - a full implementation would parse and modify the SQL
 			return fmt.Errorf("failed to create table %s: %w (possible circular dependency)", sch.TableName, err)
+		}
+
+		// Create indexes for the new table
+		for _, index := range sch.Indexes {
+			// Convert field names to column names
+			columnNames := make([]string, len(index.Fields))
+			for i, fieldName := range index.Fields {
+				if field := sch.GetFieldByName(fieldName); field != nil {
+					columnNames[i] = field.GetColumnName()
+				} else {
+					columnNames[i] = fieldName // Fallback to field name
+				}
+			}
+			
+			indexSQL := migrator.GenerateCreateIndexSQL(sch.TableName, index.Name, columnNames, index.Unique)
+			if err := migrator.ApplyMigration(indexSQL); err != nil {
+				return fmt.Errorf("failed to create index %s on table %s: %w", index.Name, sch.TableName, err)
+			}
 		}
 	}
 

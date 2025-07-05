@@ -153,6 +153,16 @@ func (tdb *MySQLTransactionDB) SupportsReturning() bool {
 	return tdb.db.SupportsReturning()
 }
 
+// GetNullsOrderingSQL delegates to the main database
+func (tdb *MySQLTransactionDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return tdb.db.GetNullsOrderingSQL(direction, nullsFirst)
+}
+
+// RequiresLimitForOffset delegates to the main database
+func (tdb *MySQLTransactionDB) RequiresLimitForOffset() bool {
+	return tdb.db.RequiresLimitForOffset()
+}
+
 // ResolveTableName delegates to the main database
 func (tdb *MySQLTransactionDB) ResolveTableName(modelName string) (string, error) {
 	return tdb.db.ResolveTableName(modelName)

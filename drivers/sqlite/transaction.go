@@ -164,6 +164,14 @@ func (td *SQLiteTransactionDB) SupportsReturning() bool {
 	return td.database.SupportsReturning()
 }
 
+func (td *SQLiteTransactionDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return td.database.GetNullsOrderingSQL(direction, nullsFirst)
+}
+
+func (td *SQLiteTransactionDB) RequiresLimitForOffset() bool {
+	return td.database.RequiresLimitForOffset()
+}
+
 func (td *SQLiteTransactionDB) ResolveTableName(modelName string) (string, error) {
 	return td.database.ResolveTableName(modelName)
 }

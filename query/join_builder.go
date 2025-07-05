@@ -218,12 +218,19 @@ func (b *JoinBuilder) BuildSQL() string {
 	var parts []string
 	for _, join := range b.joins {
 		// Get include options for this join if they exist
-		includeOpt, hasOpt := b.includeOptions[join.RelationPath]
+		// includeOpt, hasOpt := b.includeOptions[join.RelationPath]
 
 		// Build the base join condition
 		condition := join.Condition
 
-		// SQL-level filtering: add WHERE conditions to the JOIN ON clause
+		// Note: We do NOT apply include option filters in the JOIN condition
+		// because that would exclude parent records when no children match.
+		// Instead, filters are applied in the include processor after fetching data.
+		// This ensures we get all parent records with LEFT JOIN, then filter children.
+		//
+		// IMPORTANT: Commenting out SQL-level filtering for now to fix the issue
+		// where parent records are excluded when no children match the filter.
+		/*
 		if hasOpt && includeOpt.Where != nil && join.Schema != nil {
 			// Create a condition context for the joined table
 			// Create a temporary field mapper with the schema
@@ -252,6 +259,7 @@ func (b *JoinBuilder) BuildSQL() string {
 				condition = fmt.Sprintf("%s AND %s", condition, whereSql)
 			}
 		}
+		*/
 
 		parts = append(parts, fmt.Sprintf("%s %s AS %s ON %s",
 			join.Type,

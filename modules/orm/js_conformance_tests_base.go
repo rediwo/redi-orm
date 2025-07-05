@@ -87,12 +87,28 @@ func (jct *JSConformanceTests) RunAll(t *testing.T) {
 		jct.runAdvancedQueryTests(t, runner)
 	})
 
+	// Aggregations and Analytics
+	t.Run("Aggregations", func(t *testing.T) {
+		if jct.shouldSkip("Aggregations") {
+			t.Skip("Test skipped by driver")
+		}
+		jct.runAggregationTests(t, runner)
+	})
+
 	// Relations and Includes
 	t.Run("Relations", func(t *testing.T) {
 		if jct.shouldSkip("Relations") {
 			t.Skip("Test skipped by driver")
 		}
 		jct.runRelationTests(t, runner)
+	})
+
+	// Advanced Include Options
+	t.Run("IncludeOptions", func(t *testing.T) {
+		if jct.shouldSkip("IncludeOptions") {
+			t.Skip("Test skipped by driver")
+		}
+		jct.runIncludeOptionsTests(t, runner)
 	})
 
 	// Transactions

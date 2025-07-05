@@ -172,6 +172,16 @@ type MappedFieldCondition struct {
 	operator  string
 }
 
+// GetSQL returns the SQL string
+func (f *MappedFieldCondition) GetSQL() string {
+	return f.SQL
+}
+
+// GetArgs returns the SQL arguments
+func (f *MappedFieldCondition) GetArgs() []any {
+	return f.Args
+}
+
 // ToSQL generates SQL with proper field mapping
 func (f *MappedFieldCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 	// If no context, use the base SQL as-is
@@ -217,6 +227,78 @@ func (f *MappedFieldCondition) Or(condition Condition) Condition {
 // Not negates this condition
 func (f *MappedFieldCondition) Not() Condition {
 	return NewNotCondition(f)
+}
+
+// AggregationCondition represents a condition on an aggregated value
+type AggregationCondition struct {
+	BaseCondition
+	AggregationType string // "sum", "avg", "min", "max", "count"
+	FieldName      string
+	Operator       string
+	Value          any
+}
+
+// NewAggregationCondition creates a new aggregation condition
+func NewAggregationCondition(aggType, fieldName, operator string, value any) *AggregationCondition {
+	return &AggregationCondition{
+		AggregationType: aggType,
+		FieldName:      fieldName,
+		Operator:       operator,
+		Value:          value,
+	}
+}
+
+// ToSQL generates the SQL for this aggregation condition
+func (a *AggregationCondition) ToSQL(ctx *ConditionContext) (string, []any) {
+	// Map field to column if needed
+	columnName := a.FieldName
+	if ctx != nil && ctx.FieldMapper != nil && ctx.ModelName != "" {
+		if mapped, err := ctx.FieldMapper.SchemaToColumn(ctx.ModelName, a.FieldName); err == nil {
+			columnName = mapped
+		}
+	}
+	
+	// Build aggregation expression
+	var aggExpr string
+	switch a.AggregationType {
+	case "count":
+		if a.FieldName == "_all" || a.FieldName == "*" {
+			aggExpr = "COUNT(*)"
+		} else {
+			aggExpr = fmt.Sprintf("COUNT(%s)", columnName)
+		}
+	case "sum":
+		aggExpr = fmt.Sprintf("SUM(%s)", columnName)
+	case "avg":
+		aggExpr = fmt.Sprintf("AVG(%s)", columnName)
+	case "min":
+		aggExpr = fmt.Sprintf("MIN(%s)", columnName)
+	case "max":
+		aggExpr = fmt.Sprintf("MAX(%s)", columnName)
+	default:
+		return "", nil
+	}
+	
+	// Map operator
+	var sqlOp string
+	switch a.Operator {
+	case "gt":
+		sqlOp = ">"
+	case "gte":
+		sqlOp = ">="
+	case "lt":
+		sqlOp = "<"
+	case "lte":
+		sqlOp = "<="
+	case "equals", "=":
+		sqlOp = "="
+	case "not", "!=":
+		sqlOp = "!="
+	default:
+		sqlOp = "="
+	}
+	
+	return fmt.Sprintf("%s %s ?", aggExpr, sqlOp), []any{a.Value}
 }
 
 func NewFieldCondition(modelName, fieldName string) *FieldConditionImpl {

@@ -76,6 +76,11 @@ func (q *ModelQueryImpl) Delete() types.DeleteQuery {
 	return NewDeleteQuery(q.clone())
 }
 
+// Aggregate creates a new aggregation query
+func (q *ModelQueryImpl) Aggregate() types.AggregationQuery {
+	return NewAggregationQuery(q.clone())
+}
+
 // Where adds a field condition
 func (q *ModelQueryImpl) Where(fieldName string) types.FieldCondition {
 	return types.NewFieldCondition(q.modelName, fieldName)

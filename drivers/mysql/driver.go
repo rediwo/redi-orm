@@ -394,6 +394,18 @@ func (m *MySQLDB) SupportsDefaultValues() bool {
 	return false
 }
 
+// GetNullsOrderingSQL returns the SQL clause for NULL ordering
+// MySQL doesn't support NULLS FIRST/LAST syntax
+func (m *MySQLDB) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return "" // MySQL doesn't support NULLS FIRST/LAST
+}
+
+// RequiresLimitForOffset returns true if the database requires LIMIT when using OFFSET
+// MySQL requires LIMIT when using OFFSET
+func (m *MySQLDB) RequiresLimitForOffset() bool {
+	return true
+}
+
 func (m *MySQLDB) GetMigrator() types.DatabaseMigrator {
 	return NewMySQLMigrator(m.DB, m)
 }

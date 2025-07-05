@@ -121,6 +121,8 @@ type Database interface {
 	QuoteIdentifier(name string) string
 	SupportsDefaultValues() bool
 	SupportsReturning() bool
+	GetNullsOrderingSQL(direction Order, nullsFirst bool) string
+	RequiresLimitForOffset() bool
 
 	// Internal field mapping (used by driver implementations)
 	ResolveTableName(modelName string) (string, error)
@@ -146,6 +148,7 @@ type ModelQuery interface {
 	Insert(data any) InsertQuery
 	Update(data any) UpdateQuery
 	Delete() DeleteQuery
+	Aggregate() AggregationQuery
 
 	// Condition building (uses schema field names)
 	Where(fieldName string) FieldCondition
@@ -201,6 +204,39 @@ type SelectQuery interface {
 	Count(ctx context.Context) (int64, error)
 
 	// Internal methods (for driver implementation)
+	BuildSQL() (string, []any, error)
+	GetModelName() string
+}
+
+// AggregationQuery interface for aggregation operations
+type AggregationQuery interface {
+	// Grouping
+	GroupBy(fieldNames ...string) AggregationQuery
+	Having(condition Condition) AggregationQuery
+	
+	// Aggregation functions
+	Count(fieldName string, alias string) AggregationQuery
+	CountAll(alias string) AggregationQuery
+	Sum(fieldName string, alias string) AggregationQuery
+	Avg(fieldName string, alias string) AggregationQuery
+	Min(fieldName string, alias string) AggregationQuery
+	Max(fieldName string, alias string) AggregationQuery
+	
+	// Selection of grouped fields
+	Select(fieldNames ...string) AggregationQuery
+	
+	// Conditions and ordering
+	Where(fieldName string) FieldCondition
+	WhereCondition(condition Condition) AggregationQuery
+	OrderBy(fieldName string, direction Order) AggregationQuery
+	OrderByAggregation(aggregationType string, fieldName string, direction Order) AggregationQuery
+	Limit(limit int) AggregationQuery
+	Offset(offset int) AggregationQuery
+	
+	// Execution
+	Exec(ctx context.Context, dest any) error
+	
+	// Internal methods
 	BuildSQL() (string, []any, error)
 	GetModelName() string
 }

@@ -78,6 +78,14 @@ func (m *mockDatabase) SupportsReturning() bool {
 	return false
 }
 
+func (m *mockDatabase) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return "" // Mock doesn't support NULLS FIRST/LAST
+}
+
+func (m *mockDatabase) RequiresLimitForOffset() bool {
+	return true // Mock requires LIMIT for OFFSET
+}
+
 type mockFieldMapper struct{}
 
 func (m *mockFieldMapper) SchemaToColumn(modelName, fieldName string) (string, error) {

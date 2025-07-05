@@ -351,6 +351,10 @@ func (m *MySQLMigrator) GenerateDropIndexSQL(indexName string) string {
 
 // ApplyMigration executes a migration SQL
 func (m *MySQLMigrator) ApplyMigration(sql string) error {
+	// Skip empty queries
+	if strings.TrimSpace(sql) == "" {
+		return nil
+	}
 	_, err := m.db.Exec(sql)
 	return err
 }

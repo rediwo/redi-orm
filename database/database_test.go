@@ -146,6 +146,14 @@ func (m *mockDatabase) SupportsReturning() bool {
 	return false
 }
 
+func (m *mockDatabase) GetNullsOrderingSQL(direction types.Order, nullsFirst bool) string {
+	return ""
+}
+
+func (m *mockDatabase) RequiresLimitForOffset() bool {
+	return true
+}
+
 // Mock factory function
 func mockFactory(config types.Config) (types.Database, error) {
 	if config.Type != "mock" {

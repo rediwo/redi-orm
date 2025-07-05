@@ -2,11 +2,13 @@ package orm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/eventloop"
+	"github.com/rediwo/redi-orm/agile"
 	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -14,16 +16,15 @@ import (
 	"github.com/rediwo/redi/modules"
 )
 
-// ModelsModule provides Prisma-like database operations
+// ModelsModule provides Prisma-like database operations using agile as the backend
 type ModelsModule struct {
 	loop    *eventloop.EventLoop
-	db      types.Database // Used for storing database reference
+	db      types.Database
 	schemas map[string]*schema.Schema
 }
 
 // Auto-register on import
 func init() {
-	// Register as 'redi/orm' instead of 'models'
 	modules.RegisterModule("redi/orm", initModelsModule)
 }
 
@@ -40,7 +41,6 @@ func initModelsModule(config modules.ModuleConfig) error {
 	// Register as require module with path 'redi/orm'
 	config.Registry.RegisterNativeModule("redi/orm", func(vm *js.Runtime, module *js.Object) {
 		exports := vm.NewObject()
-		// Only export fromUri function - no global models/transaction functions without a database
 		exports.Set("fromUri", modelsModule.createFromUriFunction(vm))
 		module.Set("exports", exports)
 	})
@@ -78,12 +78,11 @@ func (m *ModelsModule) registerModel(vm *js.Runtime, modelsObj *js.Object, model
 	modelsObj.Set(modelName, modelObj)
 }
 
-// createMethod creates a promise-returning method for a model operation
+// createMethod creates a promise-returning method using agile
 func (m *ModelsModule) createMethod(vm *js.Runtime, modelName, methodName string, db types.Database) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		// Validate arguments based on method
+		// Validate arguments
 		if len(call.Arguments) == 0 {
-			// Some methods don't require arguments
 			if methodName != "findMany" && methodName != "count" && methodName != "deleteMany" {
 				panic(vm.NewTypeError(fmt.Sprintf("%s.%s() requires options argument", modelName, methodName)))
 			}
@@ -99,123 +98,47 @@ func (m *ModelsModule) createMethod(vm *js.Runtime, modelName, methodName string
 
 		promise, resolve, reject := vm.NewPromise()
 
-		go func() {
-			result, err := m.executeOperation(db, modelName, methodName, options)
+		// Execute async operation using agile
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			// Create agile client
+			client := agile.NewClient(db)
+			
+			// Build JSON query for agile
+			jsonQuery, err := json.Marshal(map[string]any{
+				methodName: options,
+			})
+			if err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
 
-			m.loop.RunOnLoop(func(vm *js.Runtime) {
-				if err != nil {
-					reject(m.createError(vm, err))
+			// Execute using agile
+			result, err := client.Model(modelName).Query(string(jsonQuery))
+			if err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+
+			// Special handling for count method
+			if methodName == "count" {
+				// Ensure count returns a number
+				if count, ok := result.(int64); ok {
+					resolve(vm.ToValue(count))
+				} else if count, ok := result.(int); ok {
+					resolve(vm.ToValue(count))
 				} else {
 					resolve(vm.ToValue(result))
 				}
-			})
-		}()
-
-		return vm.ToValue(promise)
-	}
-}
-
-// createQueryRawMethod creates the queryRaw method for raw SQL queries on a database instance
-func (m *ModelsModule) createQueryRawMethod(vm *js.Runtime, db types.Database) func(call js.FunctionCall) js.Value {
-	return func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) == 0 {
-			panic(vm.NewTypeError("queryRaw requires SQL query"))
-		}
-
-		sql := call.Arguments[0].String()
-		var args []any
-
-		// Collect additional arguments
-		for i := 1; i < len(call.Arguments); i++ {
-			args = append(args, call.Arguments[i].Export())
-		}
-
-		promise, resolve, reject := vm.NewPromise()
-
-		go func() {
-			// Execute query directly to handle arbitrary result columns
-			rows, err := db.Query(sql, args...)
-			if err != nil {
-				m.loop.RunOnLoop(func(vm *js.Runtime) {
-					reject(m.createError(vm, err))
-				})
-				return
+			} else {
+				resolve(vm.ToValue(result))
 			}
-			defer rows.Close()
-
-			// Use utils to scan rows into maps
-			results, err := utils.ScanRowsToMaps(rows)
-			if err != nil {
-				m.loop.RunOnLoop(func(vm *js.Runtime) {
-					reject(m.createError(vm, err))
-				})
-				return
-			}
-
-			m.loop.RunOnLoop(func(vm *js.Runtime) {
-				resolve(vm.ToValue(results))
-			})
-		}()
+		})
 
 		return vm.ToValue(promise)
 	}
 }
 
-// createExecuteRawMethod creates the executeRaw method for raw SQL execution on a database instance
-func (m *ModelsModule) createExecuteRawMethod(vm *js.Runtime, db types.Database) func(call js.FunctionCall) js.Value {
-	return func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) == 0 {
-			panic(vm.NewTypeError("executeRaw requires SQL query"))
-		}
-
-		sql := call.Arguments[0].String()
-		var args []any
-
-		// Collect additional arguments
-		for i := 1; i < len(call.Arguments); i++ {
-			args = append(args, call.Arguments[i].Export())
-		}
-
-		promise, resolve, reject := vm.NewPromise()
-
-		go func() {
-			// Execute directly
-			result, err := db.Exec(sql, args...)
-
-			m.loop.RunOnLoop(func(vm *js.Runtime) {
-				if err != nil {
-					reject(m.createError(vm, err))
-				} else {
-					rowsAffected, _ := result.RowsAffected()
-					resolve(vm.ToValue(map[string]any{
-						"rowsAffected": rowsAffected,
-					}))
-				}
-			})
-		}()
-
-		return vm.ToValue(promise)
-	}
-}
-
-// createError creates a JavaScript error object
-func (m *ModelsModule) createError(vm *js.Runtime, err error) js.Value {
-	errObj := vm.NewObject()
-	errObj.Set("message", err.Error())
-
-	// Add error code if it's a known error type
-	errMsg := err.Error()
-	if strings.Contains(errMsg, "UNIQUE constraint failed") ||
-		strings.Contains(errMsg, "duplicate key") {
-		errObj.Set("code", "P2002") // Prisma unique constraint violation code
-	} else if strings.Contains(errMsg, "not found") {
-		errObj.Set("code", "P2025") // Prisma record not found code
-	}
-
-	return vm.ToValue(errObj)
-}
-
-// createFromUriFunction creates the fromUri function that returns a Database object
+// createFromUriFunction creates a function that returns a database instance
 func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		if len(call.Arguments) == 0 {
@@ -223,145 +146,218 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 		}
 
 		uri := call.Arguments[0].String()
-		if uri == "" {
-			panic(vm.NewTypeError("URI cannot be empty"))
+		dbInstance := vm.NewObject()
+
+		// Create lazy database connection
+		var db types.Database
+		var connected bool
+
+		// Parse URI to determine database type
+		parts := strings.Split(uri, "://")
+		if len(parts) < 2 {
+			panic(vm.NewTypeError("Invalid database URI format"))
 		}
 
-		// Create database instance
-		db, err := database.NewFromURI(uri)
-		if err != nil {
-			panic(vm.NewGoError(fmt.Errorf("failed to create database from URI: %w", err)))
-		}
+		dbType := parts[0]
 
-		// Create database wrapper object
-		dbObj := vm.NewObject()
-
-		// Add connect method
-		dbObj.Set("connect", m.createDatabaseMethod(vm, db, "connect"))
-
-		// Add close method
-		dbObj.Set("close", m.createDatabaseMethod(vm, db, "close"))
-
-		// Add loadSchema method
-		dbObj.Set("loadSchema", m.createDatabaseMethod(vm, db, "loadSchema"))
-
-		// Add loadSchemaFrom method
-		dbObj.Set("loadSchemaFrom", m.createDatabaseMethod(vm, db, "loadSchemaFrom"))
-
-		// Add syncSchemas method
-		dbObj.Set("syncSchemas", m.createDatabaseMethod(vm, db, "syncSchemas"))
-
-		// Add createModel method
-		dbObj.Set("createModel", m.createDatabaseMethod(vm, db, "createModel"))
-
-		// Add dropModel method
-		dbObj.Set("dropModel", m.createDatabaseMethod(vm, db, "dropModel"))
-
-		// Add getModels method (synchronous)
-		dbObj.Set("getModels", func(call js.FunctionCall) js.Value {
-			models := db.GetModels()
-			return vm.ToValue(models)
-		})
-
-		// Add ping method
-		dbObj.Set("ping", m.createDatabaseMethod(vm, db, "ping"))
-
-		// Add raw query methods
-		dbObj.Set("queryRaw", m.createQueryRawMethod(vm, db))
-		dbObj.Set("executeRaw", m.createExecuteRawMethod(vm, db))
-
-		// Add transaction method
-		dbObj.Set("transaction", m.createDatabaseTransactionMethod(vm, db))
-
-		// Create models object that will be populated after syncSchemas
-		modelsObj := vm.NewObject()
-		dbObj.Set("models", modelsObj)
-
-		// Store reference to update models after sync
-		dbObj.Set("_db", db)
-		dbObj.Set("_vm", vm)
-		dbObj.Set("_modelsObj", modelsObj)
-		dbObj.Set("_module", m)
-
-		return vm.ToValue(dbObj)
-	}
-}
-
-// populateModels populates the models object on the database instance
-func (m *ModelsModule) populateModels(vm *js.Runtime, db types.Database, dbObj js.Value) {
-	obj := dbObj.ToObject(vm)
-	modelsObj := obj.Get("_modelsObj").ToObject(vm)
-
-	// Clear existing models
-	for _, key := range modelsObj.Keys() {
-		modelsObj.Delete(key)
-	}
-
-	// Register each model from database schemas
-	for _, modelName := range db.GetModels() {
-		m.registerModel(vm, modelsObj, modelName, db)
-	}
-}
-
-// createDatabaseMethod creates a promise-returning method for database operations
-func (m *ModelsModule) createDatabaseMethod(vm *js.Runtime, db types.Database, methodName string) func(call js.FunctionCall) js.Value {
-	return func(call js.FunctionCall) js.Value {
-		promise, resolve, reject := vm.NewPromise()
-
-		go func() {
-			ctx := context.Background()
-			var err error
-
-			switch methodName {
-			case "connect":
-				err = db.Connect(ctx)
-			case "close":
-				err = db.Close()
-			case "loadSchema":
-				if len(call.Arguments) == 0 {
-					err = fmt.Errorf("loadSchema requires schema content")
-				} else {
-					schemaContent := call.Arguments[0].String()
-					err = db.LoadSchema(ctx, schemaContent)
-				}
-			case "loadSchemaFrom":
-				if len(call.Arguments) == 0 {
-					err = fmt.Errorf("loadSchemaFrom requires filename")
-				} else {
-					filename := call.Arguments[0].String()
-					err = db.LoadSchemaFrom(ctx, filename)
-				}
-			case "syncSchemas":
-				err = db.SyncSchemas(ctx)
-				if err == nil {
-					// After successful sync, populate the models object
-					m.loop.RunOnLoop(func(vm *js.Runtime) {
-						m.populateModels(vm, db, call.This)
-					})
-				}
-			case "createModel":
-				if len(call.Arguments) == 0 {
-					err = fmt.Errorf("createModel requires model name")
-				} else {
-					modelName := call.Arguments[0].String()
-					err = db.CreateModel(ctx, modelName)
-				}
-			case "dropModel":
-				if len(call.Arguments) == 0 {
-					err = fmt.Errorf("dropModel requires model name")
-				} else {
-					modelName := call.Arguments[0].String()
-					err = db.DropModel(ctx, modelName)
-				}
-			case "ping":
-				err = db.Ping(ctx)
-			default:
-				err = fmt.Errorf("unknown method: %s", methodName)
-			}
+		// Create connection function
+		dbInstance.Set("connect", func(call js.FunctionCall) js.Value {
+			promise, resolve, reject := vm.NewPromise()
 
 			m.loop.RunOnLoop(func(vm *js.Runtime) {
+				if connected {
+					resolve(js.Undefined())
+					return
+				}
+
+				// Create database connection
+				var err error
+				db, err = database.NewFromURI(uri)
 				if err != nil {
-					reject(m.createError(vm, err))
+					reject(vm.NewGoError(err))
+					return
+				}
+
+				// Connect to database
+				ctx := context.Background()
+				if err := db.Connect(ctx); err != nil {
+					reject(vm.NewGoError(err))
+					return
+				}
+
+				connected = true
+				resolve(js.Undefined())
+			})
+
+			return vm.ToValue(promise)
+		})
+
+		// Create close function
+		dbInstance.Set("close", func(call js.FunctionCall) js.Value {
+			promise, resolve, reject := vm.NewPromise()
+
+			m.loop.RunOnLoop(func(vm *js.Runtime) {
+				if db != nil {
+					if err := db.Close(); err != nil {
+						reject(vm.NewGoError(err))
+						return
+					}
+				}
+				connected = false
+				resolve(js.Undefined())
+			})
+
+			return vm.ToValue(promise)
+		})
+
+		// Schema management functions
+		dbInstance.Set("loadSchema", m.createLoadSchemaFunction(vm, &db, &connected))
+		dbInstance.Set("loadSchemaFrom", m.createLoadSchemaFromFunction(vm, &db, &connected))
+		dbInstance.Set("syncSchemas", m.createSyncSchemasFunction(vm, &db, &connected))
+		
+		// Database operation methods
+		dbInstance.Set("ping", m.createPingFunction(vm, &db, &connected))
+		dbInstance.Set("createModel", m.createModelFunction(vm, &db, &connected))
+		dbInstance.Set("dropModel", m.dropModelFunction(vm, &db, &connected))
+		dbInstance.Set("getModels", func(call js.FunctionCall) js.Value {
+			if !connected || db == nil {
+				return vm.NewArray(0)
+			}
+			return vm.ToValue(db.GetModels())
+		})
+
+		// Raw query functions using agile
+		dbInstance.Set("queryRaw", m.createQueryRawFunction(vm, &db, &connected))
+		dbInstance.Set("executeRaw", m.createExecuteRawFunction(vm, &db, &connected))
+
+		// Transaction function using agile
+		dbInstance.Set("transaction", m.createTransactionFunction(vm, &db, &connected))
+
+		// Models object (will be populated after syncSchemas)
+		modelsObj := vm.NewObject()
+		dbInstance.Set("models", modelsObj)
+
+		// Store reference for model registration
+		dbInstance.Set("__registerModels", func() {
+			if db != nil {
+				for _, modelName := range db.GetModels() {
+					m.registerModel(vm, modelsObj, modelName, db)
+				}
+			}
+		})
+
+		// Additional metadata
+		dbInstance.Set("driverType", dbType)
+
+		return dbInstance
+	}
+}
+
+// Transaction support using agile
+func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		if len(call.Arguments) == 0 {
+			panic(vm.NewTypeError("transaction requires a callback function"))
+		}
+
+		callback, ok := js.AssertFunction(call.Arguments[0])
+		if !ok {
+			panic(vm.NewTypeError("transaction requires a callback function"))
+		}
+
+		promise, resolve, reject := vm.NewPromise()
+
+		// Execute the transaction in a goroutine
+		go func() {
+			// Create agile client
+			client := agile.NewClient(*db)
+			
+			// Execute the transaction
+			err := client.Transaction(func(tx *agile.Client) error {
+				// We need to execute the callback on the event loop and wait for it
+				var txErr error
+				done := make(chan bool)
+				
+				m.loop.RunOnLoop(func(vm *js.Runtime) {
+					// Create transaction context object
+					txObj := vm.NewObject()
+					
+					// Create models for transaction
+					modelsObj := vm.NewObject()
+					for _, modelName := range (*db).GetModels() {
+						m.registerTransactionModel(vm, modelsObj, modelName, tx)
+					}
+					txObj.Set("models", modelsObj)
+					
+					// Add nested transaction support
+					txObj.Set("transaction", m.createNestedTransactionFunction(vm, tx))
+					
+					// Call the callback
+					result, err := callback(nil, vm.ToValue(txObj))
+					if err != nil {
+						txErr = err
+						close(done)
+						return
+					}
+					
+					// Check if the result is a promise
+					if promiseObj := result.ToObject(vm); promiseObj != nil {
+						thenMethod := promiseObj.Get("then")
+						if thenFunc, ok := js.AssertFunction(thenMethod); ok && !js.IsUndefined(thenMethod) {
+							// It's a promise - set up handlers
+							catchMethod := promiseObj.Get("catch")
+							if _, ok := js.AssertFunction(catchMethod); ok && !js.IsUndefined(catchMethod) {
+								// Chain .then().catch() to handle both success and error
+								thenResult, _ := thenFunc(promiseObj, vm.ToValue(func(call js.FunctionCall) js.Value {
+									// Promise resolved successfully
+									close(done)
+									return js.Undefined()
+								}))
+								
+								if thenResultObj := thenResult.ToObject(vm); thenResultObj != nil {
+									if catchMethod2 := thenResultObj.Get("catch"); !js.IsUndefined(catchMethod2) {
+										if catchFunc2, ok := js.AssertFunction(catchMethod2); ok {
+											catchFunc2(thenResultObj, vm.ToValue(func(call js.FunctionCall) js.Value {
+												// Promise rejected
+												if len(call.Arguments) > 0 {
+													errVal := call.Arguments[0]
+													if errObj := errVal.ToObject(vm); errObj != nil {
+														if msgVal := errObj.Get("message"); !js.IsUndefined(msgVal) {
+															txErr = fmt.Errorf("%v", msgVal.String())
+														} else {
+															txErr = fmt.Errorf("%v", errVal.String())
+														}
+													} else {
+														txErr = fmt.Errorf("%v", errVal.String())
+													}
+												}
+												close(done)
+												return js.Undefined()
+											}))
+										}
+									}
+								}
+							}
+							return
+						}
+					}
+					// Not a promise, close immediately
+					close(done)
+				})
+				
+				// Wait for the JavaScript callback to complete
+				<-done
+				return txErr
+			})
+			
+			// Resolve or reject the promise based on the transaction result
+			m.loop.RunOnLoop(func(vm *js.Runtime) {
+				if err != nil {
+					reject(vm.NewGoError(err))
 				} else {
 					resolve(js.Undefined())
 				}
@@ -370,4 +366,408 @@ func (m *ModelsModule) createDatabaseMethod(vm *js.Runtime, db types.Database, m
 
 		return vm.ToValue(promise)
 	}
+}
+
+// registerTransactionModel registers model methods for transaction context
+func (m *ModelsModule) registerTransactionModel(vm *js.Runtime, modelsObj *js.Object, modelName string, tx *agile.Client) {
+	modelObj := vm.NewObject()
+
+	// Create all methods but using transaction client
+	methods := []string{
+		"create", "createMany", "createManyAndReturn",
+		"findUnique", "findFirst", "findMany", "count", "aggregate", "groupBy",
+		"update", "updateMany", "updateManyAndReturn", "upsert",
+		"delete", "deleteMany",
+	}
+
+	for _, methodName := range methods {
+		methodName := methodName // capture for closure
+		modelObj.Set(methodName, func(call js.FunctionCall) js.Value {
+			// Validate arguments
+			if len(call.Arguments) == 0 {
+				if methodName != "findMany" && methodName != "count" && methodName != "deleteMany" {
+					panic(vm.NewTypeError(fmt.Sprintf("%s.%s() requires options argument", modelName, methodName)))
+				}
+			}
+
+			var options map[string]any
+			if len(call.Arguments) > 0 && !js.IsUndefined(call.Arguments[0]) && !js.IsNull(call.Arguments[0]) {
+				exported := call.Arguments[0].Export()
+				if optMap, ok := exported.(map[string]any); ok {
+					options = optMap
+				}
+			}
+
+			// Build JSON query
+			jsonQuery, err := json.Marshal(map[string]any{
+				methodName: options,
+			})
+			if err != nil {
+				panic(vm.NewGoError(err))
+			}
+
+			// Execute using transaction client
+			result, err := tx.Model(modelName).Query(string(jsonQuery))
+			if err != nil {
+				panic(vm.NewGoError(err))
+			}
+
+			// Special handling for count
+			if methodName == "count" {
+				if count, ok := result.(int64); ok {
+					return vm.ToValue(count)
+				} else if count, ok := result.(int); ok {
+					return vm.ToValue(count)
+				}
+			}
+
+			return vm.ToValue(result)
+		})
+	}
+
+	modelsObj.Set(modelName, modelObj)
+}
+
+// Raw query functions using agile
+func (m *ModelsModule) createQueryRawFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		if len(call.Arguments) == 0 {
+			panic(vm.NewTypeError("queryRaw requires SQL string"))
+		}
+
+		sql := call.Arguments[0].String()
+		
+		// Extract parameters
+		var args []any
+		for i := 1; i < len(call.Arguments); i++ {
+			args = append(args, call.Arguments[i].Export())
+		}
+
+		promise, resolve, reject := vm.NewPromise()
+
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			// Use agile's raw query
+			client := agile.NewClient(*db)
+			results, err := client.Model("").Raw(sql, args...).Find()
+			if err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+
+			resolve(vm.ToValue(results))
+		})
+
+		return vm.ToValue(promise)
+	}
+}
+
+func (m *ModelsModule) createExecuteRawFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		if len(call.Arguments) == 0 {
+			panic(vm.NewTypeError("executeRaw requires SQL string"))
+		}
+
+		sql := call.Arguments[0].String()
+		
+		// Extract parameters
+		var args []any
+		for i := 1; i < len(call.Arguments); i++ {
+			args = append(args, call.Arguments[i].Export())
+		}
+
+		promise, resolve, reject := vm.NewPromise()
+
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			// Use agile's raw query
+			client := agile.NewClient(*db)
+			result, err := client.Model("").Raw(sql, args...).Exec()
+			if err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+
+			// Return result with rowsAffected
+			resultObj := vm.NewObject()
+			resultObj.Set("rowsAffected", result.RowsAffected)
+			
+			resolve(resultObj)
+		})
+
+		return vm.ToValue(promise)
+	}
+}
+
+// Schema loading functions (keep existing implementation)
+func (m *ModelsModule) createLoadSchemaFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		if len(call.Arguments) == 0 {
+			panic(vm.NewTypeError("loadSchema requires schema string"))
+		}
+
+		schemaContent := call.Arguments[0].String()
+
+		promise, resolve, reject := vm.NewPromise()
+
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			ctx := context.Background()
+			if err := (*db).LoadSchema(ctx, schemaContent); err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+			resolve(js.Undefined())
+		})
+
+		return vm.ToValue(promise)
+	}
+}
+
+func (m *ModelsModule) createLoadSchemaFromFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		if len(call.Arguments) == 0 {
+			panic(vm.NewTypeError("loadSchemaFrom requires filename"))
+		}
+
+		filename := call.Arguments[0].String()
+
+		promise, resolve, reject := vm.NewPromise()
+
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			ctx := context.Background()
+			if err := (*db).LoadSchemaFrom(ctx, filename); err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+			resolve(js.Undefined())
+		})
+
+		return vm.ToValue(promise)
+	}
+}
+
+func (m *ModelsModule) createSyncSchemasFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		promise, resolve, reject := vm.NewPromise()
+
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			ctx := context.Background()
+			if err := (*db).SyncSchemas(ctx); err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+
+			// Register models after sync
+			if registerFn := call.This.ToObject(vm).Get("__registerModels"); registerFn != nil {
+				if fn, ok := js.AssertFunction(registerFn); ok {
+					fn(nil)
+				}
+			}
+
+			resolve(js.Undefined())
+		})
+
+		return vm.ToValue(promise)
+	}
+}
+
+// createPingFunction creates the ping method
+func (m *ModelsModule) createPingFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		promise, resolve, reject := vm.NewPromise()
+
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			ctx := context.Background()
+			if err := (*db).Ping(ctx); err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+			resolve(js.Undefined())
+		})
+
+		return vm.ToValue(promise)
+	}
+}
+
+// createModelFunction creates the createModel method
+func (m *ModelsModule) createModelFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		if len(call.Arguments) == 0 {
+			panic(vm.NewTypeError("createModel requires model name"))
+		}
+
+		modelName := call.Arguments[0].String()
+
+		promise, resolve, reject := vm.NewPromise()
+
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			ctx := context.Background()
+			if err := (*db).CreateModel(ctx, modelName); err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+			resolve(js.Undefined())
+		})
+
+		return vm.ToValue(promise)
+	}
+}
+
+// dropModelFunction creates the dropModel method
+func (m *ModelsModule) dropModelFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if !*connected || *db == nil {
+			panic(vm.NewTypeError("Database not connected"))
+		}
+
+		if len(call.Arguments) == 0 {
+			panic(vm.NewTypeError("dropModel requires model name"))
+		}
+
+		modelName := call.Arguments[0].String()
+
+		promise, resolve, reject := vm.NewPromise()
+
+		m.loop.RunOnLoop(func(vm *js.Runtime) {
+			ctx := context.Background()
+			if err := (*db).DropModel(ctx, modelName); err != nil {
+				reject(vm.NewGoError(err))
+				return
+			}
+			resolve(js.Undefined())
+		})
+
+		return vm.ToValue(promise)
+	}
+}
+
+// createNestedTransactionFunction creates a transaction method for nested transactions
+func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx *agile.Client) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if len(call.Arguments) == 0 {
+			panic(vm.NewTypeError("transaction requires a callback function"))
+		}
+
+		callback, ok := js.AssertFunction(call.Arguments[0])
+		if !ok {
+			panic(vm.NewTypeError("transaction requires a callback function"))
+		}
+
+		promise, resolve, reject := vm.NewPromise()
+
+		// Execute nested transaction in a goroutine
+		go func() {
+			// Execute nested transaction
+			err := parentTx.Transaction(func(nestedTx *agile.Client) error {
+				// We need to execute the callback on the event loop and wait for it
+				var txErr error
+				done := make(chan bool)
+				
+				m.loop.RunOnLoop(func(vm *js.Runtime) {
+					// Create nested transaction context object
+					nestedTxObj := vm.NewObject()
+					
+					// Create models for nested transaction
+					modelsObj := vm.NewObject()
+					// Get models from the parent transaction's database
+					modelNames := []string{}
+					if db, ok := parentTx.GetDB().(interface{ GetModels() []string }); ok {
+						modelNames = db.GetModels()
+					}
+					for _, modelName := range modelNames {
+						m.registerTransactionModel(vm, modelsObj, modelName, nestedTx)
+					}
+					nestedTxObj.Set("models", modelsObj)
+					
+					// Add nested transaction support (for further nesting)
+					nestedTxObj.Set("transaction", m.createNestedTransactionFunction(vm, nestedTx))
+
+					// Call the callback with nested transaction context
+					result, err := callback(nil, vm.ToValue(nestedTxObj))
+					if err != nil {
+						txErr = err
+						close(done)
+						return
+					}
+					
+					// Check if the result is a promise
+					if promiseObj := result.ToObject(vm); promiseObj != nil {
+						thenMethod := promiseObj.Get("then")
+						if thenFunc, ok := js.AssertFunction(thenMethod); ok && !js.IsUndefined(thenMethod) {
+							// It's a promise - handle async
+							thenResult, _ := thenFunc(promiseObj, vm.ToValue(func(call js.FunctionCall) js.Value {
+								// Promise resolved successfully
+								close(done)
+								return js.Undefined()
+							}))
+							
+							if thenResultObj := thenResult.ToObject(vm); thenResultObj != nil {
+								if catchMethod := thenResultObj.Get("catch"); !js.IsUndefined(catchMethod) {
+									if catchFunc, ok := js.AssertFunction(catchMethod); ok {
+										catchFunc(thenResultObj, vm.ToValue(func(call js.FunctionCall) js.Value {
+											// Promise rejected
+											if len(call.Arguments) > 0 {
+												txErr = fmt.Errorf("nested transaction error: %v", call.Arguments[0].String())
+											}
+											close(done)
+											return js.Undefined()
+										}))
+									}
+								}
+							}
+							return
+						}
+					}
+					// Not a promise, close immediately
+					close(done)
+				})
+				
+				// Wait for the JavaScript callback to complete
+				<-done
+				return txErr
+			})
+
+			// Resolve or reject the promise based on the transaction result
+			m.loop.RunOnLoop(func(vm *js.Runtime) {
+				if err != nil {
+					reject(vm.NewGoError(err))
+				} else {
+					resolve(js.Undefined())
+				}
+			})
+		}()
+
+		return vm.ToValue(promise)
+	}
+}
+
+// Export utility functions for backward compatibility
+func ConvertValue(value any) any {
+	return utils.ToInterface(value)
 }

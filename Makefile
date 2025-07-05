@@ -38,41 +38,41 @@ help:
 
 # Test targets
 test:
-	go test ./...
+	go test -p 1 ./...
 
 test-verbose:
-	go test -v ./...
+	go test -p 1 -v ./...
 
 test-short:
-	go test -short ./...
+	go test -p 1 -short ./...
 
 test-cover:
-	go test -cover -short ./...
+	go test -p 1 -cover -short ./...
 
 test-race:
-	go test -race -short ./...
+	go test -p 1 -race -short ./...
 
 test-integration:
-	go test -v -run Integration ./test
+	go test -p 1 -v -run Integration ./test
 
 test-benchmark:
-	go test -bench=. -benchmem ./test
+	go test -p 1 -bench=. -benchmem ./test
 
 test-sqlite:
-	go test -v ./drivers/sqlite
+	go test -p 1 -v ./drivers/sqlite
 
 test-mysql:
-	go test -v ./drivers/mysql
+	go test -p 1 -v ./drivers/mysql
 
 test-postgresql:
-	go test -v ./drivers/postgresql
+	go test -p 1 -v ./drivers/postgresql
 
 test-orm:
-	go test -v ./modules/orm/tests
+	go test -p 1 -v ./modules/orm/tests
 
 test-docker: docker-up docker-wait
 	@echo "Running tests with Docker databases..."
-	go test -v ./drivers/mysql ./drivers/postgresql || true
+	go test -p 1 -v ./drivers/mysql ./drivers/postgresql || true
 	$(MAKE) docker-down
 
 # Code quality targets
