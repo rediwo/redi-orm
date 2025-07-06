@@ -459,8 +459,8 @@ func (dct *DriverConformanceTests) TestCreateModel(t *testing.T) {
 		"email": "test@example.com",
 	}).Exec(ctx)
 	assert.NoError(t, err)
-	// PostgreSQL doesn't support LastInsertId() - it always returns 0
-	if td.DB.GetDriverType() != "postgresql" {
+	// Only check LastInsertID if the driver supports it
+	if dct.Characteristics.SupportsLastInsertID {
 		assert.Greater(t, result.LastInsertID, int64(0))
 	}
 }
@@ -533,9 +533,9 @@ func (dct *DriverConformanceTests) TestInsert(t *testing.T) {
 		"active": true,
 	}).Exec(ctx)
 	assert.NoError(t, err)
-	// PostgreSQL doesn't support LastInsertId() - it always returns 0
-	// To get the ID in PostgreSQL, you need to use RETURNING clause
-	if td.DB.GetDriverType() != "postgresql" {
+	// Only check LastInsertID if the driver supports it
+	// PostgreSQL and MongoDB don't support LastInsertId - they return 0
+	if dct.Characteristics.SupportsLastInsertID {
 		assert.Greater(t, result.LastInsertID, int64(0))
 	}
 	assert.Equal(t, int64(1), result.RowsAffected)
@@ -567,8 +567,8 @@ func (dct *DriverConformanceTests) TestInsertWithDefaults(t *testing.T) {
 		// createdAt should default to now()
 	}).Exec(ctx)
 	assert.NoError(t, err)
-	// PostgreSQL doesn't support LastInsertId() - it always returns 0
-	if td.DB.GetDriverType() != "postgresql" {
+	// Only check LastInsertID if the driver supports it
+	if dct.Characteristics.SupportsLastInsertID {
 		assert.Greater(t, result.LastInsertID, int64(0))
 	}
 
@@ -603,12 +603,12 @@ func (dct *DriverConformanceTests) TestInsertWithAutoIncrement(t *testing.T) {
 			"email": fmt.Sprintf("user%d@example.com", i),
 		}).Exec(ctx)
 		assert.NoError(t, err)
-		// PostgreSQL doesn't support LastInsertId() - it always returns 0
-		if td.DB.GetDriverType() != "postgresql" {
+		// Only store LastInsertID if the driver supports it
+		if dct.Characteristics.SupportsLastInsertID {
 			ids[i] = result.LastInsertID
 		} else {
-			// For PostgreSQL, we'll verify the IDs differently below
-			ids[i] = int64(i + 1) // Just use expected sequence for test logic
+			// For drivers that don't support LastInsertID, use expected sequence for test logic
+			ids[i] = int64(i + 1)
 		}
 	}
 

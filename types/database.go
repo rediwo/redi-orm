@@ -7,7 +7,6 @@ import (
 	"github.com/rediwo/redi-orm/schema"
 )
 
-
 // Order represents sorting direction
 type Order int
 
@@ -15,6 +14,12 @@ const (
 	ASC Order = iota
 	DESC
 )
+
+// OrderByClause represents an ORDER BY clause
+type OrderByClause struct {
+	Field     string
+	Direction Order
+}
 
 // ConflictAction represents action to take on insert conflicts
 type ConflictAction int

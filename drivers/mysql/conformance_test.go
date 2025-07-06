@@ -2,7 +2,6 @@ package mysql
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/rediwo/redi-orm/database"
@@ -55,41 +54,3 @@ func TestMySQLConformance(t *testing.T) {
 	suite.RunAll(t)
 }
 
-// cleanupTables removes all non-system tables from the database
-func cleanupTables(t *testing.T, db *MySQLDB) {
-	ctx := context.Background()
-
-	// Disable foreign key checks
-	_, err := db.Exec("SET FOREIGN_KEY_CHECKS = 0")
-	if err != nil {
-		t.Logf("Failed to disable foreign key checks: %v", err)
-		return
-	}
-	defer db.Exec("SET FOREIGN_KEY_CHECKS = 1")
-
-	// Get all tables
-	rows, err := db.DB.QueryContext(ctx, "SHOW TABLES")
-	if err != nil {
-		t.Logf("Failed to get tables: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
-			t.Logf("Failed to scan table name: %v", err)
-			continue
-		}
-		tables = append(tables, table)
-	}
-
-	// Drop all tables
-	for _, table := range tables {
-		_, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS `%s`", table))
-		if err != nil {
-			t.Logf("Failed to drop table %s: %v", table, err)
-		}
-	}
-}

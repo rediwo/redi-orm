@@ -59,7 +59,6 @@ func (m *MySQLDB) Connect(ctx context.Context) error {
 	return nil
 }
 
-
 // SyncSchemas synchronizes all loaded schemas with the database
 func (m *MySQLDB) SyncSchemas(ctx context.Context) error {
 	return m.Driver.SyncSchemas(ctx, m)

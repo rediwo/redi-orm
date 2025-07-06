@@ -92,6 +92,10 @@ const db = fromUri('mysql://user:pass@localhost:3306/dbname');
 
 // PostgreSQL
 const db = fromUri('postgresql://user:pass@localhost:5432/dbname');
+
+// MongoDB
+const db = fromUri('mongodb://user:pass@localhost:27017/dbname');
+const db = fromUri('mongodb+srv://cluster.mongodb.net/dbname');
 ```
 
 ## Schema Definition
@@ -150,7 +154,7 @@ await db.transaction(async (tx) => {
 - **Relations**: Automatic handling of foreign keys and joins
 - **Transactions**: ACID-compliant transactions with rollback
 - **Migrations**: Automatic schema synchronization in development
-- **Multiple databases**: Support for SQLite, MySQL, and PostgreSQL
+- **Multiple databases**: Support for SQLite, MySQL, PostgreSQL, and MongoDB
 - **Raw SQL**: Execute raw SQL when needed with `queryRaw` and `executeRaw`
 
 ## Migration Examples

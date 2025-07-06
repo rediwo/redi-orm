@@ -1,8 +1,10 @@
 package sqlite
 
 import (
+	"context"
 	"testing"
 
+	"github.com/rediwo/redi-orm/database"
 	"github.com/rediwo/redi-orm/modules/orm"
 	"github.com/rediwo/redi-orm/test"
 )
@@ -30,42 +32,28 @@ func TestSQLiteJSConformance(t *testing.T) {
 			MaxConnectionPoolSize:      1, // SQLite is single-threaded
 			SupportsNestedTransactions: true,
 		},
-		CleanupTables: cleanupTablesJS,
+		CleanupTables: func(t *testing.T, runner *orm.JSTestRunner) {
+			// Use the shared cleanupTables function by creating a database connection
+			db, err := database.NewFromURI(uri)
+			if err != nil {
+				t.Logf("Failed to create database for cleanup: %v", err)
+				return
+			}
+			defer db.Close()
+			
+			// Connect to the database
+			ctx := context.Background()
+			if err := db.Connect(ctx); err != nil {
+				t.Logf("Failed to connect to database for cleanup: %v", err)
+				return
+			}
+			
+			if sqliteDB, ok := db.(*SQLiteDB); ok {
+				cleanupTables(t, sqliteDB)
+			}
+		},
 	}
 
 	suite.RunAll(t)
 }
 
-// cleanupTablesJS removes all non-system tables via JavaScript
-func cleanupTablesJS(t *testing.T, runner *orm.JSTestRunner) {
-	cleanupScript := `
-		const db = fromUri(process.env.TEST_DATABASE_URI);
-		await db.connect();
-		
-		// Get all tables
-		const tables = await db.queryRaw(
-			"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-		);
-		
-		// Disable foreign key constraints temporarily
-		await db.executeRaw('PRAGMA foreign_keys = OFF');
-		
-		// Drop each table
-		for (const table of tables) {
-			try {
-				await db.executeRaw('DROP TABLE IF EXISTS ' + table.name);
-				console.log('Dropped table:', table.name);
-			} catch (err) {
-				console.error('Failed to drop table', table.name, ':', err.message);
-			}
-		}
-		
-		// Re-enable foreign key constraints
-		await db.executeRaw('PRAGMA foreign_keys = ON');
-	`
-
-	err := runner.RunCleanupScript(cleanupScript)
-	if err != nil {
-		t.Logf("Failed to cleanup tables: %v", err)
-	}
-}

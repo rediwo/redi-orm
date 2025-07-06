@@ -3,8 +3,8 @@ package sqlite
 import (
 	"testing"
 
-	"github.com/rediwo/redi-orm/orm"
 	"github.com/rediwo/redi-orm/database"
+	"github.com/rediwo/redi-orm/orm"
 	"github.com/rediwo/redi-orm/test"
 	"github.com/rediwo/redi-orm/types"
 )

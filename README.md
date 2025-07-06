@@ -6,12 +6,13 @@ A modern, schema-driven ORM for Go with a JavaScript runtime interface. RediORM 
 
 - **Dual API Design** - Native Go API for performance, JavaScript API for flexibility
 - **Schema-Driven** - Define your data model once, use it everywhere
-- **Multi-Database Support** - SQLite, MySQL, and PostgreSQL
+- **Multi-Database Support** - SQLite, MySQL, PostgreSQL, and MongoDB
 - **Smart Field Mapping** - Automatic conversion between naming conventions
-- **Migration System** - Track and manage database schema changes
+- **Migration System** - Track and manage database schema changes (SQL databases)
 - **Relations Support** - One-to-one, one-to-many, many-to-one, and many-to-many relations
-- **Raw SQL Support** - Execute arbitrary SQL when needed
-- **Transaction Support** - Full ACID compliance with savepoints
+- **Raw Query Support** - Execute SQL or native database commands (including MongoDB)
+- **SQL Parser for MongoDB** - Write familiar SQL queries that are automatically translated to MongoDB operations
+- **Transaction Support** - Full ACID compliance with savepoints (SQL databases), basic transaction support for MongoDB
 - **Type-Safe Queries** - Compile-time safety in Go, runtime validation in JS
 
 ## 📦 Installation
@@ -235,12 +236,35 @@ async function main() {
         data: { name: 'Bob Smith' }
     });
     
-    // Raw SQL queries
+    // Raw SQL queries (works with all databases including MongoDB)
     const results = await db.queryRaw(
         'SELECT u.*, COUNT(p.id) as post_count FROM users u ' +
         'LEFT JOIN posts p ON u.id = p.user_id ' +
         'GROUP BY u.id'
     );
+    
+    // MongoDB: You can also use native MongoDB commands
+    if (db.getDriverType() === 'mongodb') {
+        // Native MongoDB find command
+        const users = await db.queryRaw(`{
+            "find": "users",
+            "filter": {"age": {"$gt": 18}},
+            "sort": {"name": 1}
+        }`);
+        
+        // MongoDB aggregation pipeline
+        const stats = await db.queryRaw(`{
+            "aggregate": "users",
+            "pipeline": [
+                {"$match": {"active": true}},
+                {"$group": {
+                    "_id": "$role",
+                    "count": {"$sum": 1},
+                    "avgAge": {"$avg": "$age"}
+                }}
+            ]
+        }`);
+    }
     
     // Execute raw SQL
     const { rowsAffected } = await db.executeRaw(
@@ -362,15 +386,20 @@ redi-orm/
 
 ## 📊 Database Support
 
-| Feature | SQLite | MySQL | PostgreSQL |
-|---------|--------|-------|------------|
-| Basic CRUD | ✅ | ✅ | ✅ |
-| Transactions | ✅ | ✅ | ✅ |
-| Migrations | ✅ | ✅ | ✅ |
-| Raw Queries | ✅ | ✅ | ✅ |
-| Field Mapping | ✅ | ✅ | ✅ |
-| Relations | ✅ | ✅ | ✅ |
-| Savepoints | ✅ | ✅ | ✅ |
+| Feature | SQLite | MySQL | PostgreSQL | MongoDB |
+|---------|--------|-------|------------|---------|
+| Basic CRUD | ✅ | ✅ | ✅ | ✅ |
+| Transactions | ✅ | ✅ | ✅ | ✅* |
+| Migrations | ✅ | ✅ | ✅ | 🔧 |
+| Raw Queries | ✅ | ✅ | ✅ | ✅ |
+| Field Mapping | ✅ | ✅ | ✅ | ✅ |
+| Relations | ✅ | ✅ | ✅ | 🔧 |
+| Savepoints | ✅ | ✅ | ✅ | ❌ |
+| Nested Documents | ❌ | ❌ | ❌ | ✅ |
+| Array Fields | 🔧 | 🔧 | ✅ | ✅ |
+| Aggregation Pipeline | ❌ | ❌ | ❌ | ✅ |
+
+> 🔧 = Partial support, ❌ = Not supported, ✅* = Supported with limitations
 
 ## 🔧 Advanced Features
 
@@ -562,6 +591,90 @@ intValue := utils.ToInt64(result["count"])       // MySQL may return string for 
 floatValue := utils.ToFloat64(result["average"]) // Handle various numeric types
 ```
 
+### MongoDB Support
+
+RediORM includes full MongoDB support with special features for document databases:
+
+#### Connection
+```javascript
+// MongoDB connection
+const db = fromUri('mongodb://localhost:27017/myapp');
+// MongoDB SRV connection  
+const db = fromUri('mongodb+srv://user:pass@cluster.mongodb.net/myapp');
+```
+
+#### Document Schema
+```javascript
+await db.loadSchema(`
+    model User {
+        id      String   @id @default(auto()) @map("_id") @db.ObjectId
+        email   String   @unique
+        profile Json?    // Nested document
+        tags    String[] // Array field
+    }
+`);
+```
+
+#### Nested Queries
+```javascript
+// Query nested fields
+const users = await db.models.User.findMany({
+    where: {
+        'profile.location.city': 'San Francisco',
+        tags: { in: ['developer'] }
+    }
+});
+
+// Update nested fields
+await db.models.User.update({
+    where: { id: userId },
+    data: {
+        'profile.bio': 'Updated bio',
+        tags: { push: 'mongodb' }
+    }
+});
+```
+
+#### Aggregation Pipeline
+```javascript
+// Raw aggregation pipeline
+const results = await db.queryRaw(`{
+    "aggregate": "users",
+    "pipeline": [
+        { "$match": { "age": { "$gte": 18 } } },
+        { "$group": {
+            "_id": "$location",
+            "count": { "$sum": 1 },
+            "avgAge": { "$avg": "$age" }
+        }}
+    ]
+}`);
+```
+
+### MongoDB-Specific Features and Limitations
+
+#### Supported Features
+- ✅ Full CRUD operations with automatic ID generation
+- ✅ SQL to MongoDB query translation
+- ✅ Native MongoDB command execution
+- ✅ Basic transactions (requires replica set)
+- ✅ Field mapping with `_id` handling
+- ✅ Distinct queries
+- ✅ Basic aggregation operations
+- ✅ Index management
+
+#### Limitations
+- 🔧 Complex aggregation functions (SUM, AVG, MIN, MAX) need native MongoDB syntax
+- 🔧 Some relation patterns require additional implementation
+- ❌ Savepoints not supported
+- ❌ Some string operators behave differently (case sensitivity)
+
+#### Best Practices
+1. Use SQL syntax for simple queries
+2. Use native MongoDB commands for complex aggregations
+3. Ensure MongoDB replica set is configured for transactions
+4. Test string matching carefully due to regex differences
+
 ## 🛠️ Development
 
 ### Local Development
@@ -581,6 +694,41 @@ make dev
 
 # CI workflow
 make ci
+```
+
+### Docker Development
+
+The project includes a docker-compose setup for testing with real databases:
+
+```bash
+# Start all databases (MySQL, PostgreSQL, MongoDB)
+make docker-up
+
+# Wait for databases to be ready
+make docker-wait
+
+# Run tests with Docker databases
+make test-docker
+
+# Stop databases
+make docker-down
+```
+
+Database credentials (all databases use the same):
+- User: `testuser`
+- Password: `testpass`
+- Database: `testdb`
+
+Connection strings:
+```bash
+# MySQL
+mysql://testuser:testpass@localhost:3306/testdb
+
+# PostgreSQL
+postgresql://testuser:testpass@localhost:5432/testdb
+
+# MongoDB (with replica set for transactions)
+mongodb://testuser:testpass@localhost:27017/testdb?authSource=admin
 
 # Build with version injection
 make release-build
@@ -596,7 +744,7 @@ make version
 - [x] Schema management (Prisma-style definitions)
 - [x] Migration system (auto & file-based)
 - [x] JavaScript runtime with ORM interface
-- [x] Multi-database support (SQLite, MySQL, PostgreSQL)
+- [x] Multi-database support (SQLite, MySQL, PostgreSQL, MongoDB)
 - [x] Relations support (one-to-one, one-to-many, many-to-many)
 - [x] Advanced relation features (eager loading, nested writes, filtering)
 - [x] CLI tool with timeout support

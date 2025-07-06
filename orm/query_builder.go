@@ -226,20 +226,44 @@ func applyInclude(query any, include any) any {
 
 	// Handle different include formats
 	if includeMap, ok := include.(map[string]any); ok {
+		// First pass: collect all nested includes to avoid conflicts
+		allNestedIncludes := make(map[string]*types.IncludeOption)
+		simpleIncludes := make(map[string]bool)
+
+		// Parse all includes first to identify conflicts
 		for relationName, opts := range includeMap {
 			switch opts := opts.(type) {
 			case bool:
 				if opts {
-					// Simple include
-					selectQuery = selectQuery.Include(relationName)
+					simpleIncludes[relationName] = true
 				}
 			case map[string]any:
 				// Handle nested include with options
 				includeOpts := parseNestedIncludes(relationName, opts)
-				// Apply include options to the query
 				for path, opt := range includeOpts {
-					selectQuery = applyIncludeOption(selectQuery, path, opt)
+					allNestedIncludes[path] = opt
 				}
+			}
+		}
+
+		// Apply nested includes first (they have priority)
+		for path, opt := range allNestedIncludes {
+			selectQuery = applyIncludeOption(selectQuery, path, opt)
+		}
+
+		// Apply simple includes only if they don't conflict with nested ones
+		for relationName := range simpleIncludes {
+			hasNestedVersion := false
+			// Check if this relation has a nested version
+			for nestedPath := range allNestedIncludes {
+				if strings.HasPrefix(nestedPath, relationName+".") {
+					hasNestedVersion = true
+					break
+				}
+			}
+			// Only apply simple include if no nested version exists
+			if !hasNestedVersion {
+				selectQuery = selectQuery.Include(relationName)
 			}
 		}
 	}

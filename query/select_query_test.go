@@ -148,6 +148,27 @@ func (m *mockCapabilities) IsSystemTable(tableName string) bool {
 	return false
 }
 
+// NoSQL features
+func (m *mockCapabilities) IsNoSQL() bool {
+	return false
+}
+
+func (m *mockCapabilities) SupportsTransactions() bool {
+	return true
+}
+
+func (m *mockCapabilities) SupportsNestedDocuments() bool {
+	return false
+}
+
+func (m *mockCapabilities) SupportsArrayFields() bool {
+	return false
+}
+
+func (m *mockCapabilities) SupportsAggregationPipeline() bool {
+	return false
+}
+
 type mockFieldMapper struct{}
 
 func (m *mockFieldMapper) SchemaToColumn(modelName, fieldName string) (string, error) {

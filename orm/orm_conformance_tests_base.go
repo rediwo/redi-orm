@@ -137,8 +137,51 @@ func assertNoError(t *testing.T, err error, msg string) {
 // assertEqual checks that two values are equal
 func assertEqual(t *testing.T, expected, actual any, msg string) {
 	t.Helper()
+	
+	// Handle numeric type comparison (common issue with JSON parsing)
+	if areNumericEqual(expected, actual) {
+		return
+	}
+	
 	if expected != actual {
-		t.Fatalf("%s: expected %v, got %v", msg, expected, actual)
+		t.Fatalf("%s: expected %v (type %T), got %v (type %T)", msg, expected, expected, actual, actual)
+	}
+}
+
+// areNumericEqual checks if two values are numerically equal, handling type differences
+func areNumericEqual(a, b any) bool {
+	// Convert both values to float64 for comparison if they're numeric
+	aFloat, aOk := toFloat64(a)
+	bFloat, bOk := toFloat64(b)
+	
+	if aOk && bOk {
+		return aFloat == bFloat
+	}
+	
+	return false
+}
+
+// toFloat64 tries to convert a value to float64
+func toFloat64(v any) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case float32:
+		return float64(val), true
+	case int:
+		return float64(val), true
+	case int32:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case uint:
+		return float64(val), true
+	case uint32:
+		return float64(val), true
+	case uint64:
+		return float64(val), true
+	default:
+		return 0, false
 	}
 }
 

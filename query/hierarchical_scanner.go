@@ -177,14 +177,14 @@ func (hs *HierarchicalScanner) scanRowsToMapsHierarchical(rows *sql.Rows, dest a
 				aliases = append(aliases, alias)
 			}
 		}
-		
+
 		// Sort aliases so parent aliases come before child aliases
 		// This is important for self-referential and nested relations
 		sort.Slice(aliases, func(i, j int) bool {
 			// Check if one is a parent of the other
 			infoI := hs.joinInfo[aliases[i]]
 			infoJ := hs.joinInfo[aliases[j]]
-			
+
 			if infoI != nil && infoJ != nil {
 				// If j's parent is i, then i should come first
 				if infoJ.ParentAlias == aliases[i] {
@@ -199,7 +199,7 @@ func (hs *HierarchicalScanner) scanRowsToMapsHierarchical(rows *sql.Rows, dest a
 			}
 			return aliases[i] < aliases[j]
 		})
-		
+
 		for _, alias := range aliases {
 			recordData := recordMaps[alias]
 			if isNullRecord(recordData) {

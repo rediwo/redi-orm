@@ -321,6 +321,26 @@ func (q *UpdateQueryImpl) extractFromStruct(data any) ([]string, []any, error) {
 	return fields, values, nil
 }
 
+// GetSetData returns the set data
+func (q *UpdateQueryImpl) GetSetData() map[string]any {
+	return q.setData
+}
+
+// GetAtomicOps returns the atomic operations
+func (q *UpdateQueryImpl) GetAtomicOps() map[string]AtomicOperation {
+	return q.atomicOps
+}
+
+// GetWhereConditions returns the where conditions
+func (q *UpdateQueryImpl) GetWhereConditions() []types.Condition {
+	return q.whereConditions
+}
+
+// GetReturningFields returns the returning fields
+func (q *UpdateQueryImpl) GetReturningFields() []string {
+	return q.returningFields
+}
+
 // clone creates a copy of the update query
 func (q *UpdateQueryImpl) clone() *UpdateQueryImpl {
 	newSetData := make(map[string]any)

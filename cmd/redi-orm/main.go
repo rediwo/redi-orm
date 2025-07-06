@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rediwo/redi-orm/database"
+	_ "github.com/rediwo/redi-orm/drivers/mongodb"    // Import MongoDB driver
 	_ "github.com/rediwo/redi-orm/drivers/mysql"      // Import MySQL driver
 	_ "github.com/rediwo/redi-orm/drivers/postgresql" // Import PostgreSQL driver
 	_ "github.com/rediwo/redi-orm/drivers/sqlite"     // Import SQLite driver

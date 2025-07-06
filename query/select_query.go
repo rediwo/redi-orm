@@ -854,6 +854,64 @@ func (q *SelectQueryImpl) findOneMapsWithFieldMapping(_ context.Context, sql str
 	return nil
 }
 
+// GetSelectedFields returns the selected fields
+func (q *SelectQueryImpl) GetSelectedFields() []string {
+	return q.selectedFields
+}
+
+// GetDistinct returns whether this is a distinct query
+func (q *SelectQueryImpl) GetDistinct() bool {
+	return q.distinct
+}
+
+// GetDistinctOn returns the distinct on fields
+func (q *SelectQueryImpl) GetDistinctOn() []string {
+	return q.distinctOn
+}
+
+// GetOrderBy returns the order by clauses
+func (q *SelectQueryImpl) GetOrderBy() []types.OrderByClause {
+	result := make([]types.OrderByClause, len(q.orderBy))
+	for i, clause := range q.orderBy {
+		result[i] = types.OrderByClause{
+			Field:     clause.FieldName,
+			Direction: clause.Direction,
+		}
+	}
+	return result
+}
+
+// GetGroupBy returns the group by fields
+func (q *SelectQueryImpl) GetGroupBy() []string {
+	return q.groupBy
+}
+
+// GetHaving returns the having condition
+func (q *SelectQueryImpl) GetHaving() types.Condition {
+	return q.having
+}
+
+// GetLimit returns the limit
+func (q *SelectQueryImpl) GetLimit() int {
+	if q.limit != nil {
+		return *q.limit
+	}
+	return 0
+}
+
+// GetOffset returns the offset
+func (q *SelectQueryImpl) GetOffset() int {
+	if q.offset != nil {
+		return *q.offset
+	}
+	return 0
+}
+
+// GetConditions returns the conditions
+func (q *SelectQueryImpl) GetConditions() []types.Condition {
+	return q.ModelQueryImpl.GetConditions()
+}
+
 // clone creates a copy of the select query
 func (q *SelectQueryImpl) clone() *SelectQueryImpl {
 	newQuery := &SelectQueryImpl{

@@ -127,6 +127,16 @@ func (q *DeleteQueryImpl) buildWhereClause(conditions []types.Condition) (string
 	return whereSQL, args, nil
 }
 
+// GetWhereConditions returns the where conditions
+func (q *DeleteQueryImpl) GetWhereConditions() []types.Condition {
+	return q.whereConditions
+}
+
+// GetReturningFields returns the returning fields
+func (q *DeleteQueryImpl) GetReturningFields() []string {
+	return q.returningFields
+}
+
 // clone creates a copy of the delete query
 func (q *DeleteQueryImpl) clone() *DeleteQueryImpl {
 	return &DeleteQueryImpl{

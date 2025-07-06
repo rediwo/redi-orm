@@ -11,6 +11,7 @@ const (
 	DriverSQLite     DriverType = "sqlite"
 	DriverMySQL      DriverType = "mysql"
 	DriverPostgreSQL DriverType = "postgresql"
+	DriverMongoDB    DriverType = "mongodb"
 )
 
 // String returns the string representation of the driver type
@@ -42,6 +43,13 @@ type DriverCapabilities interface {
 	// Driver identification
 	GetDriverType() DriverType
 	GetSupportedSchemes() []string
+
+	// NoSQL features
+	IsNoSQL() bool
+	SupportsTransactions() bool
+	SupportsNestedDocuments() bool
+	SupportsArrayFields() bool
+	SupportsAggregationPipeline() bool
 }
 
 // ParseDriverType parses a string into a DriverType

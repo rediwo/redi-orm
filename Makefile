@@ -15,13 +15,9 @@ help:
 	@echo "  test-verbose  - Run tests with verbose output"
 	@echo "  test-short    - Run tests in short mode"
 	@echo "  test-cover    - Run tests with coverage"
-	@echo "  test-race     - Run tests with race detection"
-	@echo "  test-integration - Run integration tests only"
-	@echo "  test-benchmark - Run benchmark tests"
 	@echo "  test-sqlite   - Run SQLite tests only"
 	@echo "  test-mysql    - Run MySQL tests only"
 	@echo "  test-postgresql - Run PostgreSQL tests only"
-	@echo "  test-orm      - Run ORM module tests only"
 	@echo "  test-docker   - Run tests with Docker databases"
 	@echo "  docker-up     - Start test databases"
 	@echo "  docker-down   - Stop test databases"
@@ -38,41 +34,32 @@ help:
 
 # Test targets
 test:
-	go test -p 1 ./...
+	go test -p 1 -count=1 ./...
 
 test-verbose:
-	go test -p 1 -v ./...
+	go test -p 1 -count=1 -v ./...
 
 test-short:
-	go test -p 1 -short ./...
+	go test -p 1 -count=1 -short ./...
 
 test-cover:
-	go test -p 1 -cover -short ./...
-
-test-race:
-	go test -p 1 -race -short ./...
-
-test-integration:
-	go test -p 1 -v -run Integration ./test
-
-test-benchmark:
-	go test -p 1 -bench=. -benchmem ./test
+	go test -p 1 -count=1 -cover -short ./...
 
 test-sqlite:
-	go test -p 1 -v ./drivers/sqlite
+	go test -p 1 -count=1 -v ./drivers/sqlite
 
 test-mysql:
-	go test -p 1 -v ./drivers/mysql
+	go test -p 1 -count=1 -v ./drivers/mysql
 
 test-postgresql:
-	go test -p 1 -v ./drivers/postgresql
+	go test -p 1 -count=1 -v ./drivers/postgresql
 
-test-orm:
-	go test -p 1 -v ./modules/orm/tests
+test-mongodb:
+	go test -p 1 -count=1 -v ./drivers/mongodb
 
 test-docker: docker-up docker-wait
 	@echo "Running tests with Docker databases..."
-	go test -p 1 -v ./drivers/mysql ./drivers/postgresql || true
+	go test -p 1 -v ./drivers/mysql ./drivers/postgresql ./drivers/mongodb || true
 	$(MAKE) docker-down
 
 # Code quality targets
@@ -120,11 +107,11 @@ ci: deps fmt vet test-race test-cover
 
 # Docker targets
 docker-up:
-	docker-compose up -d
+	docker compose up -d
 	@echo "Docker databases started"
 
 docker-down:
-	docker-compose down
+	docker compose down
 	@echo "Docker databases stopped"
 
 docker-wait:
@@ -135,6 +122,10 @@ docker-wait:
 	done
 	@until docker exec redi-orm-postgresql pg_isready -U testuser -d testdb; do \
 		echo "Waiting for PostgreSQL..."; \
+		sleep 2; \
+	done
+	@until docker exec redi-orm-mongodb mongosh --eval "db.adminCommand('ping').ok" --quiet 2>/dev/null; do \
+		echo "Waiting for MongoDB..."; \
 		sleep 2; \
 	done
 	@echo "All databases are ready"

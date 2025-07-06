@@ -170,6 +170,12 @@ func (jct *JSConformanceTests) shouldSkip(testName string) bool {
 
 // runWithCleanup runs a test with table cleanup before execution
 func (jct *JSConformanceTests) runWithCleanup(t *testing.T, runner *JSTestRunner, testName string, testCode string) {
+	// Check if test should be skipped
+	if jct.shouldSkip("Test" + testName) {
+		t.Skipf("Test %s skipped by driver", testName)
+		return
+	}
+	
 	// Clean up tables before each test
 	if jct.CleanupTables != nil {
 		jct.CleanupTables(t, runner)

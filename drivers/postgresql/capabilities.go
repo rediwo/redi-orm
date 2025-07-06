@@ -105,3 +105,25 @@ func (c *PostgreSQLCapabilities) GetDriverType() types.DriverType {
 func (c *PostgreSQLCapabilities) GetSupportedSchemes() []string {
 	return []string{"postgresql", "postgres"}
 }
+
+// NoSQL features (PostgreSQL is not a NoSQL database but has some features)
+
+func (c *PostgreSQLCapabilities) IsNoSQL() bool {
+	return false
+}
+
+func (c *PostgreSQLCapabilities) SupportsTransactions() bool {
+	return true
+}
+
+func (c *PostgreSQLCapabilities) SupportsNestedDocuments() bool {
+	return false // PostgreSQL has JSON/JSONB but not full document support
+}
+
+func (c *PostgreSQLCapabilities) SupportsArrayFields() bool {
+	return true // PostgreSQL has native array support
+}
+
+func (c *PostgreSQLCapabilities) SupportsAggregationPipeline() bool {
+	return false
+}

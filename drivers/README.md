@@ -15,6 +15,7 @@ RediORM uses a three-layer driver architecture:
 - **SQLite** - File-based database with in-memory support
 - **MySQL** - Full-featured MySQL/MariaDB support
 - **PostgreSQL** - Complete PostgreSQL support
+- **MongoDB** - Document database with SQL query translation
 
 ## Direct Driver Usage
 
@@ -28,6 +29,7 @@ import (
     _ "github.com/rediwo/redi-orm/drivers/sqlite"     // SQLite driver
     _ "github.com/rediwo/redi-orm/drivers/mysql"      // MySQL driver  
     _ "github.com/rediwo/redi-orm/drivers/postgresql" // PostgreSQL driver
+    _ "github.com/rediwo/redi-orm/drivers/mongodb"    // MongoDB driver
 )
 ```
 
@@ -47,6 +49,10 @@ db, err := database.NewFromURI("mysql://user:pass@localhost/mydb?charset=utf8mb4
 // PostgreSQL
 db, err := database.NewFromURI("postgresql://user:pass@localhost:5432/mydb")
 db, err := database.NewFromURI("postgres://user:pass@localhost/mydb?sslmode=require")
+
+// MongoDB
+db, err := database.NewFromURI("mongodb://user:pass@localhost:27017/mydb")
+db, err := database.NewFromURI("mongodb+srv://cluster.mongodb.net/mydb")
 ```
 
 #### Option 2: Direct Driver Instantiation
@@ -56,6 +62,7 @@ import (
     "github.com/rediwo/redi-orm/drivers/sqlite"
     "github.com/rediwo/redi-orm/drivers/mysql" 
     "github.com/rediwo/redi-orm/drivers/postgresql"
+    "github.com/rediwo/redi-orm/drivers/mongodb"
 )
 
 // SQLite - pass native file path
@@ -66,6 +73,9 @@ mysqlDB, err := mysql.NewMySQLDB("user:pass@tcp(localhost:3306)/mydb?charset=utf
 
 // PostgreSQL - pass native DSN  
 pgDB, err := postgresql.NewPostgreSQLDB("host=localhost user=user password=pass dbname=mydb")
+
+// MongoDB - pass native connection string
+mongoDB, err := mongodb.NewMongoDB("mongodb://user:pass@localhost:27017/mydb")
 ```
 
 ## Connection URIs and Options
@@ -120,6 +130,28 @@ SQLite doesn't support query parameters in URIs but accepts PRAGMA statements af
 // - search_path=schema1,schema2 (schema search path)
 // - timezone=UTC (session timezone)
 // - client_encoding=UTF8 (client encoding)
+```
+
+### MongoDB URIs
+
+```go
+// Basic connection
+"mongodb://localhost:27017/database"
+"mongodb://user:password@localhost:27017/database"
+
+// Replica set
+"mongodb://host1:27017,host2:27017,host3:27017/database?replicaSet=myRS"
+
+// MongoDB Atlas (SRV)
+"mongodb+srv://user:password@cluster.mongodb.net/database"
+
+// Common MongoDB options:
+// - authSource=admin (authentication database)
+// - replicaSet=myRS (replica set name)
+// - tls=true (enable TLS/SSL)
+// - readPreference=primary|secondary|nearest
+// - w=majority (write concern)
+// - retryWrites=true (automatic retry on network errors)
 ```
 
 ## Schema Management
@@ -445,7 +477,7 @@ err := User.Select().
 ### Raw Queries
 
 ```go
-// SELECT queries
+// SQL queries (works with all databases including MongoDB)
 rawQuery := db.Raw("SELECT * FROM users WHERE age > ?", 18)
 var users []map[string]any
 err := rawQuery.Scan(ctx, &users)
@@ -457,6 +489,29 @@ err := db.Raw("SELECT * FROM users WHERE id = ?", 1).ScanOne(ctx, &user)
 // Execute non-SELECT queries
 result, err := db.Raw("UPDATE users SET status = ? WHERE age < ?", "minor", 18).Exec(ctx)
 rowsAffected, err := result.RowsAffected()
+
+// MongoDB: Native commands (JSON format)
+rawQuery := db.Raw(`{
+    "find": "users",
+    "filter": {"age": {"$gt": 18}},
+    "sort": {"name": 1}
+}`)
+var users []map[string]any
+err := rawQuery.Scan(ctx, &users)
+
+// MongoDB: Aggregation pipeline
+rawQuery := db.Raw(`{
+    "aggregate": "users",
+    "pipeline": [
+        {"$match": {"age": {"$gte": 18}}},
+        {"$group": {
+            "_id": "$city",
+            "count": {"$sum": 1}
+        }}
+    ]
+}`)
+var results []map[string]any
+err := rawQuery.Scan(ctx, &results)
 ```
 
 ### Using Database/SQL Directly
@@ -686,6 +741,12 @@ Each driver has different capabilities:
 - Doesn't require LIMIT for OFFSET
 - Full NULLS ordering support
 - Auto-increment uses SERIAL/BIGSERIAL
+
+**MongoDB:**
+- No RETURNING support (uses find-then-modify pattern)
+- No LIMIT requirement for OFFSET (uses skip)
+- No NULLS ordering (null values sort differently)
+- Auto-increment uses custom sequence collection
 
 ## Type Conversion Utilities
 

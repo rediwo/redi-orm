@@ -50,6 +50,7 @@ The CLI supports all databases that RediORM supports:
 - **SQLite**: `sqlite://./path/to/database.db` or `sqlite://:memory:`
 - **MySQL**: `mysql://user:password@localhost:3306/database`
 - **PostgreSQL**: `postgresql://user:password@localhost:5432/database`
+- **MongoDB**: `mongodb://user:password@localhost:27017/database` or `mongodb+srv://cluster.mongodb.net/database`
 
 ### Schema Files
 
@@ -260,4 +261,5 @@ go install ./cmd/redi-orm
 - Migrations are tracked in a `redi_migrations` table
 - Each migration has a version (timestamp) and checksum
 - The CLI uses the same migration system as the programmatic API
-- All database operations run in transactions for safety
+- All database operations run in transactions for safety (MongoDB requires replica set for transactions)
+- MongoDB migrations are limited to index management (no schema changes)

@@ -106,3 +106,25 @@ func (c *MySQLCapabilities) GetDriverType() types.DriverType {
 func (c *MySQLCapabilities) GetSupportedSchemes() []string {
 	return []string{"mysql"}
 }
+
+// NoSQL features (MySQL is not a NoSQL database)
+
+func (c *MySQLCapabilities) IsNoSQL() bool {
+	return false
+}
+
+func (c *MySQLCapabilities) SupportsTransactions() bool {
+	return true
+}
+
+func (c *MySQLCapabilities) SupportsNestedDocuments() bool {
+	return false // MySQL has JSON but not full document support
+}
+
+func (c *MySQLCapabilities) SupportsArrayFields() bool {
+	return false // MySQL has JSON arrays but not native array fields
+}
+
+func (c *MySQLCapabilities) SupportsAggregationPipeline() bool {
+	return false
+}

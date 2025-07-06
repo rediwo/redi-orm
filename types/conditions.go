@@ -182,6 +182,16 @@ func (f *MappedFieldCondition) GetArgs() []any {
 	return f.Args
 }
 
+// GetFieldName returns the field name
+func (f *MappedFieldCondition) GetFieldName() string {
+	return f.fieldName
+}
+
+// GetModelName returns the model name
+func (f *MappedFieldCondition) GetModelName() string {
+	return f.modelName
+}
+
 // ToSQL generates SQL with proper field mapping
 func (f *MappedFieldCondition) ToSQL(ctx *ConditionContext) (string, []any) {
 	// If no context, use the base SQL as-is

@@ -158,12 +158,19 @@ err := client.Transaction(func(tx *orm.Client) error {
 ### Raw Queries
 
 ```go
-// Execute raw SQL
+// Execute raw SQL (works with all databases including MongoDB)
 raw := client.Model("").Raw("SELECT * FROM users WHERE age > ?", 18)
 results, err := raw.Find()
 
 // For single result
 result, err := raw.FindOne()
+
+// MongoDB native commands
+raw := client.Model("").Raw(`{
+    "find": "users",
+    "filter": {"age": {"$gt": 18}}
+}`)
+results, err := raw.Find()
 ```
 
 ## Query Syntax
@@ -219,6 +226,7 @@ The orm package automatically handles database-specific type conversions:
 - **MySQL**: Converts string numbers to proper numeric types
 - **PostgreSQL**: Native numeric types preserved
 - **SQLite**: Integer/float types preserved
+- **MongoDB**: BSON types converted to Go types, ObjectId to string
 
 This is especially important for aggregations where MySQL returns strings:
 

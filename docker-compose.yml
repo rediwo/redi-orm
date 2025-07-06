@@ -35,6 +35,25 @@ services:
     volumes:
       - postgresql_data:/var/lib/postgresql/data
 
+  mongodb:
+    image: mongo:7.0
+    container_name: redi-orm-mongodb
+    ports:
+      - "27017:27017"
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    environment:
+      MONGO_INITDB_DATABASE: testdb
+    healthcheck:
+      test: |
+        echo 'try { rs.status().ok } catch (e) { rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]}) }' | mongosh --quiet || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - mongodb_data:/data/db
+
 volumes:
   mysql_data:
   postgresql_data:
+  mongodb_data:

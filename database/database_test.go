@@ -45,6 +45,13 @@ func (c *mockCapabilities) IsSystemTable(tableName string) bool { return false }
 func (c *mockCapabilities) GetDriverType() types.DriverType     { return "mock" }
 func (c *mockCapabilities) GetSupportedSchemes() []string       { return []string{"mock"} }
 
+// NoSQL features
+func (c *mockCapabilities) IsNoSQL() bool                     { return false }
+func (c *mockCapabilities) SupportsTransactions() bool        { return true }
+func (c *mockCapabilities) SupportsNestedDocuments() bool     { return false }
+func (c *mockCapabilities) SupportsArrayFields() bool         { return false }
+func (c *mockCapabilities) SupportsAggregationPipeline() bool { return false }
+
 func (m *mockDatabase) Connect(ctx context.Context) error {
 	m.connected = true
 	return nil
@@ -371,33 +378,33 @@ func TestDefaultDriversLoaded(t *testing.T) {
 
 func TestURIParsingExamples(t *testing.T) {
 	testCases := []struct {
-		name        string
-		uri         string
-		shouldError bool
+		name               string
+		uri                string
+		shouldError        bool
 		expectedDriverType string
 	}{
 		{
-			name:        "SQLite memory",
-			uri:         "sqlite://:memory:",
-			shouldError: false,
+			name:               "SQLite memory",
+			uri:                "sqlite://:memory:",
+			shouldError:        false,
 			expectedDriverType: "sqlite",
 		},
 		{
-			name:        "SQLite file",
-			uri:         "sqlite:///path/to/db.sqlite",
-			shouldError: false,
+			name:               "SQLite file",
+			uri:                "sqlite:///path/to/db.sqlite",
+			shouldError:        false,
 			expectedDriverType: "sqlite",
 		},
 		{
-			name:        "MySQL full URI",
-			uri:         "mysql://user:pass@localhost:3306/database",
-			shouldError: false,
+			name:               "MySQL full URI",
+			uri:                "mysql://user:pass@localhost:3306/database",
+			shouldError:        false,
 			expectedDriverType: "mysql",
 		},
 		{
-			name:        "PostgreSQL with SSL",
-			uri:         "postgresql://user:pass@host:5432/db?sslmode=require",
-			shouldError: false,
+			name:               "PostgreSQL with SSL",
+			uri:                "postgresql://user:pass@host:5432/db?sslmode=require",
+			shouldError:        false,
 			expectedDriverType: "postgresql",
 		},
 		{

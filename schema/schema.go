@@ -27,6 +27,14 @@ const (
 	FieldTypeBoolArray     FieldType = "bool[]"
 	FieldTypeDecimalArray  FieldType = "decimal[]"
 	FieldTypeDateTimeArray FieldType = "datetime[]"
+
+	// MongoDB specific types
+	FieldTypeObjectId   FieldType = "objectid"
+	FieldTypeBinary     FieldType = "binary"
+	FieldTypeDecimal128 FieldType = "decimal128"
+	FieldTypeTimestamp  FieldType = "timestamp"
+	FieldTypeDocument   FieldType = "document" // Embedded document
+	FieldTypeArray      FieldType = "array"    // Generic array
 )
 
 type Field struct {

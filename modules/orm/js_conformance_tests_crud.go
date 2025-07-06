@@ -121,7 +121,7 @@ model User {
 			await db.models.User.findUnique({ where: { id: user.id } });
 			throw new Error('Should have failed to find deleted user');
 		} catch (err) {
-			assert(err.message.includes('no rows found') || err.message.includes('not found'));
+			assert(err.message.includes('no rows found') || err.message.includes('not found') || err.message.includes('no documents found'));
 		}
 		
 		// await db.close();

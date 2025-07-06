@@ -90,7 +90,6 @@ func (p *PostgreSQLDB) Connect(ctx context.Context) error {
 	return nil
 }
 
-
 // SyncSchemas synchronizes all loaded schemas with the database
 func (p *PostgreSQLDB) SyncSchemas(ctx context.Context) error {
 	return p.Driver.SyncSchemas(ctx, p)

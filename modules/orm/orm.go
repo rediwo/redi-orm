@@ -8,8 +8,8 @@ import (
 
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/eventloop"
-	"github.com/rediwo/redi-orm/orm"
 	"github.com/rediwo/redi-orm/database"
+	"github.com/rediwo/redi-orm/orm"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi-orm/utils"
@@ -21,10 +21,10 @@ func normalizeError(err error) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	errMsg := err.Error()
 	lowerMsg := strings.ToLower(errMsg)
-	
+
 	// Normalize NOT NULL constraint violations
 	// MySQL: "Field 'X' doesn't have a default value"
 	// PostgreSQL: "null value in column"
@@ -34,7 +34,7 @@ func normalizeError(err error) error {
 		strings.Contains(lowerMsg, "not null constraint") {
 		return fmt.Errorf("NOT NULL constraint violation: %s", err.Error())
 	}
-	
+
 	// Return original error if no normalization needed
 	return err
 }
@@ -171,8 +171,12 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 		uri := call.Arguments[0].String()
 		dbInstance := vm.NewObject()
 
-		// Create lazy database connection
-		var db types.Database
+		// Create database connection immediately to validate URI
+		db, err := database.NewFromURI(uri)
+		if err != nil {
+			panic(vm.NewGoError(err))
+		}
+
 		var connected bool
 
 		// Parse URI to determine database type
@@ -190,14 +194,6 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 			m.loop.RunOnLoop(func(vm *js.Runtime) {
 				if connected {
 					resolve(js.Undefined())
-					return
-				}
-
-				// Create database connection
-				var err error
-				db, err = database.NewFromURI(uri)
-				if err != nil {
-					reject(vm.NewGoError(err))
 					return
 				}
 
@@ -234,14 +230,14 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 		})
 
 		// Schema management functions
-		dbInstance.Set("loadSchema", m.createLoadSchemaFunction(vm, &db, &connected))
-		dbInstance.Set("loadSchemaFrom", m.createLoadSchemaFromFunction(vm, &db, &connected))
-		dbInstance.Set("syncSchemas", m.createSyncSchemasFunction(vm, &db, &connected))
+		dbInstance.Set("loadSchema", m.createLoadSchemaFunction(vm, db, &connected))
+		dbInstance.Set("loadSchemaFrom", m.createLoadSchemaFromFunction(vm, db, &connected))
+		dbInstance.Set("syncSchemas", m.createSyncSchemasFunction(vm, db, &connected, dbInstance))
 
 		// Database operation methods
-		dbInstance.Set("ping", m.createPingFunction(vm, &db, &connected))
-		dbInstance.Set("createModel", m.createModelFunction(vm, &db, &connected))
-		dbInstance.Set("dropModel", m.dropModelFunction(vm, &db, &connected))
+		dbInstance.Set("ping", m.createPingFunction(vm, db, &connected))
+		dbInstance.Set("createModel", m.createModelFunction(vm, db, &connected))
+		dbInstance.Set("dropModel", m.dropModelFunction(vm, db, &connected))
 		dbInstance.Set("getModels", func(call js.FunctionCall) js.Value {
 			if !connected || db == nil {
 				return vm.NewArray(0)
@@ -250,11 +246,11 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 		})
 
 		// Raw query functions using ORM
-		dbInstance.Set("queryRaw", m.createQueryRawFunction(vm, &db, &connected))
-		dbInstance.Set("executeRaw", m.createExecuteRawFunction(vm, &db, &connected))
+		dbInstance.Set("queryRaw", m.createQueryRawFunction(vm, db, &connected))
+		dbInstance.Set("executeRaw", m.createExecuteRawFunction(vm, db, &connected))
 
 		// Transaction function using ORM
-		dbInstance.Set("transaction", m.createTransactionFunction(vm, &db, &connected))
+		dbInstance.Set("transaction", m.createTransactionFunction(vm, db, &connected))
 
 		// Models object (will be populated after syncSchemas)
 		modelsObj := vm.NewObject()
@@ -277,9 +273,9 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 }
 
 // Transaction support using ORM
-func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -297,7 +293,7 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Datab
 		// Execute the transaction in a goroutine
 		go func() {
 			// Create ORM client
-			client := orm.NewClient(*db)
+			client := orm.NewClient(db)
 
 			// Execute the transaction
 			err := client.Transaction(func(tx *orm.Client) error {
@@ -311,7 +307,7 @@ func (m *ModelsModule) createTransactionFunction(vm *js.Runtime, db *types.Datab
 
 					// Create models for transaction
 					modelsObj := vm.NewObject()
-					for _, modelName := range (*db).GetModels() {
+					for _, modelName := range db.GetModels() {
 						m.registerTransactionModel(vm, modelsObj, modelName, tx)
 					}
 					txObj.Set("models", modelsObj)
@@ -452,9 +448,9 @@ func (m *ModelsModule) registerTransactionModel(vm *js.Runtime, modelsObj *js.Ob
 }
 
 // Raw query functions using ORM
-func (m *ModelsModule) createQueryRawFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createQueryRawFunction(vm *js.Runtime, db types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -474,7 +470,7 @@ func (m *ModelsModule) createQueryRawFunction(vm *js.Runtime, db *types.Database
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			// Use ORM's raw query
-			client := orm.NewClient(*db)
+			client := orm.NewClient(db)
 			results, err := client.Model("").Raw(sql, args...).Find()
 			if err != nil {
 				reject(vm.NewGoError(err))
@@ -488,9 +484,9 @@ func (m *ModelsModule) createQueryRawFunction(vm *js.Runtime, db *types.Database
 	}
 }
 
-func (m *ModelsModule) createExecuteRawFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createExecuteRawFunction(vm *js.Runtime, db types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -510,7 +506,7 @@ func (m *ModelsModule) createExecuteRawFunction(vm *js.Runtime, db *types.Databa
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			// Use ORM's raw query
-			client := orm.NewClient(*db)
+			client := orm.NewClient(db)
 			result, err := client.Model("").Raw(sql, args...).Exec()
 			if err != nil {
 				reject(vm.NewGoError(err))
@@ -529,9 +525,9 @@ func (m *ModelsModule) createExecuteRawFunction(vm *js.Runtime, db *types.Databa
 }
 
 // Schema loading functions (keep existing implementation)
-func (m *ModelsModule) createLoadSchemaFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createLoadSchemaFunction(vm *js.Runtime, db types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -545,7 +541,7 @@ func (m *ModelsModule) createLoadSchemaFunction(vm *js.Runtime, db *types.Databa
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			ctx := context.Background()
-			if err := (*db).LoadSchema(ctx, schemaContent); err != nil {
+			if err := db.LoadSchema(ctx, schemaContent); err != nil {
 				reject(vm.NewGoError(err))
 				return
 			}
@@ -556,9 +552,9 @@ func (m *ModelsModule) createLoadSchemaFunction(vm *js.Runtime, db *types.Databa
 	}
 }
 
-func (m *ModelsModule) createLoadSchemaFromFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createLoadSchemaFromFunction(vm *js.Runtime, db types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -572,7 +568,7 @@ func (m *ModelsModule) createLoadSchemaFromFunction(vm *js.Runtime, db *types.Da
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			ctx := context.Background()
-			if err := (*db).LoadSchemaFrom(ctx, filename); err != nil {
+			if err := db.LoadSchemaFrom(ctx, filename); err != nil {
 				reject(vm.NewGoError(err))
 				return
 			}
@@ -583,9 +579,9 @@ func (m *ModelsModule) createLoadSchemaFromFunction(vm *js.Runtime, db *types.Da
 	}
 }
 
-func (m *ModelsModule) createSyncSchemasFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createSyncSchemasFunction(vm *js.Runtime, db types.Database, connected *bool, dbInstance *js.Object) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -593,13 +589,13 @@ func (m *ModelsModule) createSyncSchemasFunction(vm *js.Runtime, db *types.Datab
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			ctx := context.Background()
-			if err := (*db).SyncSchemas(ctx); err != nil {
+			if err := db.SyncSchemas(ctx); err != nil {
 				reject(vm.NewGoError(err))
 				return
 			}
 
 			// Register models after sync
-			if registerFn := call.This.ToObject(vm).Get("__registerModels"); registerFn != nil {
+			if registerFn := dbInstance.Get("__registerModels"); registerFn != nil {
 				if fn, ok := js.AssertFunction(registerFn); ok {
 					fn(nil)
 				}
@@ -613,9 +609,9 @@ func (m *ModelsModule) createSyncSchemasFunction(vm *js.Runtime, db *types.Datab
 }
 
 // createPingFunction creates the ping method
-func (m *ModelsModule) createPingFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createPingFunction(vm *js.Runtime, db types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -623,7 +619,7 @@ func (m *ModelsModule) createPingFunction(vm *js.Runtime, db *types.Database, co
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			ctx := context.Background()
-			if err := (*db).Ping(ctx); err != nil {
+			if err := db.Ping(ctx); err != nil {
 				reject(vm.NewGoError(err))
 				return
 			}
@@ -635,9 +631,9 @@ func (m *ModelsModule) createPingFunction(vm *js.Runtime, db *types.Database, co
 }
 
 // createModelFunction creates the createModel method
-func (m *ModelsModule) createModelFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) createModelFunction(vm *js.Runtime, db types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -651,7 +647,7 @@ func (m *ModelsModule) createModelFunction(vm *js.Runtime, db *types.Database, c
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			ctx := context.Background()
-			if err := (*db).CreateModel(ctx, modelName); err != nil {
+			if err := db.CreateModel(ctx, modelName); err != nil {
 				reject(vm.NewGoError(err))
 				return
 			}
@@ -663,9 +659,9 @@ func (m *ModelsModule) createModelFunction(vm *js.Runtime, db *types.Database, c
 }
 
 // dropModelFunction creates the dropModel method
-func (m *ModelsModule) dropModelFunction(vm *js.Runtime, db *types.Database, connected *bool) func(call js.FunctionCall) js.Value {
+func (m *ModelsModule) dropModelFunction(vm *js.Runtime, db types.Database, connected *bool) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if !*connected || *db == nil {
+		if !*connected || db == nil {
 			panic(vm.NewTypeError("Database not connected"))
 		}
 
@@ -679,7 +675,7 @@ func (m *ModelsModule) dropModelFunction(vm *js.Runtime, db *types.Database, con
 
 		m.loop.RunOnLoop(func(vm *js.Runtime) {
 			ctx := context.Background()
-			if err := (*db).DropModel(ctx, modelName); err != nil {
+			if err := db.DropModel(ctx, modelName); err != nil {
 				reject(vm.NewGoError(err))
 				return
 			}

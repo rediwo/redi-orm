@@ -167,19 +167,49 @@ func (td *transactionDatabase) ResolveFieldNames(modelName string, fieldNames []
 }
 
 func (td *transactionDatabase) Exec(query string, args ...any) (sql.Result, error) {
-	return td.originalDB.Exec(query, args...)
+	// For transactions, we should use the transaction's Raw method
+	// Convert to types.Result and then back to sql.Result
+	rawQuery := td.tx.Raw(query, args...)
+	result, err := rawQuery.Exec(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	
+	// Create a simple sql.Result implementation
+	return &sqlResult{
+		lastInsertID: result.LastInsertID,
+		rowsAffected: result.RowsAffected,
+	}, nil
 }
 
 func (td *transactionDatabase) Query(query string, args ...any) (*sql.Rows, error) {
-	return td.originalDB.Query(query, args...)
+	// For MongoDB transactions, Query operations are not supported directly
+	// Users should use Model() or Raw() methods instead
+	return nil, fmt.Errorf("Query is not supported in transactions, use Model() or Raw() instead")
 }
 
 func (td *transactionDatabase) QueryRow(query string, args ...any) *sql.Row {
-	return td.originalDB.QueryRow(query, args...)
+	// For MongoDB transactions, QueryRow operations are not supported directly
+	// Users should use Model() or Raw() methods instead
+	return nil
 }
 
 func (td *transactionDatabase) GetMigrator() types.DatabaseMigrator {
 	return td.originalDB.GetMigrator()
+}
+
+// sqlResult implements sql.Result interface for transaction compatibility
+type sqlResult struct {
+	lastInsertID int64
+	rowsAffected int64
+}
+
+func (r *sqlResult) LastInsertId() (int64, error) {
+	return r.lastInsertID, nil
+}
+
+func (r *sqlResult) RowsAffected() (int64, error) {
+	return r.rowsAffected, nil
 }
 
 // parseJSON parses a JSON string into a map

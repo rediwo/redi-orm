@@ -43,23 +43,33 @@ func (b *Driver) GetDB() *sql.DB {
 }
 
 // RegisterSchema registers a schema with the database
-func (b *Driver) RegisterSchema(modelName string, schema *schema.Schema) error {
-	if schema == nil {
+func (b *Driver) RegisterSchema(modelName string, sch *schema.Schema) error {
+	if sch == nil {
 		return fmt.Errorf("schema cannot be nil")
 	}
 
-	if err := schema.Validate(); err != nil {
+	if err := sch.Validate(); err != nil {
 		return fmt.Errorf("invalid schema: %w", err)
 	}
 
 	b.SchemasMu.Lock()
 	defer b.SchemasMu.Unlock()
 
-	b.Schemas[modelName] = schema
+	b.Schemas[modelName] = sch
 
 	// Register with field mapper
+	// First try direct cast to DefaultFieldMapper
 	if mapper, ok := b.FieldMapper.(*types.DefaultFieldMapper); ok {
-		mapper.RegisterSchema(modelName, schema)
+		mapper.RegisterSchema(modelName, sch)
+	} else {
+		// For wrapped field mappers (like MongoDB), we need to register with the underlying mapper
+		// MongoDB's field mapper embeds the FieldMapper interface, which might contain DefaultFieldMapper
+		type schemaRegistrar interface {
+			RegisterSchema(modelName string, s *schema.Schema)
+		}
+		if registrar, ok := b.FieldMapper.(schemaRegistrar); ok {
+			registrar.RegisterSchema(modelName, sch)
+		}
 	}
 
 	return nil

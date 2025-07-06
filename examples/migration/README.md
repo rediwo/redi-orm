@@ -452,15 +452,21 @@ myproject/
 ## Database Support
 
 The migration system works with all supported databases:
-- PostgreSQL
-- MySQL
-- SQLite
+- PostgreSQL - Full migration support
+- MySQL - Full migration support
+- SQLite - Full migration support
+- MongoDB - Limited to index management (no schema alterations)
 
-Each database driver generates appropriate SQL syntax for:
+Each SQL database driver generates appropriate syntax for:
 - Table creation/modification
 - Column types
 - Constraints
 - Indexes
+
+MongoDB migrations are limited to:
+- Index creation/deletion
+- Collection creation (automatic)
+- No structural changes (MongoDB is schemaless)
 
 ## Troubleshooting
 
@@ -493,6 +499,20 @@ For data transformations, create custom SQL migrations:
 UPDATE users SET full_name = first_name || ' ' || last_name;
 ALTER TABLE users DROP COLUMN first_name;
 ALTER TABLE users DROP COLUMN last_name;
+```
+
+For MongoDB, use native commands in migration files:
+```javascript
+// migrations/20240702160000_migrate_user_names/up.js
+db.users.updateMany(
+  {},
+  [{
+    $set: {
+      fullName: { $concat: ["$firstName", " ", "$lastName"] }
+    }
+  }]
+);
+db.users.updateMany({}, { $unset: { firstName: "", lastName: "" } });
 ```
 
 ### Migration History

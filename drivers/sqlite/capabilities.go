@@ -100,3 +100,25 @@ func (c *SQLiteCapabilities) GetDriverType() types.DriverType {
 func (c *SQLiteCapabilities) GetSupportedSchemes() []string {
 	return []string{"sqlite", "sqlite3"}
 }
+
+// NoSQL features (SQLite is not a NoSQL database)
+
+func (c *SQLiteCapabilities) IsNoSQL() bool {
+	return false
+}
+
+func (c *SQLiteCapabilities) SupportsTransactions() bool {
+	return true
+}
+
+func (c *SQLiteCapabilities) SupportsNestedDocuments() bool {
+	return false
+}
+
+func (c *SQLiteCapabilities) SupportsArrayFields() bool {
+	return false
+}
+
+func (c *SQLiteCapabilities) SupportsAggregationPipeline() bool {
+	return false
+}

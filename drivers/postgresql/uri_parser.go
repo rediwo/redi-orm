@@ -58,7 +58,7 @@ func (p *PostgreSQLURIParser) ParseURI(uri string) (string, error) {
 
 	// Build PostgreSQL DSN: key=value pairs
 	var dsnParts []string
-	
+
 	if host != "" {
 		dsnParts = append(dsnParts, fmt.Sprintf("host=%s", host))
 	}
