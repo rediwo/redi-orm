@@ -53,4 +53,3 @@ func TestPostgreSQLConformance(t *testing.T) {
 
 	suite.RunAll(t)
 }
-

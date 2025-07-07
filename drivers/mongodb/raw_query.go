@@ -238,6 +238,14 @@ func (q *MongoDBRawQuery) executeDelete(ctx context.Context, collection *mongo.C
 
 // executeFind handles find operations
 func (q *MongoDBRawQuery) executeFind(ctx context.Context, collection *mongo.Collection, cmd *MongoDBCommand, dest any) error {
+	// Check if collection exists by trying to list collections
+	database := collection.Database()
+	collectionNames, listErr := database.ListCollectionNames(ctx, bson.M{"name": collection.Name()})
+	if listErr == nil && len(collectionNames) == 0 {
+		// Collection doesn't exist - return error that matches test expectations
+		return fmt.Errorf("collection %s does not exist", cmd.Collection)
+	}
+
 	opts := options.Find()
 
 	// Apply options from command
@@ -454,6 +462,14 @@ func (q *MongoDBRawQuery) executeFindOne(ctx context.Context, collection *mongo.
 func (q *MongoDBRawQuery) executeAggregate(ctx context.Context, collection *mongo.Collection, cmd *MongoDBCommand, dest any) error {
 	if len(cmd.Pipeline) == 0 {
 		return fmt.Errorf("aggregate requires a pipeline")
+	}
+
+	// Check if collection exists by trying to list collections
+	database := collection.Database()
+	collectionNames, listErr := database.ListCollectionNames(ctx, bson.M{"name": collection.Name()})
+	if listErr == nil && len(collectionNames) == 0 {
+		// Collection doesn't exist - return error that matches test expectations
+		return fmt.Errorf("collection %s does not exist", cmd.Collection)
 	}
 
 	opts := options.Aggregate()

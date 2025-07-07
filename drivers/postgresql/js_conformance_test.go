@@ -39,14 +39,14 @@ func TestPostgreSQLJSConformance(t *testing.T) {
 				return
 			}
 			defer db.Close()
-			
+
 			// Connect to the database
 			ctx := context.Background()
 			if err := db.Connect(ctx); err != nil {
 				t.Logf("Failed to connect to database for cleanup: %v", err)
 				return
 			}
-			
+
 			if pgDB, ok := db.(*PostgreSQLDB); ok {
 				cleanupTables(t, pgDB)
 			}
@@ -55,4 +55,3 @@ func TestPostgreSQLJSConformance(t *testing.T) {
 
 	suite.RunAll(t)
 }
-

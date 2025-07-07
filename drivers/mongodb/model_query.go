@@ -49,6 +49,11 @@ func (q *MongoDBModelQuery) Delete() types.DeleteQuery {
 	return NewMongoDBDeleteQuery(q.ModelQueryImpl, q.db, q.fieldMapper, q.modelName)
 }
 
+// Aggregate creates a MongoDB-specific aggregation query
+func (q *MongoDBModelQuery) Aggregate() types.AggregationQuery {
+	return NewMongoDBaggregationQuery(q.ModelQueryImpl, q.db, q.fieldMapper, q.modelName)
+}
+
 // Where creates a MongoDB-specific field condition
 func (q *MongoDBModelQuery) Where(fieldName string) types.FieldCondition {
 	return NewMongoDBFieldCondition(q.modelName, fieldName, q.db)
@@ -145,7 +150,7 @@ func (q *MongoDBModelQuery) Offset(offset int) types.ModelQuery {
 func (q *MongoDBModelQuery) Count(ctx context.Context) (int64, error) {
 	// Create a select query that preserves all conditions from the model query
 	selectQuery := q.Select()
-	
+
 	// The base ModelQueryImpl already has the conditions, and they should be passed
 	// to the SelectQuery through the base query mechanism
 	return selectQuery.Count(ctx)
@@ -165,11 +170,11 @@ func (q *MongoDBModelQuery) Avg(ctx context.Context, fieldName string) (float64,
 	if err != nil {
 		return 0, err
 	}
-	
+
 	if result == nil {
 		return 0, nil
 	}
-	
+
 	// Convert result to float64
 	switch v := result.(type) {
 	case float64:
@@ -193,11 +198,11 @@ func (q *MongoDBModelQuery) Sum(ctx context.Context, fieldName string) (float64,
 	if err != nil {
 		return 0, err
 	}
-	
+
 	if result == nil {
 		return 0, nil
 	}
-	
+
 	// Convert result to float64
 	switch v := result.(type) {
 	case float64:
@@ -246,7 +251,7 @@ func (q *MongoDBModelQuery) aggregateField(ctx context.Context, fieldName, opera
 	conditions := q.GetConditions()
 	if len(conditions) > 0 {
 		qb := NewMongoDBQueryBuilder(q.db)
-		
+
 		// Combine all conditions with AND
 		var combined types.Condition
 		for i, cond := range conditions {
@@ -256,12 +261,12 @@ func (q *MongoDBModelQuery) aggregateField(ctx context.Context, fieldName, opera
 				combined = combined.And(cond)
 			}
 		}
-		
+
 		filter, err := qb.ConditionToFilter(combined, q.modelName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build filter: %w", err)
 		}
-		
+
 		if len(filter) > 0 {
 			pipeline = append(pipeline, bson.M{"$match": filter})
 		}
@@ -291,7 +296,7 @@ func (q *MongoDBModelQuery) aggregateField(ctx context.Context, fieldName, opera
 
 	// Execute aggregation
 	rawQuery := q.db.Raw(jsonCmd)
-	
+
 	var result []map[string]any
 	err = rawQuery.Find(ctx, &result)
 	if err != nil {
@@ -302,6 +307,6 @@ func (q *MongoDBModelQuery) aggregateField(ctx context.Context, fieldName, opera
 	if len(result) == 0 {
 		return nil, nil
 	}
-	
+
 	return result[0]["result"], nil
 }

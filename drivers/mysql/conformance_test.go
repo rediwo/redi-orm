@@ -53,4 +53,3 @@ func TestMySQLConformance(t *testing.T) {
 
 	suite.RunAll(t)
 }
-

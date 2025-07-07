@@ -25,8 +25,8 @@ func TestMongoDBOrmConformance(t *testing.T) {
 		},
 		SkipTests: map[string]bool{
 			// MongoDB-specific skips
-			"TestTransactionIsolation":       true, // MongoDB has different isolation semantics
-			"TestTransactionErrorHandling":   true, // MongoDB allows incomplete documents
+			"TestTransactionIsolation":        true, // MongoDB has different isolation semantics
+			"TestTransactionErrorHandling":    true, // MongoDB allows incomplete documents
 			"TestTransactionConcurrentAccess": true, // MongoDB transaction behavior differs
 		},
 		CleanupTables: func(t *testing.T, db types.Database) {

@@ -289,6 +289,7 @@ func (c *MongoDBCondition) ToSQL(ctx *types.ConditionContext) (string, []any) {
 		// Direct regex pattern (already processed)
 		pattern := fmt.Sprintf("%v", c.value)
 		// Use case-sensitive matching for string operators
+		fmt.Printf("[DEBUG] MongoDB filter for %s: field=%s, pattern=%s\n", c.operator, columnName, pattern)
 		filter = bson.M{columnName: bson.M{"$regex": pattern}}
 	case "null":
 		filter = bson.M{columnName: nil}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/rediwo/redi-orm/base"
@@ -50,6 +51,11 @@ func (m *MySQLDB) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open MySQL database: %w", err)
 	}
+
+	// Configure connection pool for better performance
+	db.SetMaxOpenConns(25) // Maximum number of open connections
+	db.SetMaxIdleConns(5)  // Maximum number of idle connections
+	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("failed to ping MySQL database: %w", err)

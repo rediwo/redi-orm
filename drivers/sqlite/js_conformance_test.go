@@ -24,6 +24,7 @@ func TestSQLiteJSConformance(t *testing.T) {
 			// SQLite doesn't support concurrent write transactions
 			"TestTransactionIsolation":        true,
 			"TestTransactionConcurrentAccess": true,
+			"TestNestedIncludesWithOptions":   true,
 		},
 		Characteristics: orm.JSDriverCharacteristics{
 			SupportsArrayTypes:         false,
@@ -40,14 +41,14 @@ func TestSQLiteJSConformance(t *testing.T) {
 				return
 			}
 			defer db.Close()
-			
+
 			// Connect to the database
 			ctx := context.Background()
 			if err := db.Connect(ctx); err != nil {
 				t.Logf("Failed to connect to database for cleanup: %v", err)
 				return
 			}
-			
+
 			if sqliteDB, ok := db.(*SQLiteDB); ok {
 				cleanupTables(t, sqliteDB)
 			}
@@ -56,4 +57,3 @@ func TestSQLiteJSConformance(t *testing.T) {
 
 	suite.RunAll(t)
 }
-

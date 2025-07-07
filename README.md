@@ -76,26 +76,35 @@ redi-orm version
 
 ### Go ORM API
 
-The Go ORM API provides a simplified, high-level interface for rapid development:
+The Go ORM API provides a simplified, high-level interface for rapid development using JSON-based queries:
 
 ```go
 package main
 
 import (
     "context"
+    "fmt"
     "log"
+    "github.com/rediwo/redi-orm/database"
     "github.com/rediwo/redi-orm/orm"
 )
 
 func main() {
-    // Create client from URI
-    client, err := orm.NewClient("sqlite://./myapp.db")
+    // Create database connection
+    db, err := database.NewFromURI("sqlite://./myapp.db")
     if err != nil {
         log.Fatal(err)
     }
-    defer client.Close()
-
+    defer db.Close()
+    
+    // Connect to database
     ctx := context.Background()
+    if err := db.Connect(ctx); err != nil {
+        log.Fatal(err)
+    }
+    
+    // Create ORM client
+    client := orm.NewClient(db)
     
     // Load schema from Prisma-style definition
     schemaContent := `
@@ -114,58 +123,86 @@ func main() {
             user    User   @relation(fields: [userId], references: [id])
         }
     `
-    if err := client.LoadSchema(ctx, schemaContent); err != nil {
+    if err := db.LoadSchema(ctx, schemaContent); err != nil {
         log.Fatal(err)
     }
     
-    // Get model instances
+    if err := db.SyncSchemas(ctx); err != nil {
+        log.Fatal(err)
+    }
+    
+    // Get model references for cleaner code
     User := client.Model("User")
     Post := client.Model("Post")
     
-    // Create user
-    user, err := User.Create(ctx, orm.Data{
-        "email": "alice@example.com",
-        "name":  "Alice",
-    })
+    // Create user (returns map[string]any)
+    user, err := User.Create(`{
+        "data": {
+            "email": "alice@example.com",
+            "name": "Alice"
+        }
+    }`)
     if err != nil {
         log.Fatal(err)
     }
     
     // Create post with relation
-    post, err := Post.Create(ctx, orm.Data{
-        "title":   "Hello World",
-        "content": "My first post",
-        "userId":  user["id"],
-    })
+    post, err := Post.Create(fmt.Sprintf(`{
+        "data": {
+            "title": "Hello World",
+            "content": "My first post",
+            "userId": %v
+        }
+    }`, user["id"]))
+    if err != nil {
+        log.Fatal(err)
+    }
     
-    // Find with conditions
-    users, err := User.FindMany(ctx, orm.Query{
-        Where: orm.Where{
-            "email": orm.Contains("@example.com"),
+    // Find with conditions (returns []map[string]any)
+    users, err := User.FindMany(`{
+        "where": {
+            "email": { "contains": "@example.com" }
         },
-        OrderBy: orm.OrderBy{"name": "asc"},
-        Include: orm.Include{"posts": true},
-    })
+        "orderBy": { "name": "asc" },
+        "include": { "posts": true }
+    }`)
+    if err != nil {
+        log.Fatal(err)
+    }
     
     // Update data
-    updatedUser, err := User.Update(ctx, orm.Query{
-        Where: orm.Where{"id": user["id"]},
-        Data:  orm.Data{"name": "Alice Smith"},
-    })
+    updatedUser, err := User.Update(fmt.Sprintf(`{
+        "where": { "id": %v },
+        "data": { "name": "Alice Smith" }
+    }`, user["id"]))
+    if err != nil {
+        log.Fatal(err)
+    }
     
     // Count records
-    count, err := Post.Count(ctx, orm.Query{
-        Where: orm.Where{"userId": user["id"]},
-    })
+    count, err := Post.Count(fmt.Sprintf(`{
+        "where": { "userId": %v }
+    }`, user["id"]))
+    if err != nil {
+        log.Fatal(err)
+    }
     
     // Delete records
-    err = Post.Delete(ctx, orm.Query{
-        Where: orm.Where{"id": post["id"]},
-    })
+    deleted, err := Post.Delete(fmt.Sprintf(`{
+        "where": { "id": %v }
+    }`, post["id"]))
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    fmt.Printf("Found %d users\n", len(users))
+    fmt.Printf("Updated user: %v\n", updatedUser)
+    fmt.Printf("Post count: %v\n", count)
+    fmt.Printf("Deleted: %v\n", deleted)
 }
 ```
 
-> **💡 Note**: For low-level database operations and advanced features, see the [Driver API documentation](./drivers/README.md).
+> **💡 Note**: The Go ORM API uses JSON strings for queries, similar to the JavaScript API. This provides a consistent experience across both languages. For low-level database operations and advanced features, see the [Driver API documentation](./drivers/README.md).
 
 ### JavaScript API
 
@@ -204,8 +241,12 @@ async function main() {
     // Sync schemas with database
     await db.syncSchemas();
     
-    // Use models via db.models
-    const user = await db.models.User.create({
+    // Get model references for cleaner code
+    const User = db.models.User;
+    const Post = db.models.Post;
+    
+    // Create user with nested post
+    const user = await User.create({
         data: {
             email: 'bob@example.com',
             name: 'Bob',
@@ -218,7 +259,7 @@ async function main() {
     });
     
     // Find with relations
-    const users = await db.models.User.findMany({
+    const users = await User.findMany({
         where: {
             email: { contains: '@example.com' }
         },
@@ -231,7 +272,7 @@ async function main() {
     });
     
     // Update
-    await db.models.User.update({
+    await User.update({
         where: { id: user.id },
         data: { name: 'Bob Smith' }
     });
@@ -390,14 +431,15 @@ redi-orm/
 |---------|--------|-------|------------|---------|
 | Basic CRUD | ✅ | ✅ | ✅ | ✅ |
 | Transactions | ✅ | ✅ | ✅ | ✅* |
-| Migrations | ✅ | ✅ | ✅ | 🔧 |
+| Migrations | ✅ | ✅ | ✅ | ❌ |
 | Raw Queries | ✅ | ✅ | ✅ | ✅ |
 | Field Mapping | ✅ | ✅ | ✅ | ✅ |
-| Relations | ✅ | ✅ | ✅ | 🔧 |
+| Relations | ✅ | ✅ | ✅ | ✅ |
 | Savepoints | ✅ | ✅ | ✅ | ❌ |
 | Nested Documents | ❌ | ❌ | ❌ | ✅ |
 | Array Fields | 🔧 | 🔧 | ✅ | ✅ |
 | Aggregation Pipeline | ❌ | ❌ | ❌ | ✅ |
+| GroupBy/Having | ✅ | ✅ | ✅ | ✅ |
 
 > 🔧 = Partial support, ❌ = Not supported, ✅* = Supported with limitations
 
@@ -660,14 +702,16 @@ const results = await db.queryRaw(`{
 - ✅ Basic transactions (requires replica set)
 - ✅ Field mapping with `_id` handling
 - ✅ Distinct queries
-- ✅ Basic aggregation operations
+- ✅ Full aggregation operations (COUNT, SUM, AVG, MIN, MAX)
+- ✅ GroupBy and Having clauses with aggregation pipeline
 - ✅ Index management
+- ✅ String operators (startsWith, endsWith, contains) with regex
+- ✅ Schema evolution support with nullable field handling
+- ✅ Collection existence validation
 
 #### Limitations
-- 🔧 Complex aggregation functions (SUM, AVG, MIN, MAX) need native MongoDB syntax
-- 🔧 Some relation patterns require additional implementation
 - ❌ Savepoints not supported
-- ❌ Some string operators behave differently (case sensitivity)
+- ❌ Migrations not supported (schemaless database)
 
 #### Best Practices
 1. Use SQL syntax for simple queries

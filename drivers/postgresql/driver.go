@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/rediwo/redi-orm/base"
@@ -80,6 +81,11 @@ func (p *PostgreSQLDB) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Configure connection pool for better performance
+	db.SetMaxOpenConns(25) // Maximum number of open connections
+	db.SetMaxIdleConns(5)  // Maximum number of idle connections
+	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()

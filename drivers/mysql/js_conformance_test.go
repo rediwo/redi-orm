@@ -38,14 +38,14 @@ func TestMySQLJSConformance(t *testing.T) {
 				return
 			}
 			defer db.Close()
-			
+
 			// Connect to the database
 			ctx := context.Background()
 			if err := db.Connect(ctx); err != nil {
 				t.Logf("Failed to connect to database for cleanup: %v", err)
 				return
 			}
-			
+
 			if mysqlDB, ok := db.(*MySQLDB); ok {
 				cleanupTables(t, mysqlDB)
 			}
@@ -54,4 +54,3 @@ func TestMySQLJSConformance(t *testing.T) {
 
 	suite.RunAll(t)
 }
-

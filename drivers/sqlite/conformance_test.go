@@ -46,4 +46,3 @@ func TestSQLiteConformance(t *testing.T) {
 
 	suite.RunAll(t)
 }
-

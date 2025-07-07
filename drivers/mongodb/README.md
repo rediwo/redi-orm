@@ -11,6 +11,7 @@ This driver provides MongoDB support for RediORM, enabling document database ope
 - ✅ **Connection Management** - Support for standard and SRV connection strings
 - ✅ **Index Management** - Create and manage indexes through schema definitions
 - ✅ **Field Mapping** - Automatic field name to column name conversion
+- ✅ **Aggregation Queries** - Full support for GROUP BY, HAVING with aggregation pipeline
 
 ### MongoDB-Specific Features
 - ✅ **SQL to MongoDB Translation** - Write SQL queries that are automatically translated to MongoDB operations
@@ -20,6 +21,9 @@ This driver provides MongoDB support for RediORM, enabling document database ope
 - ✅ **Aggregation Pipeline** - Through raw queries and SQL translation
 - ✅ **Document Validation** - JSON Schema validation
 - ✅ **Auto-increment IDs** - Emulated using sequence collection
+- ✅ **String Operators** - Full regex support for startsWith, endsWith, contains
+- ✅ **Schema Evolution** - Automatic handling of missing nullable fields
+- ✅ **Collection Validation** - Existence checks for better error messages
 - 🔧 **Geospatial Queries** - Planned
 - 🔧 **Text Search** - Planned
 
@@ -114,6 +118,26 @@ users := db.Model("User").
 // { age: { $gt: 18 }, status: "active" }
 // With sort: { createdAt: -1 }
 // And limit: 10
+```
+
+### Aggregation Queries
+
+```go
+// Group by with having clause
+result := db.Model("Order").
+    GroupBy("category").
+    Having("SUM(amount) > ?", 1000).
+    Select("category", "SUM(amount) as total", "COUNT(*) as count")
+
+// Translates to MongoDB aggregation pipeline:
+// [
+//   { $group: { 
+//     _id: "$category",
+//     total: { $sum: "$amount" },
+//     count: { $sum: 1 }
+//   }},
+//   { $match: { total: { $gt: 1000 } } }
+// ]
 ```
 
 ### Nested Field Queries
@@ -217,9 +241,8 @@ schema.AddIndex(schema.Index{
 ### Feature Limitations
 1. **No Savepoints** - MongoDB doesn't support savepoints in transactions
 2. **Limited JOIN Support** - JOINs are translated to $lookup (only LEFT JOIN supported)
-3. **Aggregation Functions** - SUM, AVG, MIN, MAX require native MongoDB syntax for complex cases
-4. **Schema Migrations** - Limited to index management (no ALTER TABLE equivalent)
-5. **DISTINCT** - Supported through aggregation pipeline
+3. **Schema Migrations** - MongoDB is schemaless, no ALTER TABLE equivalent
+4. **Foreign Keys** - No native foreign key constraints
 
 ### Behavioral Differences
 1. **String Matching** - MongoDB uses case-sensitive regex by default

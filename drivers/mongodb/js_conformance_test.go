@@ -25,9 +25,6 @@ func TestMongoDBJSConformance(t *testing.T) {
 			"TestTransactionIsolation":        true, // MongoDB has different isolation semantics
 			"TestTransactionErrorHandling":    true, // MongoDB allows incomplete documents
 			"TestTransactionConcurrentAccess": true, // MongoDB transaction behavior differs
-			"TestComplexAggregations":         true, // MongoDB aggregate functions need special handling
-			"TestStringOperators":             true, // MongoDB regex matching differs from SQL LIKE
-			"TestBulkOperations":              true, // MongoDB bulk operations need optimization
 			"TestIndexPerformance":            true, // MongoDB index behavior differs
 			"TestPaginationPerformance":       true, // MongoDB pagination needs optimization
 			"TestComplexQueryPerformance":     true, // MongoDB complex queries need optimization

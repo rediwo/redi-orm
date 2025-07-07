@@ -134,28 +134,6 @@ func (q *MongoDBSelectQuery) buildAggregateCommand(collection string) (string, [
 		}
 	}
 
-	// Add $sort stage
-	if sortDoc := q.buildSort(); sortDoc != nil {
-		// sortDoc is already a bson.D, which is the correct format for $sort
-		sortStage := bson.M{"$sort": sortDoc}
-		pipeline = append(pipeline, sortStage)
-	}
-
-	// Add $skip stage
-	if offset := q.GetOffset(); offset > 0 {
-		pipeline = append(pipeline, bson.M{"$skip": offset})
-	}
-
-	// Add $limit stage
-	if limit := q.GetLimit(); limit > 0 {
-		pipeline = append(pipeline, bson.M{"$limit": limit})
-	}
-
-	// Add $project stage for field selection
-	if projectStage := q.buildProjectStage(); projectStage != nil {
-		pipeline = append(pipeline, projectStage)
-	}
-
 	// Handle DISTINCT by adding a $group stage
 	if q.GetDistinct() {
 		// Check if we have specific distinct fields
@@ -164,8 +142,23 @@ func (q *MongoDBSelectQuery) buildAggregateCommand(collection string) (string, [
 		if len(fields) == 0 {
 			// If no specific fields, use all selected fields
 			fields = q.GetSelectedFields()
+
+			// If still no fields (distinct: true with no select), get all fields from schema
+			if len(fields) == 0 {
+				// For distinct: true without select, we need to get all fields from schema
+				schema, err := q.db.GetSchema(q.modelName)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to get schema for distinct: %w", err)
+				}
+
+				// Use all fields from schema
+				fields = make([]string, 0, len(schema.Fields))
+				for _, field := range schema.Fields {
+					fields = append(fields, field.Name)
+				}
+			}
 		}
-		
+
 		if len(fields) > 0 {
 			groupID := bson.M{}
 			for _, field := range fields {
@@ -193,6 +186,28 @@ func (q *MongoDBSelectQuery) buildAggregateCommand(collection string) (string, [
 			}
 			pipeline = append(pipeline, replaceRootStage)
 		}
+	} else {
+		// Add $project stage for field selection (only if not using DISTINCT)
+		if projectStage := q.buildProjectStage(); projectStage != nil {
+			pipeline = append(pipeline, projectStage)
+		}
+	}
+
+	// Add $sort stage (after DISTINCT processing to ensure proper field references)
+	if sortDoc := q.buildSort(); sortDoc != nil {
+		// sortDoc is already a bson.D, which is the correct format for $sort
+		sortStage := bson.M{"$sort": sortDoc}
+		pipeline = append(pipeline, sortStage)
+	}
+
+	// Add $skip stage
+	if offset := q.GetOffset(); offset > 0 {
+		pipeline = append(pipeline, bson.M{"$skip": offset})
+	}
+
+	// Add $limit stage
+	if limit := q.GetLimit(); limit > 0 {
+		pipeline = append(pipeline, bson.M{"$limit": limit})
 	}
 
 	// Create MongoDB command
@@ -201,7 +216,6 @@ func (q *MongoDBSelectQuery) buildAggregateCommand(collection string) (string, [
 		Collection: collection,
 		Pipeline:   pipeline,
 	}
-
 
 	// Convert to JSON
 	jsonCmd, err := cmd.ToJSON()
@@ -415,12 +429,11 @@ func (q *MongoDBSelectQuery) buildIncludeCommand(collection string) (string, []a
 	// Add $lookup stages for each include (including nested ones)
 	includeOptions := q.SelectQueryImpl.GetIncludeOptions()
 	simpleIncludes := q.GetIncludes()
-	
-	
+
 	// Group includes by their root relation to avoid conflicts
 	// For example, both "comments" and "comments.user" should be handled together
 	rootIncludes := make(map[string][]string)
-	
+
 	// First, process include options to identify all paths
 	for includePath := range includeOptions {
 		if strings.Contains(includePath, ".") {
@@ -432,7 +445,7 @@ func (q *MongoDBSelectQuery) buildIncludeCommand(collection string) (string, []a
 			rootIncludes[includePath] = append(rootIncludes[includePath], includePath)
 		}
 	}
-	
+
 	// Then, add simple includes only if they don't already have nested versions
 	for _, includePath := range simpleIncludes {
 		if _, exists := rootIncludes[includePath]; !exists {
@@ -440,7 +453,7 @@ func (q *MongoDBSelectQuery) buildIncludeCommand(collection string) (string, []a
 			rootIncludes[includePath] = append(rootIncludes[includePath], includePath)
 		}
 	}
-	
+
 	// Process each root relation once, prioritizing nested includes
 	processedIncludes := make(map[string]bool)
 	for rootRelation, paths := range rootIncludes {
@@ -458,7 +471,7 @@ func (q *MongoDBSelectQuery) buildIncludeCommand(collection string) (string, []a
 				break // Use the first nested path we find
 			}
 		}
-		
+
 		if hasNested {
 			// Process nested include (this will handle the root relation too)
 			lookupStages, err := q.buildNestedLookupStages(nestedPath)
@@ -467,7 +480,7 @@ func (q *MongoDBSelectQuery) buildIncludeCommand(collection string) (string, []a
 				continue
 			}
 			pipeline = append(pipeline, lookupStages...)
-			
+
 			// Mark all paths for this root as processed
 			for _, path := range paths {
 				processedIncludes[path] = true
@@ -481,7 +494,7 @@ func (q *MongoDBSelectQuery) buildIncludeCommand(collection string) (string, []a
 			}
 			if lookupStage != nil {
 				pipeline = append(pipeline, lookupStage)
-				
+
 				// Add unwind stage for many-to-one and one-to-one relations
 				shouldUnwind, err := q.shouldUnwindRelation(rootRelation)
 				if err == nil && shouldUnwind {
@@ -493,7 +506,7 @@ func (q *MongoDBSelectQuery) buildIncludeCommand(collection string) (string, []a
 					}
 					pipeline = append(pipeline, unwindStage)
 				}
-				
+
 				processedIncludes[rootRelation] = true
 			}
 		}
@@ -518,7 +531,6 @@ func (q *MongoDBSelectQuery) buildIncludeCommand(collection string) (string, []a
 	if limit := q.GetLimit(); limit > 0 {
 		pipeline = append(pipeline, bson.M{"$limit": limit})
 	}
-
 
 	// Create MongoDB command
 	cmd := MongoDBCommand{
@@ -564,7 +576,7 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 	var limitValue *int
 	var skipValue *int
 	var projection bson.M
-	
+
 	if hasIncludeOpt {
 		// Build where filter if present
 		if includeOpt.Where != nil {
@@ -574,7 +586,7 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 				return nil, fmt.Errorf("failed to build where filter for include %s: %w", relationName, err)
 			}
 		}
-		
+
 		// Build order by if present
 		if len(includeOpt.OrderBy) > 0 {
 			orderBy = bson.D{}
@@ -584,16 +596,16 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 				if err != nil {
 					columnName = order.Field
 				}
-				
+
 				direction := 1
 				if order.Direction == types.DESC {
 					direction = -1
 				}
-				
+
 				orderBy = append(orderBy, bson.E{Key: columnName, Value: direction})
 			}
 		}
-		
+
 		// Build projection if select fields are specified
 		if len(includeOpt.Select) > 0 {
 			projection = bson.M{}
@@ -606,7 +618,7 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 				projection[columnName] = 1
 			}
 		}
-		
+
 		// Get limit and skip values
 		limitValue = includeOpt.Limit
 		skipValue = includeOpt.Offset
@@ -638,7 +650,7 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 		if err != nil {
 			foreignColumn = relation.ForeignKey
 		}
-		
+
 		// Check if the foreign key is part of a composite primary key in the related model
 		relatedSchema, err := q.db.GetSchema(relation.Model)
 		if err == nil && len(relatedSchema.CompositeKey) > 1 {
@@ -654,11 +666,11 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 
 		// Check if we need pipeline style lookup (for filtering, ordering, pagination, or projection)
 		needsPipeline := len(whereFilter) > 0 || len(orderBy) > 0 || limitValue != nil || skipValue != nil || len(projection) > 0
-		
+
 		if needsPipeline {
 			// Build pipeline with stages
 			pipeline := []bson.M{}
-			
+
 			// Add match stage for the join condition
 			pipeline = append(pipeline, bson.M{
 				"$match": bson.M{
@@ -667,42 +679,42 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 					},
 				},
 			})
-			
+
 			// Add match stage for where conditions
 			if len(whereFilter) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$match": whereFilter,
 				})
 			}
-			
+
 			// Add sort stage
 			if len(orderBy) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$sort": orderBy,
 				})
 			}
-			
+
 			// Add skip stage
 			if skipValue != nil && *skipValue > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$skip": *skipValue,
 				})
 			}
-			
+
 			// Add limit stage
 			if limitValue != nil && *limitValue > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$limit": *limitValue,
 				})
 			}
-			
+
 			// Add projection stage if select fields are specified
 			if len(projection) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$project": projection,
 				})
 			}
-			
+
 			return bson.M{
 				"$lookup": bson.M{
 					"from":     relatedCollection,
@@ -751,11 +763,11 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 
 		// Check if we need pipeline style lookup (for filtering, ordering, pagination, or projection)
 		needsPipeline := len(whereFilter) > 0 || len(orderBy) > 0 || limitValue != nil || skipValue != nil || len(projection) > 0
-		
+
 		if needsPipeline {
 			// Build pipeline with stages
 			pipeline := []bson.M{}
-			
+
 			// Add match stage for the join condition
 			pipeline = append(pipeline, bson.M{
 				"$match": bson.M{
@@ -764,42 +776,42 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 					},
 				},
 			})
-			
+
 			// Add match stage for where conditions
 			if len(whereFilter) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$match": whereFilter,
 				})
 			}
-			
+
 			// Add sort stage
 			if len(orderBy) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$sort": orderBy,
 				})
 			}
-			
+
 			// Add skip stage
 			if skipValue != nil && *skipValue > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$skip": *skipValue,
 				})
 			}
-			
+
 			// Add limit stage
 			if limitValue != nil && *limitValue > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$limit": *limitValue,
 				})
 			}
-			
+
 			// Add projection stage if select fields are specified
 			if len(projection) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$project": projection,
 				})
 			}
-			
+
 			return bson.M{
 				"$lookup": bson.M{
 					"from":     relatedCollection,
@@ -845,11 +857,11 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 
 		// Check if we need pipeline style lookup (for filtering, ordering, pagination, or projection)
 		needsPipeline := len(whereFilter) > 0 || len(orderBy) > 0 || limitValue != nil || skipValue != nil || len(projection) > 0
-		
+
 		if needsPipeline {
 			// Build pipeline with stages
 			pipeline := []bson.M{}
-			
+
 			// Add match stage for the join condition
 			pipeline = append(pipeline, bson.M{
 				"$match": bson.M{
@@ -858,42 +870,42 @@ func (q *MongoDBSelectQuery) buildLookupStage(relationName string) (bson.M, erro
 					},
 				},
 			})
-			
+
 			// Add match stage for where conditions
 			if len(whereFilter) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$match": whereFilter,
 				})
 			}
-			
+
 			// Add sort stage
 			if len(orderBy) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$sort": orderBy,
 				})
 			}
-			
+
 			// Add skip stage
 			if skipValue != nil && *skipValue > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$skip": *skipValue,
 				})
 			}
-			
+
 			// Add limit stage
 			if limitValue != nil && *limitValue > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$limit": *limitValue,
 				})
 			}
-			
+
 			// Add projection stage if select fields are specified
 			if len(projection) > 0 {
 				pipeline = append(pipeline, bson.M{
 					"$project": projection,
 				})
 			}
-			
+
 			return bson.M{
 				"$lookup": bson.M{
 					"from":     relatedCollection,
@@ -930,48 +942,48 @@ func (q *MongoDBSelectQuery) buildNestedLookupStages(nestedPath string) ([]bson.
 	if len(parts) < 2 {
 		return nil, fmt.Errorf("invalid nested path, expected at least 2 parts, got: %s", nestedPath)
 	}
-	
+
 	// For now, we handle the first two parts and let the field mapper handle deeper nesting
 	parentRelation := parts[0]
 	childRelation := parts[1]
-	
-	// The strategy is to modify the parent relation's $lookup to include 
+
+	// The strategy is to modify the parent relation's $lookup to include
 	// a nested $lookup in its pipeline for the child relation
-	
+
 	// Get parent relation info
 	currentSchema, err := q.db.GetSchema(q.modelName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for model %s: %w", q.modelName, err)
 	}
-	
+
 	parentRel, exists := currentSchema.Relations[parentRelation]
 	if !exists {
 		return nil, fmt.Errorf("parent relation %s not found in model %s", parentRelation, q.modelName)
 	}
-	
+
 	// Get child relation info
 	parentSchema, err := q.db.GetSchema(parentRel.Model)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for parent model %s: %w", parentRel.Model, err)
 	}
-	
+
 	childRel, exists := parentSchema.Relations[childRelation]
 	if !exists {
 		return nil, fmt.Errorf("child relation %s not found in parent model %s", childRelation, parentRel.Model)
 	}
-	
+
 	// Check if there are include options for the parent relation
 	includeOptions := q.SelectQueryImpl.GetIncludeOptions()
 	parentIncludeOpt, _ := includeOptions[parentRelation]
-	
+
 	// Build $lookup with nested pipeline and parent options
 	lookupStage, err := q.buildLookupWithNestedRelation(parentRelation, parentRel, childRelation, childRel, parentIncludeOpt)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	stages := []bson.M{lookupStage}
-	
+
 	// For many-to-one parent relations, add unwind stage
 	if parentRel.Type == schema.RelationManyToOne {
 		unwindStage := bson.M{
@@ -982,7 +994,7 @@ func (q *MongoDBSelectQuery) buildNestedLookupStages(nestedPath string) ([]bson.
 		}
 		stages = append(stages, unwindStage)
 	}
-	
+
 	return stages, nil
 }
 
@@ -993,27 +1005,27 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 	if err != nil {
 		return nil, fmt.Errorf("failed to get collection name for parent model %s: %w", parentRel.Model, err)
 	}
-	
+
 	childCollection, err := q.fieldMapper.ModelToTable(childRel.Model)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get collection name for child model %s: %w", childRel.Model, err)
 	}
-	
+
 	// Build the nested $lookup pipeline
 	var nestedPipeline []bson.M
-	
+
 	// Add the child relation lookup
 	switch childRel.Type {
 	case schema.RelationManyToOne:
 		// For many-to-one (e.g., comment.author), we lookup from the child collection
 		// where the child's foreign key matches the parent's primary key
-		
+
 		// Get the foreign key column in the parent collection
 		foreignColumn, err := q.fieldMapper.SchemaToColumn(parentRel.Model, childRel.ForeignKey)
 		if err != nil {
 			foreignColumn = childRel.ForeignKey
 		}
-		
+
 		// Get the referenced column in the child collection
 		referencedColumn := childRel.References
 		if referencedColumn == "" {
@@ -1027,7 +1039,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 		if referencedColumn == "id" {
 			referencedColumn = "_id"
 		}
-		
+
 		// Add nested $lookup for child relation
 		nestedPipeline = append(nestedPipeline, bson.M{
 			"$lookup": bson.M{
@@ -1037,7 +1049,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				"as":           childRelation,
 			},
 		})
-		
+
 		// Convert array to single object for many-to-one relations
 		nestedPipeline = append(nestedPipeline, bson.M{
 			"$unwind": bson.M{
@@ -1045,12 +1057,12 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				"preserveNullAndEmptyArrays": true,
 			},
 		})
-		
+
 	case schema.RelationOneToMany:
 		// For one-to-many (e.g., user.posts from comments), we lookup from the child collection
 		// where the child's foreign key matches our id
-		
-		// Get the referenced column (primary key) in the parent collection  
+
+		// Get the referenced column (primary key) in the parent collection
 		referencedColumn := childRel.References
 		if referencedColumn == "" {
 			referencedColumn = "id"
@@ -1063,13 +1075,13 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 		if referencedColumn == "id" {
 			referencedColumn = "_id"
 		}
-		
+
 		// Get the foreign key column in the child collection
 		foreignColumn, err := q.fieldMapper.SchemaToColumn(childRel.Model, childRel.ForeignKey)
 		if err != nil {
 			foreignColumn = childRel.ForeignKey
 		}
-		
+
 		// Add nested $lookup for child relation
 		nestedPipeline = append(nestedPipeline, bson.M{
 			"$lookup": bson.M{
@@ -1079,11 +1091,11 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				"as":           childRelation,
 			},
 		})
-		
+
 	default:
 		return nil, fmt.Errorf("unsupported child relation type: %v", childRel.Type)
 	}
-	
+
 	// Now build the main $lookup for the parent relation with the nested pipeline
 	switch parentRel.Type {
 	case schema.RelationOneToMany:
@@ -1100,13 +1112,13 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 		if localColumn == "id" {
 			localColumn = "_id"
 		}
-		
+
 		// Get the foreign key column in the parent collection
 		foreignColumn, err := q.fieldMapper.SchemaToColumn(parentRel.Model, parentRel.ForeignKey)
 		if err != nil {
 			foreignColumn = parentRel.ForeignKey
 		}
-		
+
 		// Build parent pipeline with optional filters
 		parentPipeline := []bson.M{
 			{
@@ -1117,7 +1129,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				},
 			},
 		}
-		
+
 		// Add parent relation options if specified
 		if parentIncludeOpt != nil {
 			// Add where filter
@@ -1130,7 +1142,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 					})
 				}
 			}
-			
+
 			// Add order by
 			if len(parentIncludeOpt.OrderBy) > 0 {
 				orderBy := bson.D{}
@@ -1149,21 +1161,21 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 					"$sort": orderBy,
 				})
 			}
-			
+
 			// Add skip
 			if parentIncludeOpt.Offset != nil && *parentIncludeOpt.Offset > 0 {
 				parentPipeline = append(parentPipeline, bson.M{
 					"$skip": *parentIncludeOpt.Offset,
 				})
 			}
-			
+
 			// Add limit
 			if parentIncludeOpt.Limit != nil && *parentIncludeOpt.Limit > 0 {
 				parentPipeline = append(parentPipeline, bson.M{
 					"$limit": *parentIncludeOpt.Limit,
 				})
 			}
-			
+
 			// Add projection
 			if len(parentIncludeOpt.Select) > 0 {
 				projection := bson.M{}
@@ -1179,7 +1191,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				})
 			}
 		}
-		
+
 		// Use pipeline-style $lookup to include nested relations
 		return bson.M{
 			"$lookup": bson.M{
@@ -1189,14 +1201,14 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				"as":       parentRelation,
 			},
 		}, nil
-		
+
 	case schema.RelationManyToOne:
 		// Get the foreign key column in the current collection
 		foreignColumn, err := q.fieldMapper.SchemaToColumn(q.modelName, parentRel.ForeignKey)
 		if err != nil {
 			foreignColumn = parentRel.ForeignKey
 		}
-		
+
 		// Get the referenced column in the parent collection
 		referencedColumn := parentRel.References
 		if referencedColumn == "" {
@@ -1210,7 +1222,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 		if referencedColumn == "id" {
 			referencedColumn = "_id"
 		}
-		
+
 		// Build parent pipeline with optional filters
 		parentPipeline := []bson.M{
 			{
@@ -1221,7 +1233,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				},
 			},
 		}
-		
+
 		// Add parent relation options if specified
 		if parentIncludeOpt != nil {
 			// Add where filter
@@ -1234,7 +1246,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 					})
 				}
 			}
-			
+
 			// Add order by
 			if len(parentIncludeOpt.OrderBy) > 0 {
 				orderBy := bson.D{}
@@ -1253,21 +1265,21 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 					"$sort": orderBy,
 				})
 			}
-			
+
 			// Add skip
 			if parentIncludeOpt.Offset != nil && *parentIncludeOpt.Offset > 0 {
 				parentPipeline = append(parentPipeline, bson.M{
 					"$skip": *parentIncludeOpt.Offset,
 				})
 			}
-			
+
 			// Add limit
 			if parentIncludeOpt.Limit != nil && *parentIncludeOpt.Limit > 0 {
 				parentPipeline = append(parentPipeline, bson.M{
 					"$limit": *parentIncludeOpt.Limit,
 				})
 			}
-			
+
 			// Add projection
 			if len(parentIncludeOpt.Select) > 0 {
 				projection := bson.M{}
@@ -1283,7 +1295,7 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				})
 			}
 		}
-		
+
 		// Use pipeline-style $lookup to include nested relations
 		lookupStage := bson.M{
 			"$lookup": bson.M{
@@ -1293,11 +1305,11 @@ func (q *MongoDBSelectQuery) buildLookupWithNestedRelation(parentRelation string
 				"as":       parentRelation,
 			},
 		}
-		
+
 		// For many-to-one relations, we need to unwind after the lookup
 		// Return both the lookup and unwind stages
 		return lookupStage, nil
-		
+
 	default:
 		return nil, fmt.Errorf("unsupported parent relation type: %v", parentRel.Type)
 	}
@@ -1361,29 +1373,29 @@ func (q *MongoDBSelectQuery) mapColumnNamesToSchemaFields(dest any) error {
 	if destValue.Kind() != reflect.Ptr {
 		return nil // Not a pointer, skip mapping
 	}
-	
+
 	destElem := destValue.Elem()
 	if destElem.Kind() != reflect.Slice {
 		return nil // Not a slice, skip mapping
 	}
-	
+
 	sliceElemType := destElem.Type().Elem()
 	if sliceElemType != reflect.TypeOf(map[string]any{}) {
 		return nil // Not []map[string]any, skip mapping
 	}
-	
+
 	// Process each map in the slice
 	for i := 0; i < destElem.Len(); i++ {
 		mapValue := destElem.Index(i)
 		mapInterface := mapValue.Interface().(map[string]any)
-		
+
 		// Map the main model data
 		err := q.mapSingleDocumentFields(q.modelName, mapInterface)
 		if err != nil {
 			return fmt.Errorf("failed to map main model fields: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1394,7 +1406,7 @@ func (q *MongoDBSelectQuery) mapSingleDocumentFields(modelName string, document 
 	if err != nil {
 		return fmt.Errorf("failed to map column to schema data for %s: %w", modelName, err)
 	}
-	
+
 	// Replace the document contents with mapped data
 	for key := range document {
 		delete(document, key)
@@ -1402,10 +1414,10 @@ func (q *MongoDBSelectQuery) mapSingleDocumentFields(modelName string, document 
 	for key, value := range mappedData {
 		document[key] = value
 	}
-	
+
 	// Process included relations (including nested ones)
 	includes := q.GetIncludes()
-	
+
 	// First, identify which simple includes have nested versions
 	// e.g., if we have both "comments" and "comments.user", skip the simple "comments"
 	nestedRoots := make(map[string]bool)
@@ -1415,7 +1427,7 @@ func (q *MongoDBSelectQuery) mapSingleDocumentFields(modelName string, document 
 			nestedRoots[root] = true
 		}
 	}
-	
+
 	for _, includePath := range includes {
 		if strings.Contains(includePath, ".") {
 			// Handle nested includes like "comments.user"
@@ -1428,7 +1440,7 @@ func (q *MongoDBSelectQuery) mapSingleDocumentFields(modelName string, document 
 			if nestedRoots[includePath] {
 				continue
 			}
-			
+
 			// Handle simple includes like "comments"
 			if includedData, exists := document[includePath]; exists {
 				// Get the target model name for this include
@@ -1436,7 +1448,7 @@ func (q *MongoDBSelectQuery) mapSingleDocumentFields(modelName string, document 
 				if err != nil {
 					continue // Skip if we can't determine the target model
 				}
-				
+
 				// Map fields for included data
 				err = q.mapIncludedFields(targetModelName, includedData)
 				if err != nil {
@@ -1445,7 +1457,7 @@ func (q *MongoDBSelectQuery) mapSingleDocumentFields(modelName string, document 
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1455,37 +1467,37 @@ func (q *MongoDBSelectQuery) mapNestedIncludedFields(document map[string]any, ne
 	if len(parts) < 1 {
 		return fmt.Errorf("invalid nested path, got empty path")
 	}
-	
+
 	// For a path like "departments.teams.members", we process only the first relation
 	// "departments" and then recursively handle "teams.members" in the Department context
 	parentRelation := parts[0]
-	
+
 	// The remaining path is everything after the first part
 	remainingPath := ""
 	if len(parts) > 1 {
 		remainingPath = strings.Join(parts[1:], ".")
 	}
-	
+
 	// Check if the parent relation exists in the document
 	parentData, exists := document[parentRelation]
 	if !exists {
 		return nil // Parent relation not present, nothing to map
 	}
-	
+
 	// Get the parent relation's target model
 	parentModelName, err := q.getIncludeTargetModel(parentRelation)
 	if err != nil {
 		return fmt.Errorf("failed to get parent model for %s: %w", parentRelation, err)
 	}
-	fmt.Printf("[DEBUG] Processing nested path %s: parentRelation=%s, parentModel=%s, currentQueryModel=%s\n", 
+	fmt.Printf("[DEBUG] Processing nested path %s: parentRelation=%s, parentModel=%s, currentQueryModel=%s\n",
 		nestedPath, parentRelation, parentModelName, q.modelName)
-	
+
 	// Map the parent relation data first
 	err = q.mapIncludedFields(parentModelName, parentData)
 	if err != nil {
 		return fmt.Errorf("failed to map parent relation fields: %w", err)
 	}
-	
+
 	// If there's a remaining path, recursively handle it in the context of the parent model
 	if remainingPath != "" {
 		// Create a new query context for the parent model
@@ -1495,7 +1507,7 @@ func (q *MongoDBSelectQuery) mapNestedIncludedFields(document map[string]any, ne
 			modelName:   parentModelName,
 		}
 		fmt.Printf("[DEBUG] Recursing to parent context: remainingPath=%s, newContext=%s\n", remainingPath, parentModelName)
-		
+
 		// Check if the remaining path has multiple parts (nested) or just one part (simple relation)
 		remainingParts := strings.Split(remainingPath, ".")
 		if len(remainingParts) == 1 {
@@ -1527,7 +1539,7 @@ func (q *MongoDBSelectQuery) mapNestedIncludedFields(document map[string]any, ne
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1543,14 +1555,14 @@ func (q *MongoDBSelectQuery) mapSimpleNestedRelation(parentData any, relationNam
 			if err != nil {
 				return fmt.Errorf("failed to get target model for %s: %w", relationName, err)
 			}
-			
+
 			// Map the relation data
 			err = q.mapIncludedFields(targetModelName, relationData)
 			if err != nil {
 				return fmt.Errorf("failed to map relation fields for %s: %w", relationName, err)
 			}
 		}
-		
+
 	case []any:
 		// Array of parent documents
 		for _, item := range data {
@@ -1561,7 +1573,7 @@ func (q *MongoDBSelectQuery) mapSimpleNestedRelation(parentData any, relationNam
 					if err != nil {
 						return fmt.Errorf("failed to get target model for %s: %w", relationName, err)
 					}
-					
+
 					// Map the relation data
 					err = q.mapIncludedFields(targetModelName, relationData)
 					if err != nil {
@@ -1571,7 +1583,7 @@ func (q *MongoDBSelectQuery) mapSimpleNestedRelation(parentData any, relationNam
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1585,7 +1597,7 @@ func (q *MongoDBSelectQuery) mapIncludedFields(targetModelName string, includedD
 		if err != nil {
 			return err
 		}
-		
+
 		// Replace contents
 		for key := range data {
 			delete(data, key)
@@ -1593,7 +1605,7 @@ func (q *MongoDBSelectQuery) mapIncludedFields(targetModelName string, includedD
 		for key, value := range mappedData {
 			data[key] = value
 		}
-		
+
 	case []any:
 		// Array of included documents
 		for _, item := range data {
@@ -1602,7 +1614,7 @@ func (q *MongoDBSelectQuery) mapIncludedFields(targetModelName string, includedD
 				if err != nil {
 					return err
 				}
-				
+
 				// Replace contents
 				for key := range itemMap {
 					delete(itemMap, key)
@@ -1613,7 +1625,7 @@ func (q *MongoDBSelectQuery) mapIncludedFields(targetModelName string, includedD
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1624,14 +1636,14 @@ func (q *MongoDBSelectQuery) getIncludeTargetModel(includePath string) (string, 
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Look for the relation with this name
 	for relationName, relation := range schema.Relations {
 		if relationName == includePath {
 			return relation.Model, nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("relation %s not found in model %s", includePath, q.modelName)
 }
 
@@ -1642,20 +1654,20 @@ func (q *MongoDBSelectQuery) mapSingleColumnNamesToSchemaFields(dest any) error 
 	if destValue.Kind() != reflect.Ptr {
 		return nil // Not a pointer, skip mapping
 	}
-	
+
 	destElem := destValue.Elem()
 	if destElem.Type() != reflect.TypeOf(map[string]any{}) {
 		return nil // Not map[string]any, skip mapping
 	}
-	
+
 	mapInterface := destElem.Interface().(map[string]any)
-	
+
 	// Map the single document including nested relations
 	err := q.mapSingleDocumentFields(q.modelName, mapInterface)
 	if err != nil {
 		return fmt.Errorf("failed to map single document fields: %w", err)
 	}
-	
+
 	return nil
 }
 

@@ -42,4 +42,3 @@ func TestPostgreSQLOrmConformance(t *testing.T) {
 
 	suite.RunAll(t)
 }
-

@@ -148,7 +148,7 @@ func (q *MongoDBInsertQuery) convertToDocument(data any) (bson.M, error) {
 				// Apply default value
 				switch v := field.Default.(type) {
 				case string:
-					if v == "now()" {
+					if v == "now()" || v == "CURRENT_TIMESTAMP" {
 						dataMap[field.Name] = time.Now()
 					} else {
 						dataMap[field.Name] = v
@@ -182,7 +182,6 @@ func (q *MongoDBInsertQuery) convertToDocument(data any) (bson.M, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to map field names: %w", err)
 	}
-
 
 	return docMap, nil
 }

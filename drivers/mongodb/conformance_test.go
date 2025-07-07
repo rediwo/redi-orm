@@ -33,20 +33,20 @@ func TestMongoDBConformance(t *testing.T) {
 			"TestTransactionIsolation":       true, // MongoDB has different isolation semantics
 			"TestTransactionErrorHandling":   true, // MongoDB allows incomplete documents
 			// Migration tests are not applicable to MongoDB (document database)
-			"TestGetMigrator":               true,
-			"TestGetTables":                 true,
-			"TestGetTableInfo":              true,
-			"TestGenerateCreateTableSQL":    true,
-			"TestGenerateDropTableSQL":      true,
-			"TestGenerateAddColumnSQL":      true,
-			"TestGenerateDropColumnSQL":     true,
-			"TestGenerateCreateIndexSQL":    true,
-			"TestGenerateDropIndexSQL":      true,
-			"TestApplyMigration":            true,
-			"TestMigrationWorkflow":         true,
+			"TestGetMigrator":            true,
+			"TestGetTables":              true,
+			"TestGetTableInfo":           true,
+			"TestGenerateCreateTableSQL": true,
+			"TestGenerateDropTableSQL":   true,
+			"TestGenerateAddColumnSQL":   true,
+			"TestGenerateDropColumnSQL":  true,
+			"TestGenerateCreateIndexSQL": true,
+			"TestGenerateDropIndexSQL":   true,
+			"TestApplyMigration":         true,
+			"TestMigrationWorkflow":      true,
 			// SQL-specific tests not applicable to MongoDB
-			"TestRawQueryErrorHandling":     true, // MongoDB uses JSON queries, not SQL syntax validation
-			"TestGenerateColumnSQL":         true, // MongoDB doesn't use SQL column definitions
+			"TestRawQueryErrorHandling": true, // MongoDB uses JSON queries, not SQL syntax validation
+			"TestGenerateColumnSQL":     true, // MongoDB doesn't use SQL column definitions
 		},
 		CleanupTables: func(t *testing.T, db types.Database) {
 			// MongoDB-specific cleanup

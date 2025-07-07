@@ -42,4 +42,3 @@ func TestMySQLOrmConformance(t *testing.T) {
 
 	suite.RunAll(t)
 }
-

@@ -199,10 +199,10 @@ func (m *MongoDB) Transaction(ctx context.Context, fn func(tx types.Transaction)
 
 	// Create transaction wrapper
 	tx := NewMongoDBTransaction(session, m)
-	
+
 	// Execute the function
 	fnErr := fn(tx)
-	
+
 	if fnErr != nil {
 		// Rollback on error
 		if abortErr := session.AbortTransaction(ctx); abortErr != nil {
@@ -210,12 +210,12 @@ func (m *MongoDB) Transaction(ctx context.Context, fn func(tx types.Transaction)
 		}
 		return fnErr
 	}
-	
+
 	// Commit on success
 	if commitErr := session.CommitTransaction(ctx); commitErr != nil {
 		return fmt.Errorf("failed to commit transaction: %w", commitErr)
 	}
-	
+
 	return nil
 }
 

@@ -2,6 +2,7 @@ package orm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -759,6 +760,13 @@ func isUniqueConstraintError(err error) bool {
 
 // executeGroupBy handles groupBy queries
 func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any, db types.Database) (any, error) {
+	// Check if database supports raw SQL queries
+	// For NoSQL databases like MongoDB, use the query builder instead of generating SQL
+	capabilities := db.GetCapabilities()
+	if capabilities.IsNoSQL() {
+		return executeAggregationQuery(ctx, model, modelName, options, db)
+	}
+
 	// Parse groupBy fields
 	var groupByFields []string
 	if by, ok := options["by"]; ok {
@@ -878,7 +886,7 @@ func executeGroupBy(ctx context.Context, model types.ModelQuery, modelName strin
 		sql += fmt.Sprintf(" OFFSET %d", int(utils.ToInt64(skip)))
 	}
 
-	// Execute raw query
+	// Execute raw query for SQL databases
 	rows, err := db.Query(sql)
 	if err != nil {
 		return nil, err
@@ -1090,4 +1098,495 @@ func buildSimpleHavingSQL(having any) string {
 	}
 
 	return strings.Join(havingParts, " AND ")
+}
+
+// executeAggregationQuery executes groupBy using the query builder for NoSQL databases
+func executeAggregationQuery(ctx context.Context, model types.ModelQuery, modelName string, options map[string]any, db types.Database) (any, error) {
+	// For MongoDB, we need to manually build the aggregation pipeline
+	// since the standard SelectQuery doesn't handle aggregation functions properly
+
+	// Parse groupBy fields
+	var groupByFields []string
+	if by, ok := options["by"]; ok {
+		switch b := by.(type) {
+		case string:
+			groupByFields = []string{b}
+		case []any:
+			for _, field := range b {
+				if fieldStr, ok := field.(string); ok {
+					groupByFields = append(groupByFields, fieldStr)
+				}
+			}
+		}
+	}
+
+	if len(groupByFields) == 0 {
+		return nil, fmt.Errorf("groupBy requires 'by' field")
+	}
+
+	// Build MongoDB aggregation pipeline manually
+	return executeMongoDBGroupBy(ctx, modelName, groupByFields, options, db)
+}
+
+// applyAggregationWhereConditions applies where conditions to aggregation query
+func applyAggregationWhereConditions(query types.AggregationQuery, where any) types.AggregationQuery {
+	if whereMap, ok := where.(map[string]any); ok {
+		for field, value := range whereMap {
+			// For simple field equality
+			if _, isOperator := value.(map[string]any); !isOperator {
+				// Simple equality condition
+				query = query.WhereCondition(query.Where(field).Equals(value))
+			} else {
+				// Complex condition - use existing condition builder
+				condition := BuildCondition(map[string]any{field: value})
+				query = query.WhereCondition(condition)
+			}
+		}
+	}
+	return query
+}
+
+// buildAggregationHavingCondition builds having condition for aggregation
+func buildAggregationHavingCondition(having map[string]any) types.Condition {
+	// This is a simplified implementation
+	// Full implementation would need to handle aggregation function references
+	// For now, return nil to skip having conditions in NoSQL
+	return nil
+}
+
+// applyAggregationOrderBy applies order by to aggregation query
+func applyAggregationOrderBy(query types.AggregationQuery, orderBy any) types.AggregationQuery {
+	switch ob := orderBy.(type) {
+	case map[string]any:
+		for field, direction := range ob {
+			dir := types.ASC
+			if dirStr, ok := direction.(string); ok && strings.ToLower(dirStr) == "desc" {
+				dir = types.DESC
+			}
+
+			// Check if it's an aggregation field ordering
+			if strings.HasPrefix(field, "_") {
+				// This would be aggregation ordering - simplified for now
+				query = query.OrderBy(field, dir)
+			} else {
+				// Regular field ordering
+				query = query.OrderBy(field, dir)
+			}
+		}
+	case []any:
+		for _, item := range ob {
+			if orderMap, ok := item.(map[string]any); ok {
+				for field, direction := range orderMap {
+					dir := types.ASC
+					if dirStr, ok := direction.(string); ok && strings.ToLower(dirStr) == "desc" {
+						dir = types.DESC
+					}
+					query = query.OrderBy(field, dir)
+				}
+			}
+		}
+	}
+	return query
+}
+
+// processAggregationResults processes raw aggregation results to match expected format
+func processAggregationResults(results []map[string]any) []map[string]any {
+	processed := make([]map[string]any, len(results))
+
+	for i, result := range results {
+		processedResult := make(map[string]any)
+
+		// Copy regular grouped fields
+		for k, v := range result {
+			if !strings.HasPrefix(k, "_") {
+				processedResult[k] = v
+			}
+		}
+
+		// Process aggregation fields - convert from _sum_field format to nested format
+		aggregations := map[string]map[string]any{
+			"_count": make(map[string]any),
+			"_sum":   make(map[string]any),
+			"_avg":   make(map[string]any),
+			"_min":   make(map[string]any),
+			"_max":   make(map[string]any),
+		}
+
+		for k, v := range result {
+			if strings.HasPrefix(k, "_") {
+				if k == "_count" {
+					// Simple count
+					processedResult["_count"] = utils.ToInt64(v)
+				} else {
+					// Parse field-specific aggregations like _sum_amount
+					for aggType := range aggregations {
+						prefix := aggType + "_"
+						if strings.HasPrefix(k, prefix) {
+							fieldName := strings.TrimPrefix(k, prefix)
+							if aggType == "_count" {
+								aggregations[aggType][fieldName] = utils.ToInt64(v)
+							} else {
+								aggregations[aggType][fieldName] = utils.ToFloat64(v)
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Add non-empty aggregation groups to result
+		for aggType, aggData := range aggregations {
+			if len(aggData) > 0 {
+				processedResult[aggType] = aggData
+			}
+		}
+
+		processed[i] = processedResult
+	}
+
+	return processed
+}
+
+// executeMongoDBGroupBy manually builds MongoDB aggregation pipeline for groupBy operations
+func executeMongoDBGroupBy(ctx context.Context, modelName string, groupByFields []string, options map[string]any, db types.Database) (any, error) {
+	// Get collection name
+	tableName, err := db.ResolveTableName(modelName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build aggregation pipeline
+	pipeline := []any{}
+
+	// Add $match stage for WHERE conditions
+	if where, ok := options["where"]; ok {
+		matchFilter := buildMongoDBMatchFilter(where, modelName, db)
+		if matchFilter != nil {
+			pipeline = append(pipeline, map[string]any{"$match": matchFilter})
+		}
+	}
+
+	// Build $group stage
+	groupStage := buildMongoDBGroupStage(groupByFields, options, modelName, db)
+	pipeline = append(pipeline, map[string]any{"$group": groupStage})
+
+	// Add $match stage for HAVING conditions
+	if having, ok := options["having"]; ok {
+		havingFilter := buildMongoDBHavingFilter(having)
+		if havingFilter != nil {
+			pipeline = append(pipeline, map[string]any{"$match": havingFilter})
+		}
+	}
+
+	// Add $sort stage
+	if orderBy, ok := options["orderBy"]; ok {
+		sortStage := buildMongoDBSortStage(orderBy, modelName, db)
+		if sortStage != nil {
+			pipeline = append(pipeline, map[string]any{"$sort": sortStage})
+		}
+	}
+
+	// Add $skip and $limit stages
+	if skip, ok := options["skip"]; ok {
+		pipeline = append(pipeline, map[string]any{"$skip": utils.ToInt64(skip)})
+	}
+	if take, ok := options["take"]; ok {
+		pipeline = append(pipeline, map[string]any{"$limit": utils.ToInt64(take)})
+	}
+
+	// Execute aggregation
+	pipelineJSON := mustMarshalJSON(pipeline)
+	rawSQL := fmt.Sprintf(`{"operation": "aggregate", "collection": "%s", "pipeline": %s}`,
+		tableName, pipelineJSON)
+
+	rawQuery := db.Raw(rawSQL)
+	results := []map[string]any{}
+	err = rawQuery.Find(ctx, &results)
+	if err != nil {
+		return nil, err
+	}
+
+	// Post-process results to match expected format
+	return processMongoDBGroupByResults(results, groupByFields), nil
+}
+
+// buildMongoDBMatchFilter builds MongoDB match filter from WHERE conditions
+func buildMongoDBMatchFilter(where any, modelName string, db types.Database) map[string]any {
+	if whereMap, ok := where.(map[string]any); ok {
+		filter := make(map[string]any)
+		for field, value := range whereMap {
+			columnName, err := db.ResolveFieldName(modelName, field)
+			if err != nil {
+				columnName = field
+			}
+			filter[columnName] = value
+		}
+		return filter
+	}
+	return nil
+}
+
+// buildMongoDBGroupStage builds MongoDB group stage with aggregations
+func buildMongoDBGroupStage(groupByFields []string, options map[string]any, modelName string, db types.Database) map[string]any {
+	// Build _id for grouping
+	groupID := make(map[string]any)
+	for _, field := range groupByFields {
+		columnName, err := db.ResolveFieldName(modelName, field)
+		if err != nil {
+			columnName = field
+		}
+		groupID[field] = "$" + columnName
+	}
+
+	groupStage := map[string]any{
+		"_id": groupID,
+	}
+
+	// Add grouped fields to the result
+	for _, field := range groupByFields {
+		columnName, err := db.ResolveFieldName(modelName, field)
+		if err != nil {
+			columnName = field
+		}
+		groupStage[field] = map[string]any{"$first": "$" + columnName}
+	}
+
+	// Add aggregation functions
+	if count, ok := options["_count"]; ok {
+		switch c := count.(type) {
+		case bool:
+			if c {
+				groupStage["_count"] = map[string]any{"$sum": 1}
+			}
+		case map[string]any:
+			for field, enabled := range c {
+				if e, ok := enabled.(bool); ok && e {
+					groupStage["_count_"+field] = map[string]any{"$sum": 1}
+				}
+			}
+		}
+	}
+
+	if sum, ok := options["_sum"]; ok {
+		if sumMap, ok := sum.(map[string]any); ok {
+			for field, enabled := range sumMap {
+				if e, ok := enabled.(bool); ok && e {
+					columnName, err := db.ResolveFieldName(modelName, field)
+					if err != nil {
+						columnName = field
+					}
+					groupStage["_sum_"+field] = map[string]any{"$sum": "$" + columnName}
+				}
+			}
+		}
+	}
+
+	if avg, ok := options["_avg"]; ok {
+		if avgMap, ok := avg.(map[string]any); ok {
+			for field, enabled := range avgMap {
+				if e, ok := enabled.(bool); ok && e {
+					columnName, err := db.ResolveFieldName(modelName, field)
+					if err != nil {
+						columnName = field
+					}
+					groupStage["_avg_"+field] = map[string]any{"$avg": "$" + columnName}
+				}
+			}
+		}
+	}
+
+	if min, ok := options["_min"]; ok {
+		if minMap, ok := min.(map[string]any); ok {
+			for field, enabled := range minMap {
+				if e, ok := enabled.(bool); ok && e {
+					columnName, err := db.ResolveFieldName(modelName, field)
+					if err != nil {
+						columnName = field
+					}
+					groupStage["_min_"+field] = map[string]any{"$min": "$" + columnName}
+				}
+			}
+		}
+	}
+
+	if max, ok := options["_max"]; ok {
+		if maxMap, ok := max.(map[string]any); ok {
+			for field, enabled := range maxMap {
+				if e, ok := enabled.(bool); ok && e {
+					columnName, err := db.ResolveFieldName(modelName, field)
+					if err != nil {
+						columnName = field
+					}
+					groupStage["_max_"+field] = map[string]any{"$max": "$" + columnName}
+				}
+			}
+		}
+	}
+
+	return groupStage
+}
+
+// buildMongoDBHavingFilter builds MongoDB filter for HAVING conditions
+func buildMongoDBHavingFilter(having any) map[string]any {
+	if havingMap, ok := having.(map[string]any); ok {
+		filter := make(map[string]any)
+
+		for aggType, conditions := range havingMap {
+			if condMap, ok := conditions.(map[string]any); ok {
+				for field, operators := range condMap {
+					if opMap, ok := operators.(map[string]any); ok {
+						for op, value := range opMap {
+							// Build the field name for the aggregation result
+							var fieldName string
+							if field == "_all" && aggType == "_count" {
+								fieldName = "_count"
+							} else {
+								fieldName = aggType + "_" + field
+							}
+
+							// Build the condition
+							switch op {
+							case "gte":
+								filter[fieldName] = map[string]any{"$gte": value}
+							case "gt":
+								filter[fieldName] = map[string]any{"$gt": value}
+							case "lte":
+								filter[fieldName] = map[string]any{"$lte": value}
+							case "lt":
+								filter[fieldName] = map[string]any{"$lt": value}
+							case "equals":
+								filter[fieldName] = value
+							default:
+								filter[fieldName] = value
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if len(filter) == 0 {
+			return nil
+		}
+		return filter
+	}
+	return nil
+}
+
+// buildMongoDBSortStage builds MongoDB sort stage
+func buildMongoDBSortStage(orderBy any, modelName string, db types.Database) map[string]any {
+	sort := make(map[string]any)
+
+	switch ob := orderBy.(type) {
+	case map[string]any:
+		for field, direction := range ob {
+			dir := 1
+			if dirStr, ok := direction.(string); ok && strings.ToLower(dirStr) == "desc" {
+				dir = -1
+			}
+
+			// Check if it's a regular field or aggregation result
+			if strings.HasPrefix(field, "_") {
+				// Handle nested aggregation ordering like {_sum: {amount: 'desc'}}
+				if dirMap, ok := direction.(map[string]any); ok {
+					// This is nested aggregation ordering
+					for aggField, aggDir := range dirMap {
+						aggDirInt := 1
+						if dirStr, ok := aggDir.(string); ok && strings.ToLower(dirStr) == "desc" {
+							aggDirInt = -1
+						}
+						// Create the aggregation field name: field_aggField (e.g., _sum_amount)
+						aggFieldName := fmt.Sprintf("%s_%s", field, aggField)
+						sort[aggFieldName] = aggDirInt
+					}
+				} else {
+					// Simple aggregation field - use as is
+					sort[field] = dir
+				}
+			} else {
+				// Regular field - resolve column name
+				columnName, err := db.ResolveFieldName(modelName, field)
+				if err != nil {
+					columnName = field
+				}
+				sort[columnName] = dir
+			}
+		}
+	}
+
+	if len(sort) == 0 {
+		return nil
+	}
+	return sort
+}
+
+// processMongoDBGroupByResults processes aggregation results to match expected format
+func processMongoDBGroupByResults(results []map[string]any, groupByFields []string) []map[string]any {
+	processed := make([]map[string]any, len(results))
+
+	for i, result := range results {
+		processedResult := make(map[string]any)
+
+		// Extract grouped fields from _id
+		if id, ok := result["_id"]; ok {
+			if idMap, ok := id.(map[string]any); ok {
+				for _, field := range groupByFields {
+					if value, exists := idMap[field]; exists {
+						processedResult[field] = value
+					}
+				}
+			}
+		}
+
+		// Process aggregation results
+		aggregations := map[string]map[string]any{
+			"_sum": make(map[string]any),
+			"_avg": make(map[string]any),
+			"_min": make(map[string]any),
+			"_max": make(map[string]any),
+		}
+
+		for k, v := range result {
+			if k == "_id" {
+				continue
+			}
+
+			if k == "_count" {
+				processedResult["_count"] = utils.ToInt64(v)
+			} else {
+				// Parse field-specific aggregations like _sum_amount
+				for aggType := range aggregations {
+					prefix := aggType + "_"
+					if strings.HasPrefix(k, prefix) {
+						fieldName := strings.TrimPrefix(k, prefix)
+						if aggType == "_count" {
+							aggregations[aggType][fieldName] = utils.ToInt64(v)
+						} else {
+							aggregations[aggType][fieldName] = utils.ToFloat64(v)
+						}
+					}
+				}
+			}
+		}
+
+		// Add non-empty aggregation groups to result
+		for aggType, aggData := range aggregations {
+			if len(aggData) > 0 {
+				processedResult[aggType] = aggData
+			}
+		}
+
+		processed[i] = processedResult
+	}
+
+	return processed
+}
+
+// mustMarshalJSON marshals to JSON or panics
+func mustMarshalJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal JSON: %v", err))
+	}
+	return string(b)
 }

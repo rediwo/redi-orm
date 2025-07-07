@@ -287,7 +287,7 @@ func (t *MongoDBSQLTranslator) translateSelect(stmt *sql.SelectStatement) (*Mong
 		if err := t.validateParameterSubstitution(emptyPipeline); err != nil {
 			return nil, err
 		}
-		
+
 		return &MongoDBCommand{
 			Operation:  "find",
 			Collection: collection,
@@ -298,7 +298,6 @@ func (t *MongoDBSQLTranslator) translateSelect(stmt *sql.SelectStatement) (*Mong
 	if err := t.validateParameterSubstitution(pipeline); err != nil {
 		return nil, err
 	}
-
 
 	return &MongoDBCommand{
 		Operation:  "aggregate",

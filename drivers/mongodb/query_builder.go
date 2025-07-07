@@ -75,7 +75,7 @@ func (qb *MongoDBQueryBuilder) conditionToFilterInternal(condition types.Conditi
 		if ctx == nil || ctx.ModelName == "" || qb.db == nil {
 			return bson.M{"$comment": "invalid context"}, nil
 		}
-		
+
 		sqlCtx := &types.ConditionContext{
 			ModelName:   ctx.ModelName,
 			FieldMapper: qb.db.GetFieldMapper(),
@@ -91,10 +91,10 @@ func (qb *MongoDBQueryBuilder) handleMongoDBCondition(cond *MongoDBCondition, _ 
 	if cond == nil {
 		return bson.M{}, nil
 	}
-	
+
 	// Get the JSON from the MongoDB condition
 	sqlStr, _ := cond.ToSQL(nil)
-	
+
 	// Parse the JSON as MongoDB filter
 	if strings.HasPrefix(strings.TrimSpace(sqlStr), "{") {
 		var filter bson.M
@@ -103,7 +103,7 @@ func (qb *MongoDBQueryBuilder) handleMongoDBCondition(cond *MongoDBCondition, _ 
 		}
 		return filter, nil
 	}
-	
+
 	return bson.M{"$comment": sqlStr}, nil
 }
 
@@ -112,10 +112,10 @@ func (qb *MongoDBQueryBuilder) handleMongoDBAndCondition(cond *MongoDBAndConditi
 	if cond == nil {
 		return bson.M{}, nil
 	}
-	
+
 	// Get the JSON from the MongoDB AND condition
 	sqlStr, _ := cond.ToSQL(nil)
-	
+
 	// Parse the JSON as MongoDB filter
 	if strings.HasPrefix(strings.TrimSpace(sqlStr), "{") {
 		var filter bson.M
@@ -124,7 +124,7 @@ func (qb *MongoDBQueryBuilder) handleMongoDBAndCondition(cond *MongoDBAndConditi
 		}
 		return filter, nil
 	}
-	
+
 	return bson.M{"$comment": sqlStr}, nil
 }
 
@@ -133,10 +133,10 @@ func (qb *MongoDBQueryBuilder) handleMongoDBOrCondition(cond *MongoDBOrCondition
 	if cond == nil {
 		return bson.M{}, nil
 	}
-	
+
 	// Get the JSON from the MongoDB OR condition
 	sqlStr, _ := cond.ToSQL(nil)
-	
+
 	// Parse the JSON as MongoDB filter
 	if strings.HasPrefix(strings.TrimSpace(sqlStr), "{") {
 		var filter bson.M
@@ -145,7 +145,7 @@ func (qb *MongoDBQueryBuilder) handleMongoDBOrCondition(cond *MongoDBOrCondition
 		}
 		return filter, nil
 	}
-	
+
 	return bson.M{"$comment": sqlStr}, nil
 }
 
@@ -154,10 +154,10 @@ func (qb *MongoDBQueryBuilder) handleMongoDBNotCondition(cond *MongoDBNotConditi
 	if cond == nil {
 		return bson.M{}, nil
 	}
-	
+
 	// Get the JSON from the MongoDB NOT condition
 	sqlStr, _ := cond.ToSQL(nil)
-	
+
 	// Parse the JSON as MongoDB filter
 	if strings.HasPrefix(strings.TrimSpace(sqlStr), "{") {
 		var filter bson.M
@@ -166,7 +166,7 @@ func (qb *MongoDBQueryBuilder) handleMongoDBNotCondition(cond *MongoDBNotConditi
 		}
 		return filter, nil
 	}
-	
+
 	return bson.M{"$comment": sqlStr}, nil
 }
 
@@ -175,7 +175,7 @@ func (qb *MongoDBQueryBuilder) handleAndCondition(cond *types.AndCondition, ctx 
 	if cond == nil || ctx == nil {
 		return bson.M{}, nil
 	}
-	
+
 	conditions := cond.Conditions
 	if len(conditions) == 0 {
 		return bson.M{}, nil
@@ -210,7 +210,7 @@ func (qb *MongoDBQueryBuilder) handleOrCondition(cond *types.OrCondition, ctx *M
 	if cond == nil || ctx == nil {
 		return bson.M{}, nil
 	}
-	
+
 	conditions := cond.Conditions
 	if len(conditions) == 0 {
 		return bson.M{}, nil
@@ -245,7 +245,7 @@ func (qb *MongoDBQueryBuilder) handleNotCondition(cond *types.NotCondition, ctx 
 	if cond == nil || ctx == nil {
 		return bson.M{}, nil
 	}
-	
+
 	innerCond := cond.Condition
 	if innerCond == nil {
 		return bson.M{}, nil
@@ -267,7 +267,7 @@ func (qb *MongoDBQueryBuilder) handleMappedFieldCondition(cond *types.MappedFiel
 	if cond == nil || ctx == nil || qb.db == nil {
 		return bson.M{}, nil
 	}
-	
+
 	// Parse the SQL to extract field name, operator and value
 	sql := cond.GetSQL()
 	args := cond.GetArgs()
@@ -309,10 +309,34 @@ func (qb *MongoDBQueryBuilder) handleMappedFieldCondition(cond *types.MappedFiel
 		// Handle LIKE operation: "name LIKE ?" with args ["%pattern%"]
 		if len(args) > 0 {
 			pattern := fmt.Sprintf("%v", args[0])
-			// Convert SQL LIKE pattern to regex
-			pattern = strings.ReplaceAll(pattern, "%", ".*")
-			pattern = strings.ReplaceAll(pattern, "_", ".")
-			return bson.M{columnName: bson.M{"$regex": pattern, "$options": "i"}}, nil
+
+			// Detect string operation patterns and convert appropriately
+			if strings.HasPrefix(pattern, "%") && !strings.HasSuffix(pattern, "%") {
+				// EndsWith: %value -> value$
+				pattern = strings.TrimPrefix(pattern, "%")
+				pattern = escapeRegexPattern(pattern) + "$"
+				// Use case-sensitive for string operators
+				return bson.M{columnName: bson.M{"$regex": pattern}}, nil
+			} else if !strings.HasPrefix(pattern, "%") && strings.HasSuffix(pattern, "%") {
+				// StartsWith: value% -> ^value
+				pattern = strings.TrimSuffix(pattern, "%")
+				pattern = "^" + escapeRegexPattern(pattern)
+				// Use case-sensitive for string operators
+				return bson.M{columnName: bson.M{"$regex": pattern}}, nil
+			} else if strings.HasPrefix(pattern, "%") && strings.HasSuffix(pattern, "%") {
+				// Contains: %value% -> .*value.*
+				pattern = strings.TrimPrefix(pattern, "%")
+				pattern = strings.TrimSuffix(pattern, "%")
+				pattern = ".*" + escapeRegexPattern(pattern) + ".*"
+				// Use case-sensitive for string operators
+				return bson.M{columnName: bson.M{"$regex": pattern}}, nil
+			} else {
+				// General LIKE pattern
+				pattern = strings.ReplaceAll(pattern, "%", ".*")
+				pattern = strings.ReplaceAll(pattern, "_", ".")
+				// Use case-insensitive for general LIKE
+				return bson.M{columnName: bson.M{"$regex": pattern, "$options": "i"}}, nil
+			}
 		}
 
 	} else if strings.Contains(sqlUpper, " IS NULL") {
@@ -429,4 +453,26 @@ func (qb *MongoDBQueryBuilder) ConvertProjection(fields []string, modelName stri
 type MongoDBConditionContext struct {
 	ModelName    string
 	QueryBuilder *MongoDBQueryBuilder
+}
+
+// escapeRegexPattern escapes special regex characters in a string
+func escapeRegexPattern(s string) string {
+	// Escape the most critical regex special characters for MongoDB
+	replacer := strings.NewReplacer(
+		"\\", "\\\\", // Must be first
+		".", "\\.",
+		"^", "\\^",
+		"$", "\\$",
+		"*", "\\*",
+		"+", "\\+",
+		"?", "\\?",
+		"(", "\\(",
+		")", "\\)",
+		"[", "\\[",
+		"]", "\\]",
+		"{", "\\{",
+		"}", "\\}",
+		"|", "\\|",
+	)
+	return replacer.Replace(s)
 }
