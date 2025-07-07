@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/query"
@@ -39,9 +40,10 @@ func (t *SQLiteTransaction) Model(modelName string) types.ModelQuery {
 // Raw creates a new raw query within the transaction
 func (t *SQLiteTransaction) Raw(sql string, args ...any) types.RawQuery {
 	return &SQLiteTransactionRawQuery{
-		tx:   t.tx,
-		sql:  sql,
-		args: args,
+		tx:       t.tx,
+		sql:      sql,
+		args:     args,
+		database: t.database,
 	}
 }
 
@@ -165,19 +167,51 @@ func (td *SQLiteTransactionDB) ResolveFieldNames(modelName string, fieldNames []
 }
 
 func (td *SQLiteTransactionDB) Exec(query string, args ...any) (sql.Result, error) {
-	return td.transaction.tx.Exec(query, args...)
+	start := time.Now()
+	result, err := td.transaction.tx.Exec(query, args...)
+	duration := time.Since(start)
+
+	if logger, ok := td.database.GetLogger().(utils.Logger); ok && logger != nil {
+		logger.LogSQL(query, args, duration)
+	}
+
+	return result, err
 }
 
 func (td *SQLiteTransactionDB) Query(query string, args ...any) (*sql.Rows, error) {
-	return td.transaction.tx.Query(query, args...)
+	start := time.Now()
+	rows, err := td.transaction.tx.Query(query, args...)
+	duration := time.Since(start)
+
+	if logger, ok := td.database.GetLogger().(utils.Logger); ok && logger != nil {
+		logger.LogSQL(query, args, duration)
+	}
+
+	return rows, err
 }
 
 func (td *SQLiteTransactionDB) QueryRow(query string, args ...any) *sql.Row {
-	return td.transaction.tx.QueryRow(query, args...)
+	start := time.Now()
+	row := td.transaction.tx.QueryRow(query, args...)
+	duration := time.Since(start)
+
+	if logger, ok := td.database.GetLogger().(utils.Logger); ok && logger != nil {
+		logger.LogSQL(query, args, duration)
+	}
+
+	return row
 }
 
 func (td *SQLiteTransactionDB) GetMigrator() types.DatabaseMigrator {
 	return td.database.GetMigrator()
+}
+
+func (td *SQLiteTransactionDB) SetLogger(logger any) {
+	td.database.SetLogger(logger)
+}
+
+func (td *SQLiteTransactionDB) GetLogger() any {
+	return td.database.GetLogger()
 }
 
 // LoadSchema is not supported within a transaction
@@ -197,13 +231,21 @@ func (td *SQLiteTransactionDB) SyncSchemas(ctx context.Context) error {
 
 // SQLiteTransactionRawQuery implements RawQuery for transactions
 type SQLiteTransactionRawQuery struct {
-	tx   *sql.Tx
-	sql  string
-	args []any
+	tx       *sql.Tx
+	sql      string
+	args     []any
+	database *SQLiteDB
 }
 
 func (q *SQLiteTransactionRawQuery) Exec(ctx context.Context) (types.Result, error) {
+	start := time.Now()
 	result, err := q.tx.ExecContext(ctx, q.sql, q.args...)
+	duration := time.Since(start)
+
+	if logger, ok := q.database.GetLogger().(utils.Logger); ok && logger != nil {
+		logger.LogSQL(q.sql, q.args, duration)
+	}
+
 	if err != nil {
 		return types.Result{}, err
 	}
@@ -218,7 +260,14 @@ func (q *SQLiteTransactionRawQuery) Exec(ctx context.Context) (types.Result, err
 }
 
 func (q *SQLiteTransactionRawQuery) Find(ctx context.Context, dest any) error {
+	start := time.Now()
 	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
+	duration := time.Since(start)
+
+	if logger, ok := q.database.GetLogger().(utils.Logger); ok && logger != nil {
+		logger.LogSQL(q.sql, q.args, duration)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -228,5 +277,13 @@ func (q *SQLiteTransactionRawQuery) Find(ctx context.Context, dest any) error {
 }
 
 func (q *SQLiteTransactionRawQuery) FindOne(ctx context.Context, dest any) error {
-	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
+	start := time.Now()
+	err := utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
+	duration := time.Since(start)
+
+	if logger, ok := q.database.GetLogger().(utils.Logger); ok && logger != nil {
+		logger.LogSQL(q.sql, q.args, duration)
+	}
+
+	return err
 }

@@ -174,7 +174,7 @@ func (td *transactionDatabase) Exec(query string, args ...any) (sql.Result, erro
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create a simple sql.Result implementation
 	return &sqlResult{
 		lastInsertID: result.LastInsertID,
@@ -196,6 +196,14 @@ func (td *transactionDatabase) QueryRow(query string, args ...any) *sql.Row {
 
 func (td *transactionDatabase) GetMigrator() types.DatabaseMigrator {
 	return td.originalDB.GetMigrator()
+}
+
+func (td *transactionDatabase) SetLogger(logger any) {
+	td.originalDB.SetLogger(logger)
+}
+
+func (td *transactionDatabase) GetLogger() any {
+	return td.originalDB.GetLogger()
 }
 
 // sqlResult implements sql.Result interface for transaction compatibility

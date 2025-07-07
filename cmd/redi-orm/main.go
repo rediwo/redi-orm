@@ -83,6 +83,11 @@ Flags:
   
   --log-level   Logging level for GraphQL server (debug|info|warn|error|none)
                 Default: info
+                Controls both GraphQL operation logging and database SQL logging
+                - debug: Shows GraphQL operations + SQL queries with execution times
+                - info: Shows GraphQL operations only (no SQL)
+                - warn/error: Shows warnings/errors only  
+                - none: Disables all logging
                 Example: --log-level debug
   
   --help        Show help message

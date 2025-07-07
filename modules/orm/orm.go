@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	js "github.com/dop251/goja"
@@ -65,6 +66,19 @@ func initModelsModule(config modules.ModuleConfig) error {
 	config.Registry.RegisterNativeModule("redi/orm", func(vm *js.Runtime, module *js.Object) {
 		exports := vm.NewObject()
 		exports.Set("fromUri", modelsModule.createFromUriFunction(vm))
+
+		// Logger utilities
+		exports.Set("createLogger", modelsModule.createLoggerFunction(vm))
+
+		// Log levels
+		logLevels := vm.NewObject()
+		logLevels.Set("NONE", int(utils.LogLevelNone))
+		logLevels.Set("ERROR", int(utils.LogLevelError))
+		logLevels.Set("WARN", int(utils.LogLevelWarn))
+		logLevels.Set("INFO", int(utils.LogLevelInfo))
+		logLevels.Set("DEBUG", int(utils.LogLevelDebug))
+		exports.Set("LogLevel", logLevels)
+
 		module.Set("exports", exports)
 	})
 
@@ -251,6 +265,32 @@ func (m *ModelsModule) createFromUriFunction(vm *js.Runtime) func(call js.Functi
 
 		// Transaction function using ORM
 		dbInstance.Set("transaction", m.createTransactionFunction(vm, db, &connected))
+
+		// Logger functions
+		dbInstance.Set("setLogger", func(call js.FunctionCall) js.Value {
+			if len(call.Arguments) == 0 {
+				panic(vm.NewTypeError("setLogger requires a logger argument"))
+			}
+
+			// Try to extract the Go logger from the JS logger object
+			jsLogger := call.Arguments[0].ToObject(vm)
+			if jsLogger != nil {
+				if wrapperValue := jsLogger.Get("__wrapper"); wrapperValue != nil && !js.IsUndefined(wrapperValue) && !js.IsNull(wrapperValue) {
+					if wrapper, ok := wrapperValue.Export().(*LoggerWrapper); ok {
+						db.SetLogger(wrapper.logger)
+					}
+				}
+			}
+			return js.Undefined()
+		})
+
+		dbInstance.Set("getLogger", func(call js.FunctionCall) js.Value {
+			logger := db.GetLogger()
+			if logger == nil {
+				return js.Null()
+			}
+			return vm.ToValue(logger)
+		})
 
 		// Models object (will be populated after syncSchemas)
 		modelsObj := vm.NewObject()
@@ -789,4 +829,120 @@ func (m *ModelsModule) createNestedTransactionFunction(vm *js.Runtime, parentTx 
 // Export utility functions for backward compatibility
 func ConvertValue(value any) any {
 	return utils.ToInterface(value)
+}
+
+// LoggerWrapper wraps a Go logger for JavaScript use
+type LoggerWrapper struct {
+	logger utils.Logger
+}
+
+// createLoggerFunction creates a logger factory function for JavaScript
+func (m *ModelsModule) createLoggerFunction(vm *js.Runtime) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		prefix := ""
+		if len(call.Arguments) > 0 {
+			prefix = call.Arguments[0].String()
+		}
+
+		// Create Go logger
+		logger := utils.NewDefaultLogger(prefix)
+
+		// Create JavaScript logger object
+		jsLogger := vm.NewObject()
+
+		// Create wrapper
+		wrapper := &LoggerWrapper{logger: logger}
+
+		// Add methods
+		jsLogger.Set("setLevel", func(call js.FunctionCall) js.Value {
+			if len(call.Arguments) > 0 {
+				level := call.Arguments[0].Export()
+				switch v := level.(type) {
+				case int64:
+					logger.SetLevel(utils.LogLevel(v))
+				case float64:
+					logger.SetLevel(utils.LogLevel(int(v)))
+				case int:
+					logger.SetLevel(utils.LogLevel(v))
+				}
+			}
+			return js.Undefined()
+		})
+
+		jsLogger.Set("setOutput", func(call js.FunctionCall) js.Value {
+			if len(call.Arguments) > 0 {
+				output := call.Arguments[0].String()
+				switch output {
+				case "stdout":
+					logger.SetOutput(os.Stdout)
+				case "stderr":
+					logger.SetOutput(os.Stderr)
+				default:
+					// Try to open as file
+					file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+					if err == nil {
+						logger.SetOutput(file)
+					}
+				}
+			}
+			return js.Undefined()
+		})
+
+		jsLogger.Set("debug", func(call js.FunctionCall) js.Value {
+			if len(call.Arguments) < 1 {
+				return js.Undefined()
+			}
+			format := call.Arguments[0].String()
+			args := make([]any, len(call.Arguments)-1)
+			for i := 1; i < len(call.Arguments); i++ {
+				args[i-1] = call.Arguments[i].Export()
+			}
+			logger.Debug(format, args...)
+			return js.Undefined()
+		})
+
+		jsLogger.Set("info", func(call js.FunctionCall) js.Value {
+			if len(call.Arguments) < 1 {
+				return js.Undefined()
+			}
+			format := call.Arguments[0].String()
+			args := make([]any, len(call.Arguments)-1)
+			for i := 1; i < len(call.Arguments); i++ {
+				args[i-1] = call.Arguments[i].Export()
+			}
+			logger.Info(format, args...)
+			return js.Undefined()
+		})
+
+		jsLogger.Set("warn", func(call js.FunctionCall) js.Value {
+			if len(call.Arguments) < 1 {
+				return js.Undefined()
+			}
+			format := call.Arguments[0].String()
+			args := make([]any, len(call.Arguments)-1)
+			for i := 1; i < len(call.Arguments); i++ {
+				args[i-1] = call.Arguments[i].Export()
+			}
+			logger.Warn(format, args...)
+			return js.Undefined()
+		})
+
+		jsLogger.Set("error", func(call js.FunctionCall) js.Value {
+			if len(call.Arguments) < 1 {
+				return js.Undefined()
+			}
+			format := call.Arguments[0].String()
+			args := make([]any, len(call.Arguments)-1)
+			for i := 1; i < len(call.Arguments); i++ {
+				args[i-1] = call.Arguments[i].Export()
+			}
+			logger.Error(format, args...)
+			return js.Undefined()
+		})
+
+		// Store the wrapper in the logger object
+		jsLogger.Set("__wrapper", wrapper)
+
+		return jsLogger
+	}
 }

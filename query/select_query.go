@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // SelectQueryImpl implements the SelectQuery interface
@@ -66,7 +67,7 @@ func (q *SelectQueryImpl) Include(relations ...string) types.SelectQuery {
 		)
 		if err != nil {
 			// Log error but continue - we might handle this differently in production
-			fmt.Printf("Warning: failed to add join for relation %s: %v\n", relation, err)
+			utils.LogWarn("Failed to add join for relation %s: %v", relation, err)
 		}
 	}
 
@@ -97,7 +98,7 @@ func (q *SelectQueryImpl) IncludeWithOptions(path string, opt *types.IncludeOpti
 	)
 	if err != nil {
 		// Log error but continue - we might handle this differently in production
-		fmt.Printf("Warning: failed to add join for relation %s: %v\n", path, err)
+		utils.LogWarn("Failed to add join for relation %s: %v", path, err)
 	}
 
 	return newQuery
@@ -368,8 +369,9 @@ func (q *SelectQueryImpl) BuildSQL() (string, []any, error) {
 	}
 
 	sql := strings.Join(sqlParts, " ")
-	// fmt.Printf("[DEBUG] Generated SQL: %s\n", sql)
-	// fmt.Printf("[DEBUG] SQL Args: %v\n", args)
+	// Debug logging - uncomment for debugging
+	// utils.LogDebug("Generated SQL: %s", sql)
+	// utils.LogDebug("SQL Args: %v", args)
 	return sql, args, nil
 }
 
@@ -661,14 +663,14 @@ func (q *SelectQueryImpl) findManyWithRelations(_ context.Context, sql string, a
 
 	// Check if we have nested includes (includes with dots like "posts.comments")
 	hasNestedIncludes := false
-	// fmt.Printf("[DEBUG] Query includes: %v\n", q.includes)
+	// utils.LogDebug("Query includes: %v", q.includes)
 	for _, include := range q.includes {
 		if strings.Contains(include, ".") {
 			hasNestedIncludes = true
 			break
 		}
 	}
-	// fmt.Printf("[DEBUG] Has nested includes: %v\n", hasNestedIncludes)
+	// utils.LogDebug("Has nested includes: %v", hasNestedIncludes)
 
 	// Use hierarchical scanner for nested includes
 	if hasNestedIncludes {

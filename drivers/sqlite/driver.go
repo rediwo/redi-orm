@@ -58,7 +58,7 @@ func (s *SQLiteDB) Connect(ctx context.Context) error {
 	s.SetDB(db)
 
 	// Enable foreign key constraints in SQLite
-	_, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	_, err = s.Exec("PRAGMA foreign_keys = ON")
 	if err != nil {
 		return fmt.Errorf("failed to enable foreign key constraints: %w", err)
 	}
@@ -83,7 +83,7 @@ func (s *SQLiteDB) CreateModel(ctx context.Context, modelName string) error {
 		return fmt.Errorf("failed to generate CREATE TABLE SQL: %w", err)
 	}
 
-	_, err = s.DB.ExecContext(ctx, sql)
+	_, err = s.Exec(sql)
 	if err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
@@ -99,7 +99,7 @@ func (s *SQLiteDB) DropModel(ctx context.Context, modelName string) error {
 	}
 
 	sql := fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName)
-	_, err = s.DB.ExecContext(ctx, sql)
+	_, err = s.Exec(sql)
 	if err != nil {
 		return fmt.Errorf("failed to drop table: %w", err)
 	}
@@ -114,7 +114,7 @@ func (s *SQLiteDB) Model(modelName string) types.ModelQuery {
 
 // Raw creates a new raw query
 func (s *SQLiteDB) Raw(sql string, args ...any) types.RawQuery {
-	return NewSQLiteRawQuery(s.DB, sql, args...)
+	return NewSQLiteRawQuery(s, sql, args...)
 }
 
 // Begin starts a new transaction
@@ -290,7 +290,8 @@ func (s *SQLiteDB) formatDefaultValue(value any) string {
 	switch v := value.(type) {
 	case string:
 		// Handle special SQLite functions
-		if v == "now()" || v == "CURRENT_TIMESTAMP" {
+		upperV := strings.ToUpper(strings.TrimSpace(v))
+		if upperV == "NOW()" || upperV == "CURRENT_TIMESTAMP" {
 			return "CURRENT_TIMESTAMP"
 		}
 		// Handle boolean strings
@@ -299,6 +300,12 @@ func (s *SQLiteDB) formatDefaultValue(value any) string {
 		}
 		if v == "false" {
 			return "0"
+		}
+		// Check if the value is already quoted to avoid double-quoting
+		trimmed := strings.TrimSpace(v)
+		if strings.HasPrefix(trimmed, "'") && strings.HasSuffix(trimmed, "'") {
+			// Already quoted, return as is
+			return trimmed
 		}
 		// Quote string values
 		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))

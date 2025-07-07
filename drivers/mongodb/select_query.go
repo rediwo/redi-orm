@@ -1489,8 +1489,9 @@ func (q *MongoDBSelectQuery) mapNestedIncludedFields(document map[string]any, ne
 	if err != nil {
 		return fmt.Errorf("failed to get parent model for %s: %w", parentRelation, err)
 	}
-	fmt.Printf("[DEBUG] Processing nested path %s: parentRelation=%s, parentModel=%s, currentQueryModel=%s\n",
-		nestedPath, parentRelation, parentModelName, q.modelName)
+	// Debug logging
+	// utils.LogDebug("Processing nested path %s: parentRelation=%s, parentModel=%s, currentQueryModel=%s",
+	//	nestedPath, parentRelation, parentModelName, q.modelName)
 
 	// Map the parent relation data first
 	err = q.mapIncludedFields(parentModelName, parentData)
@@ -1506,7 +1507,7 @@ func (q *MongoDBSelectQuery) mapNestedIncludedFields(document map[string]any, ne
 			fieldMapper: q.fieldMapper,
 			modelName:   parentModelName,
 		}
-		fmt.Printf("[DEBUG] Recursing to parent context: remainingPath=%s, newContext=%s\n", remainingPath, parentModelName)
+		// utils.LogDebug("Recursing to parent context: remainingPath=%s, newContext=%s", remainingPath, parentModelName)
 
 		// Check if the remaining path has multiple parts (nested) or just one part (simple relation)
 		remainingParts := strings.Split(remainingPath, ".")

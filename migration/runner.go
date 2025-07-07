@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // Runner executes file-based migrations
@@ -48,15 +49,14 @@ func (r *Runner) RunMigrations(ctx context.Context) error {
 	}
 
 	if len(pending) == 0 {
-		fmt.Println("No pending migrations.")
+		utils.LogInfo("No pending migrations.")
 		return nil
 	}
 
-	fmt.Printf("Found %d pending migration(s):\n", len(pending))
+	utils.LogInfo("Found %d pending migration(s):", len(pending))
 	for _, m := range pending {
-		fmt.Printf("  - %s: %s\n", m.Version, m.Name)
+		utils.LogInfo("  - %s: %s", m.Version, m.Name)
 	}
-	fmt.Println()
 
 	// Apply each migration
 	for _, migration := range pending {
@@ -65,7 +65,7 @@ func (r *Runner) RunMigrations(ctx context.Context) error {
 		}
 	}
 
-	fmt.Printf("\nSuccessfully applied %d migration(s).\n", len(pending))
+	utils.LogInfo("Successfully applied %d migration(s).", len(pending))
 	return nil
 }
 
@@ -92,7 +92,7 @@ func (r *Runner) RollbackMigration(ctx context.Context) error {
 		return fmt.Errorf("failed to read migration file: %w", err)
 	}
 
-	fmt.Printf("Rolling back migration %s: %s\n", migration.Version, migration.Name)
+	utils.LogInfo("Rolling back migration %s: %s", migration.Version, migration.Name)
 
 	// Execute down SQL
 	if err := r.executeSQLScript(ctx, migration.DownSQL); err != nil {
@@ -104,13 +104,13 @@ func (r *Runner) RollbackMigration(ctx context.Context) error {
 		return fmt.Errorf("failed to remove migration record: %w", err)
 	}
 
-	fmt.Println("Rollback completed successfully.")
+	utils.LogInfo("Rollback completed successfully.")
 	return nil
 }
 
 // applyMigration applies a single migration
 func (r *Runner) applyMigration(ctx context.Context, migration *types.MigrationFile) error {
-	fmt.Printf("Applying migration %s: %s\n", migration.Version, migration.Name)
+	utils.LogInfo("Applying migration %s: %s", migration.Version, migration.Name)
 
 	// Verify checksum
 	if migration.Metadata.Checksum == "" {

@@ -186,7 +186,7 @@ func (p *PostgreSQLDB) Begin(ctx context.Context) (types.Transaction, error) {
 func (p *PostgreSQLDB) Exec(query string, args ...any) (sql.Result, error) {
 	// Convert ? placeholders to $1, $2, etc.
 	query = convertPlaceholders(query)
-	// fmt.Printf("[DEBUG] Exec query: %s, args: %v\n", query, args)
+	// Debug logging handled by base driver
 	return p.DB.Exec(query, args...)
 }
 
@@ -194,7 +194,7 @@ func (p *PostgreSQLDB) Exec(query string, args ...any) (sql.Result, error) {
 func (p *PostgreSQLDB) Query(query string, args ...any) (*sql.Rows, error) {
 	// Convert ? placeholders to $1, $2, etc.
 	query = convertPlaceholders(query)
-	// fmt.Printf("[DEBUG] Converted query: %s\n", query)
+	// Debug logging handled by base driver
 	return p.DB.Query(query, args...)
 }
 

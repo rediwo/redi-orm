@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rediwo/redi-orm/prisma"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // Driver provides common functionality for all database drivers
@@ -20,6 +22,7 @@ type Driver struct {
 	FieldMapper types.FieldMapper
 	Schemas     map[string]*schema.Schema
 	SchemasMu   sync.RWMutex
+	Logger      any // Using any to avoid circular dependency
 }
 
 // NewDriver creates a new base driver instance
@@ -231,6 +234,42 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 			if plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 ||
 				len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0) {
 
+				// Log migration plan details
+				if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
+					logger.Warn("Table '%s' needs migration:", sch.TableName)
+
+					// Log column changes
+					for _, change := range plan.AddColumns {
+						logger.Warn("  - Adding column: %s", change.ColumnName)
+					}
+					for _, change := range plan.ModifyColumns {
+						if change.OldColumn != nil && change.NewColumn != nil {
+							var changes []string
+							if change.OldColumn.Type != change.NewColumn.Type {
+								changes = append(changes, fmt.Sprintf("type: %s -> %s", change.OldColumn.Type, change.NewColumn.Type))
+							}
+							if change.OldColumn.Nullable != change.NewColumn.Nullable {
+								changes = append(changes, fmt.Sprintf("nullable: %v -> %v", change.OldColumn.Nullable, change.NewColumn.Nullable))
+							}
+							if change.OldColumn.Default != change.NewColumn.Default {
+								changes = append(changes, fmt.Sprintf("default: %v -> %v", change.OldColumn.Default, change.NewColumn.Default))
+							}
+							logger.Warn("  - Modifying column '%s': %s", change.ColumnName, strings.Join(changes, ", "))
+						}
+					}
+					for _, change := range plan.DropColumns {
+						logger.Warn("  - Dropping column: %s", change.ColumnName)
+					}
+
+					// Log index changes
+					for _, change := range plan.AddIndexes {
+						logger.Warn("  - Adding index: %s", change.IndexName)
+					}
+					for _, change := range plan.DropIndexes {
+						logger.Warn("  - Dropping index: %s", change.IndexName)
+					}
+				}
+
 				sqlStatements, err := migrator.GenerateMigrationSQL(plan)
 				if err != nil {
 					return fmt.Errorf("failed to generate migration SQL for %s: %w", sch.TableName, err)
@@ -287,17 +326,51 @@ func (b *Driver) Close() error {
 
 // Exec executes a raw SQL statement
 func (b *Driver) Exec(query string, args ...any) (sql.Result, error) {
-	return b.DB.Exec(query, args...)
+	start := time.Now()
+	result, err := b.DB.Exec(query, args...)
+	duration := time.Since(start)
+
+	if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
+		logger.LogSQL(query, args, duration)
+	}
+
+	return result, err
 }
 
 // Query executes a raw SQL query that returns rows
 func (b *Driver) Query(query string, args ...any) (*sql.Rows, error) {
-	return b.DB.Query(query, args...)
+	start := time.Now()
+	rows, err := b.DB.Query(query, args...)
+	duration := time.Since(start)
+
+	if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
+		logger.LogSQL(query, args, duration)
+	}
+
+	return rows, err
 }
 
 // QueryRow executes a raw SQL query that returns a single row
 func (b *Driver) QueryRow(query string, args ...any) *sql.Row {
-	return b.DB.QueryRow(query, args...)
+	start := time.Now()
+	row := b.DB.QueryRow(query, args...)
+	duration := time.Since(start)
+
+	if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
+		logger.LogSQL(query, args, duration)
+	}
+
+	return row
+}
+
+// SetLogger sets the logger for the driver
+func (b *Driver) SetLogger(logger any) {
+	b.Logger = logger
+}
+
+// GetLogger returns the logger for the driver
+func (b *Driver) GetLogger() any {
+	return b.Logger
 }
 
 // syncSchemasWithDeferredConstraints handles circular dependencies by creating tables without FK first
@@ -362,9 +435,61 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 			return fmt.Errorf("failed to compare schema for %s: %w", sch.TableName, err)
 		}
 
+		// Debug: Check if plan has any changes
+		if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
+			hasChanges := plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 ||
+				len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0)
+			if hasChanges && plan != nil {
+				logger.Debug("Table '%s' migration plan details:", sch.TableName)
+				logger.Debug("  - AddColumns: %d", len(plan.AddColumns))
+				logger.Debug("  - ModifyColumns: %d", len(plan.ModifyColumns))
+				logger.Debug("  - DropColumns: %d", len(plan.DropColumns))
+				logger.Debug("  - AddIndexes: %d", len(plan.AddIndexes))
+				logger.Debug("  - DropIndexes: %d", len(plan.DropIndexes))
+			} else {
+				logger.Debug("Table '%s' has no migration changes", sch.TableName)
+			}
+		}
+
 		// Generate and apply migration SQL
 		if plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 ||
 			len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0) {
+
+			// Log migration plan details
+			if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
+				logger.Warn("Table '%s' needs migration:", sch.TableName)
+
+				// Log column changes
+				for _, change := range plan.AddColumns {
+					logger.Warn("  - Adding column: %s", change.ColumnName)
+				}
+				for _, change := range plan.ModifyColumns {
+					if change.OldColumn != nil && change.NewColumn != nil {
+						var changes []string
+						if change.OldColumn.Type != change.NewColumn.Type {
+							changes = append(changes, fmt.Sprintf("type: %s -> %s", change.OldColumn.Type, change.NewColumn.Type))
+						}
+						if change.OldColumn.Nullable != change.NewColumn.Nullable {
+							changes = append(changes, fmt.Sprintf("nullable: %v -> %v", change.OldColumn.Nullable, change.NewColumn.Nullable))
+						}
+						if change.OldColumn.Default != change.NewColumn.Default {
+							changes = append(changes, fmt.Sprintf("default: %v -> %v", change.OldColumn.Default, change.NewColumn.Default))
+						}
+						logger.Warn("  - Modifying column '%s': %s", change.ColumnName, strings.Join(changes, ", "))
+					}
+				}
+				for _, change := range plan.DropColumns {
+					logger.Warn("  - Dropping column: %s", change.ColumnName)
+				}
+
+				// Log index changes
+				for _, change := range plan.AddIndexes {
+					logger.Warn("  - Adding index: %s", change.IndexName)
+				}
+				for _, change := range plan.DropIndexes {
+					logger.Warn("  - Dropping index: %s", change.IndexName)
+				}
+			}
 
 			sqlStatements, err := migrator.GenerateMigrationSQL(plan)
 			if err != nil {

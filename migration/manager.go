@@ -9,6 +9,7 @@ import (
 
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // Manager coordinates the migration process
@@ -271,20 +272,20 @@ func (m *Manager) ResetMigrations() error {
 
 // printMigrationPlan prints the migration plan for dry run
 func (m *Manager) printMigrationPlan(changes []types.SchemaChange) {
-	fmt.Println("\n=== MIGRATION PLAN (DRY RUN) ===")
+	utils.LogInfo("\n=== MIGRATION PLAN (DRY RUN) ===")
 
 	for i, change := range changes {
-		fmt.Printf("\n%d. %s", i+1, change.Type)
+		utils.LogInfo("%d. %s", i+1, change.Type)
 		if change.TableName != "" {
-			fmt.Printf(" - Table: %s", change.TableName)
+			utils.LogInfo("   Table: %s", change.TableName)
 		}
 		if change.ColumnName != "" {
-			fmt.Printf(" - Column: %s", change.ColumnName)
+			utils.LogInfo("   Column: %s", change.ColumnName)
 		}
-		fmt.Printf("\n   SQL: %s\n", change.SQL)
+		utils.LogInfo("   SQL: %s", change.SQL)
 	}
 
-	fmt.Println("\n=== END MIGRATION PLAN ===")
+	utils.LogInfo("\n=== END MIGRATION PLAN ===")
 }
 
 // hasDestructiveChanges checks if the migration contains destructive changes

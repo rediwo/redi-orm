@@ -14,6 +14,8 @@ A modern, schema-driven ORM for Go with a JavaScript runtime interface. RediORM 
 - **SQL Parser for MongoDB** - Write familiar SQL queries that are automatically translated to MongoDB operations
 - **Transaction Support** - Full ACID compliance with savepoints (SQL databases), basic transaction support for MongoDB
 - **Type-Safe Queries** - Compile-time safety in Go, runtime validation in JS
+- **Comprehensive Logging** - SQL/command logging with configurable levels and color output
+- **Migration Warnings** - Preview migration changes before execution
 
 ## 📦 Installation
 
@@ -204,17 +206,23 @@ func main() {
 
 > **💡 Note**: The Go ORM API uses JSON strings for queries, similar to the JavaScript API. This provides a consistent experience across both languages. For low-level database operations and advanced features, see the [Driver API documentation](./drivers/README.md).
 
-### JavaScript API
+### JavaScript API with Logging
 
-The JavaScript API provides a Prisma-like interface for dynamic operations:
+The JavaScript API provides a Prisma-like interface for dynamic operations with comprehensive logging support:
 
 ```javascript
 // Import the ORM module
-const { fromUri } = require('redi/orm');
+const { fromUri, createLogger } = require('redi/orm');
 
 async function main() {
     // Create database connection
     const db = fromUri('sqlite://./myapp.db');
+    
+    // Set up logging (optional)
+    const logger = createLogger('MyApp');
+    logger.setLevel(logger.levels.INFO); // NONE, ERROR, WARN, INFO, DEBUG
+    db.setLogger(logger);
+    
     await db.connect();
     
     // Load schema from Prisma-style definition
@@ -278,6 +286,7 @@ async function main() {
     });
     
     // Raw SQL queries (works with all databases including MongoDB)
+    // The logger will show: [MyApp] DEBUG: SQL (2.45ms): SELECT u.*, COUNT(p.id)...
     const results = await db.queryRaw(
         'SELECT u.*, COUNT(p.id) as post_count FROM users u ' +
         'LEFT JOIN posts p ON u.id = p.user_id ' +
@@ -350,8 +359,11 @@ The `--timeout` flag is useful for:
 #### Development Mode (Auto-migration)
 
 ```bash
-# Auto-migrate based on schema file
+# Auto-migrate based on schema file (shows warnings before applying)
 redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma
+
+# Enable detailed migration logging to see what changes will be applied
+redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma --log-level=debug
 
 # Preview changes without applying (dry run)
 redi-orm migrate:dry-run --db=sqlite://./myapp.db --schema=./schema.prisma
@@ -618,6 +630,140 @@ http.Handle("/graphql", handler)
 ```
 
 See the [examples](./examples) directory for complete working examples.
+
+## 📋 Logging and Monitoring
+
+RediORM includes comprehensive logging support to help with debugging, performance monitoring, and production troubleshooting.
+
+### Logging Levels
+
+RediORM supports multiple log levels with color-coded output:
+
+- **NONE** - Disables all logging
+- **ERROR** - Shows only errors (red)
+- **WARN** - Shows warnings and errors (yellow)
+- **INFO** - Shows general information (green) - **Default level**
+- **DEBUG** - Shows detailed debug information including SQL queries (gray)
+
+### JavaScript Logging
+
+```javascript
+const { fromUri, createLogger } = require('redi/orm');
+
+// Create logger with custom prefix
+const logger = createLogger('MyApp');
+
+// Set log level
+logger.setLevel(logger.levels.DEBUG);
+
+// Attach to database
+const db = fromUri('sqlite://./app.db');
+db.setLogger(logger);
+
+// Now all database operations will be logged:
+// [MyApp] INFO: Connected to database
+// [MyApp] DEBUG: SQL (1.23ms): SELECT * FROM users WHERE age > ?
+```
+
+### Go Logging
+
+```go
+import (
+    "github.com/rediwo/redi-orm/database"
+    "github.com/rediwo/redi-orm/utils"
+)
+
+// Create database connection
+db, _ := database.NewFromURI("sqlite://./app.db")
+
+// Create and configure logger
+logger := utils.NewDefaultLogger("MyApp")
+logger.SetLevel(utils.LogLevelDebug)
+
+// Set logger on database
+db.SetLogger(logger)
+
+// All operations will now be logged
+// [MyApp] DEBUG: SQL (2.45ms): INSERT INTO users (name, email) VALUES (?, ?)
+```
+
+### CLI Logging
+
+```bash
+# Set log level for CLI operations
+redi-orm server --db=sqlite://./app.db --schema=./schema.prisma --log-level=debug
+redi-orm migrate --db=sqlite://./app.db --schema=./schema.prisma --log-level=info
+
+# Available levels: none, error, warn, info, debug
+```
+
+### Migration Warnings
+
+RediORM automatically shows detailed warnings before applying database migrations:
+
+```bash
+# Sample migration output with warnings
+$ redi-orm server --db=sqlite://./app.db --schema=./schema.prisma --log-level=info
+
+[RediORM] WARN: Table 'users' needs migration:
+[RediORM] WARN:   - Adding column: bio
+[RediORM] WARN:   - Modifying column 'age': nullable: false -> true
+[RediORM] WARN:   - Dropping column: old_field
+[RediORM] WARN:   - Adding index: idx_users_email
+[RediORM] DEBUG: SQL (1.23ms): ALTER TABLE users ADD COLUMN bio TEXT
+[RediORM] DEBUG: SQL (2.45ms): CREATE INDEX idx_users_email ON users(email)
+```
+
+### GraphQL Server Logging
+
+The GraphQL server includes request/response logging:
+
+```bash
+# Sample GraphQL server logs
+$ redi-orm server --db=sqlite://./app.db --schema=./schema.prisma --log-level=info
+
+🚀 GraphQL server ready at http://localhost:4000/graphql
+🎮 GraphQL Playground available at http://localhost:4000/graphql
+
+[GraphQL] INFO: mutation createUser
+[GraphQL] INFO: Success in 3.42ms
+[GraphQL] INFO: query findManyUser  
+[GraphQL] INFO: Success in 1.28ms
+
+# With debug level, also shows queries and responses (truncated to 100 chars)
+[GraphQL] DEBUG: Request body: {"query":"mutation { createUser(data: {name: \"Alice\", email: \"alice@ex...
+[GraphQL] DEBUG: Query: mutation { createUser(data: {name: "Alice", email: "alice@example.com"}) { id...
+[GraphQL] DEBUG: Response: {"data":{"createUser":{"id":1,"name":"Alice","email":"alice@example.com"}}...
+```
+
+### Log Output Examples
+
+**SQL Query Logging:**
+```
+[RediORM] DEBUG: SQL (2.45ms): SELECT id, name, email FROM users WHERE age > ? [18]
+[RediORM] DEBUG: SQL (1.23ms): INSERT INTO users (name, email) VALUES (?, ?) ["Alice", "alice@example.com"]
+[RediORM] INFO: Connected to SQLite database: ./app.db
+```
+
+**MongoDB Command Logging:**
+```
+[RediORM] DEBUG: MongoDB (3.12ms): {"find": "users", "filter": {"age": {"$gt": 18}}}
+[RediORM] DEBUG: MongoDB (1.87ms): {"insertOne": "users", "document": {"name": "Alice", "email": "alice@example.com"}}
+```
+
+**Error Logging:**
+```
+[RediORM] ERROR: Failed to connect to database: connection refused
+[GraphQL] ERROR: Query failed: Field 'invalidField' not found in schema
+```
+
+### Best Practices
+
+1. **Production**: Use `INFO` level for general monitoring
+2. **Development**: Use `DEBUG` level to see all SQL queries
+3. **CI/CD**: Use `WARN` level to catch issues without noise
+4. **Performance Testing**: Use `DEBUG` to monitor query execution times
+5. **Troubleshooting**: Use `DEBUG` to see exact SQL being generated
 
 ## 🏗️ Architecture
 

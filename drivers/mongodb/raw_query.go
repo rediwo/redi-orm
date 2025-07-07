@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/rediwo/redi-orm/sql"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -106,7 +108,7 @@ func (q *MongoDBRawQuery) FindOne(ctx context.Context, dest any) error {
 	var cmd MongoDBCommand
 	if err := cmd.FromJSON(q.command); err != nil {
 		// Log the command for debugging
-		fmt.Printf("[MongoDB FindOne] Failed to parse command: %s\n", q.command)
+		utils.LogError("MongoDB FindOne - Failed to parse command: %s", q.command)
 		return fmt.Errorf("failed to parse MongoDB command: %w", err)
 	}
 
@@ -126,6 +128,7 @@ func (q *MongoDBRawQuery) FindOne(ctx context.Context, dest any) error {
 
 // executeInsert handles insert operations
 func (q *MongoDBRawQuery) executeInsert(ctx context.Context, collection *mongo.Collection, cmd *MongoDBCommand) (types.Result, error) {
+	start := time.Now()
 	if len(cmd.Documents) == 0 {
 		return types.Result{}, fmt.Errorf("no documents to insert")
 	}
@@ -146,6 +149,16 @@ func (q *MongoDBRawQuery) executeInsert(ctx context.Context, collection *mongo.C
 
 	var result *mongo.InsertManyResult
 	var err error
+
+	// Log the command
+	if q.mongoDb != nil && q.mongoDb.GetLogger() != nil {
+		if logger, ok := q.mongoDb.GetLogger().(utils.Logger); ok {
+			cmdJSON, _ := cmd.ToJSON()
+			defer func() {
+				logger.LogCommand(cmdJSON, time.Since(start))
+			}()
+		}
+	}
 
 	if q.session != nil {
 		// Use session context directly for transactions
@@ -173,6 +186,7 @@ func (q *MongoDBRawQuery) executeInsert(ctx context.Context, collection *mongo.C
 
 // executeUpdate handles update operations
 func (q *MongoDBRawQuery) executeUpdate(ctx context.Context, collection *mongo.Collection, cmd *MongoDBCommand) (types.Result, error) {
+	start := time.Now()
 	if cmd.Update == nil {
 		return types.Result{}, fmt.Errorf("update requires update document")
 	}
@@ -188,6 +202,16 @@ func (q *MongoDBRawQuery) executeUpdate(ctx context.Context, collection *mongo.C
 	if _, hasOperator := updateDoc["$set"]; !hasOperator {
 		// Wrap in $set if no operators present
 		updateDoc = bson.M{"$set": updateDoc}
+	}
+
+	// Log the command
+	if q.mongoDb != nil && q.mongoDb.GetLogger() != nil {
+		if logger, ok := q.mongoDb.GetLogger().(utils.Logger); ok {
+			cmdJSON, _ := cmd.ToJSON()
+			defer func() {
+				logger.LogCommand(cmdJSON, time.Since(start))
+			}()
+		}
 	}
 
 	var result *mongo.UpdateResult
@@ -212,8 +236,19 @@ func (q *MongoDBRawQuery) executeUpdate(ctx context.Context, collection *mongo.C
 
 // executeDelete handles delete operations
 func (q *MongoDBRawQuery) executeDelete(ctx context.Context, collection *mongo.Collection, cmd *MongoDBCommand) (types.Result, error) {
+	start := time.Now()
 	if cmd.Filter == nil {
 		return types.Result{}, fmt.Errorf("delete requires a filter")
+	}
+
+	// Log the command
+	if q.mongoDb != nil && q.mongoDb.GetLogger() != nil {
+		if logger, ok := q.mongoDb.GetLogger().(utils.Logger); ok {
+			cmdJSON, _ := cmd.ToJSON()
+			defer func() {
+				logger.LogCommand(cmdJSON, time.Since(start))
+			}()
+		}
 	}
 
 	var result *mongo.DeleteResult

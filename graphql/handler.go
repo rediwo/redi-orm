@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -70,22 +69,37 @@ func (h *Handler) SetLogLevel(level LogLevel) *Handler {
 	return h
 }
 
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorGray   = "\033[90m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorRed    = "\033[31m"
+)
+
 // logf logs a message at the specified level
 func (h *Handler) logf(level LogLevel, format string, args ...any) {
 	if h.logLevel >= level {
 		levelStr := ""
+		colorCode := ""
 		switch level {
 		case LogLevelError:
 			levelStr = "ERROR"
+			colorCode = colorRed
 		case LogLevelWarn:
 			levelStr = "WARN"
+			colorCode = colorYellow
 		case LogLevelInfo:
 			levelStr = "INFO"
+			colorCode = colorGreen
 		case LogLevelDebug:
 			levelStr = "DEBUG"
+			colorCode = colorGray
 		}
-		timestamp := time.Now().Format("15:04:05")
-		log.Printf("[GraphQL] %s %s: %s", timestamp, levelStr, fmt.Sprintf(format, args...))
+		// Use custom logger without default timestamp
+		message := fmt.Sprintf("[GraphQL] %s%s%s: %s", colorCode, levelStr, colorReset, fmt.Sprintf(format, args...))
+		fmt.Println(message)
 	}
 }
 
@@ -148,13 +162,13 @@ func (h *Handler) ServeGraphQL(w http.ResponseWriter, r *http.Request) {
 			defer r.Body.Close()
 
 			if h.logLevel >= LogLevelDebug {
-				h.logf(LogLevelDebug, "Request body: %s", string(body))
+				h.logf(LogLevelDebug, "Request body: %s", h.truncateString(string(body), 100))
 			}
 
 			if err := json.Unmarshal(body, &params); err != nil {
 				h.logf(LogLevelError, "JSON parse error: %v", err)
 				if h.logLevel >= LogLevelDebug {
-					h.logf(LogLevelDebug, "Raw body: %s", string(body))
+					h.logf(LogLevelDebug, "Raw body: %s", h.truncateString(string(body), 100))
 				}
 				h.writeError(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
 				return
@@ -171,7 +185,7 @@ func (h *Handler) ServeGraphQL(w http.ResponseWriter, r *http.Request) {
 
 			params.Query = string(body)
 			if h.logLevel >= LogLevelDebug {
-				h.logf(LogLevelDebug, "GraphQL query: %s", params.Query)
+				h.logf(LogLevelDebug, "GraphQL query: %s", h.truncateString(params.Query, 100))
 			}
 		} else {
 			h.logf(LogLevelWarn, "Unsupported content type: %s", contentType)
@@ -207,10 +221,10 @@ func (h *Handler) ServeGraphQL(w http.ResponseWriter, r *http.Request) {
 
 	// Debug level: show full query and variables
 	if h.logLevel >= LogLevelDebug {
-		h.logf(LogLevelDebug, "Query: %s", params.Query)
+		h.logf(LogLevelDebug, "Query: %s", h.truncateString(params.Query, 100))
 		if params.Variables != nil && len(params.Variables) > 0 {
 			variablesJSON, _ := json.Marshal(params.Variables)
-			h.logf(LogLevelDebug, "Variables: %s", string(variablesJSON))
+			h.logf(LogLevelDebug, "Variables: %s", h.truncateString(string(variablesJSON), 100))
 		}
 	}
 
@@ -237,7 +251,7 @@ func (h *Handler) ServeGraphQL(w http.ResponseWriter, r *http.Request) {
 	// Debug level: show full response
 	if h.logLevel >= LogLevelDebug && result.Data != nil {
 		responseJSON, _ := json.Marshal(result.Data)
-		h.logf(LogLevelDebug, "Response: %s", string(responseJSON))
+		h.logf(LogLevelDebug, "Response: %s", h.truncateString(string(responseJSON), 100))
 	}
 
 	// Write response
@@ -287,6 +301,17 @@ func (h *Handler) writeError(w http.ResponseWriter, message string, code int) {
 func (h *Handler) acceptsHTML(r *http.Request) bool {
 	accept := r.Header.Get("Accept")
 	return strings.Contains(accept, "text/html") || strings.Contains(accept, "*/*")
+}
+
+// truncateString truncates a string to the specified length, adding "..." if truncated
+func (h *Handler) truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return "..."
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // graphQLParams represents the parameters of a GraphQL request

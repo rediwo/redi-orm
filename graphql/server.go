@@ -11,6 +11,7 @@ import (
 	"github.com/rediwo/redi-orm/prisma"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // Server represents a GraphQL server
@@ -44,6 +45,27 @@ func NewServer(config ServerConfig) (*Server, error) {
 	ctx := context.Background()
 	if err := db.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Set up database logger based on log level
+	if config.LogLevel != "" {
+		dbLogger := utils.NewDefaultLogger("RediORM")
+		// Map GraphQL log level to utils log level
+		switch config.LogLevel {
+		case "debug", "DEBUG":
+			dbLogger.SetLevel(utils.LogLevelDebug)
+		case "info", "INFO":
+			dbLogger.SetLevel(utils.LogLevelInfo)
+		case "warn", "WARN", "warning", "WARNING":
+			dbLogger.SetLevel(utils.LogLevelWarn)
+		case "error", "ERROR":
+			dbLogger.SetLevel(utils.LogLevelError)
+		case "none", "NONE", "off", "OFF":
+			dbLogger.SetLevel(utils.LogLevelNone)
+		default:
+			dbLogger.SetLevel(utils.LogLevelInfo)
+		}
+		db.SetLogger(dbLogger)
 	}
 
 	// Load schemas from file

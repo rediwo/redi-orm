@@ -17,6 +17,38 @@ type SQLiteMigrator struct {
 	sqliteDB *SQLiteDB
 }
 
+// normalizeDefaultValue normalizes a default value for comparison
+// This handles SQLite's quirks with default values
+func (m *SQLiteMigrator) normalizeDefaultValue(value string) string {
+	// Remove surrounding quotes and parentheses
+	value = strings.TrimSpace(value)
+
+	// Handle CURRENT_TIMESTAMP variations
+	if strings.Contains(strings.ToUpper(value), "CURRENT_TIMESTAMP") {
+		return "CURRENT_TIMESTAMP"
+	}
+
+	// Remove excessive quotes that may have accumulated
+	for strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") && len(value) > 2 {
+		// Check if it's a properly quoted string (not accumulated quotes)
+		inner := value[1 : len(value)-1]
+		if !strings.Contains(inner, "'") || strings.Count(inner, "''")%2 == 0 {
+			break
+		}
+		value = inner
+	}
+
+	// Handle boolean values
+	if value == "'0'" || value == "0" || value == "'false'" || value == "false" {
+		return "0"
+	}
+	if value == "'1'" || value == "1" || value == "'true'" || value == "true" {
+		return "1"
+	}
+
+	return value
+}
+
 // SQLiteMigratorWrapper wraps SQLiteMigrator with BaseMigrator to implement types.DatabaseMigrator
 type SQLiteMigratorWrapper struct {
 	*base.BaseMigrator
@@ -107,7 +139,8 @@ func (m *SQLiteMigrator) GetTableInfo(tableName string) (*types.TableInfo, error
 		}
 
 		if defaultValue.Valid {
-			column.Default = defaultValue.String
+			// Normalize the default value to prevent accumulation of quotes
+			column.Default = m.normalizeDefaultValue(defaultValue.String)
 		}
 
 		// Check for AUTOINCREMENT
@@ -406,6 +439,10 @@ func (m *SQLiteMigrator) GenerateDropIndexSQL(indexName string) string {
 
 // ApplyMigration executes a migration SQL
 func (m *SQLiteMigrator) ApplyMigration(sql string) error {
+	if m.sqliteDB != nil {
+		_, err := m.sqliteDB.Exec(sql)
+		return err
+	}
 	_, err := m.db.Exec(sql)
 	return err
 }
@@ -467,11 +504,26 @@ func (m *SQLiteMigrator) GenerateColumnDefinitionFromColumnInfo(col types.Column
 
 // ConvertFieldToColumnInfo converts a schema field to column info
 func (m *SQLiteMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.ColumnInfo {
+	// Normalize the default value for SQLite
+	var normalizedDefault any = field.Default
+	if field.Default != nil {
+		if defaultStr, ok := field.Default.(string); ok {
+			normalizedDefault = m.normalizeDefaultValue(defaultStr)
+		} else if defaultBool, ok := field.Default.(bool); ok {
+			// Convert boolean to SQLite representation
+			if defaultBool {
+				normalizedDefault = "1"
+			} else {
+				normalizedDefault = "0"
+			}
+		}
+	}
+
 	return &types.ColumnInfo{
 		Name:          field.GetColumnName(),
 		Type:          m.MapFieldType(field),
 		Nullable:      field.Nullable,
-		Default:       field.Default,
+		Default:       normalizedDefault,
 		PrimaryKey:    field.PrimaryKey,
 		AutoIncrement: field.AutoIncrement,
 		Unique:        field.Unique,

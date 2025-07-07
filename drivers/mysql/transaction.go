@@ -223,6 +223,16 @@ func (tdb *MySQLTransactionDB) QueryRow(query string, args ...any) *sql.Row {
 	return tdb.tx.tx.QueryRow(query, args...)
 }
 
+// SetLogger delegates to the main database
+func (tdb *MySQLTransactionDB) SetLogger(logger any) {
+	tdb.db.SetLogger(logger)
+}
+
+// GetLogger delegates to the main database
+func (tdb *MySQLTransactionDB) GetLogger() any {
+	return tdb.db.GetLogger()
+}
+
 // MySQLTransactionRawQuery implements RawQuery for MySQL transactions
 type MySQLTransactionRawQuery struct {
 	tx   *sql.Tx

@@ -80,6 +80,10 @@ type Database interface {
 
 	// Migration support
 	GetMigrator() DatabaseMigrator
+
+	// Logger configuration
+	SetLogger(logger any) // Using any to avoid circular dependency with utils
+	GetLogger() any
 }
 
 // ModelQuery interface for model-based queries
