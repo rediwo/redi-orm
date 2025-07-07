@@ -16,6 +16,7 @@ import (
 	_ "github.com/rediwo/redi-orm/drivers/mysql"      // Import MySQL driver
 	_ "github.com/rediwo/redi-orm/drivers/postgresql" // Import PostgreSQL driver
 	_ "github.com/rediwo/redi-orm/drivers/sqlite"     // Import SQLite driver
+	"github.com/rediwo/redi-orm/graphql"
 	"github.com/rediwo/redi-orm/migration"
 	_ "github.com/rediwo/redi-orm/modules/orm" // Import ORM module
 	"github.com/rediwo/redi-orm/prisma"
@@ -35,6 +36,7 @@ Usage:
 
 Commands:
   run               Execute a JavaScript file with ORM support
+  server            Start GraphQL server with automatic schema generation
   migrate           Run pending migrations
   migrate:generate  Generate new migration file
   migrate:apply     Apply pending migrations from directory
@@ -70,6 +72,19 @@ Flags:
                 Example: --timeout 30000 (30 seconds)
                 Default: 0 (no timeout)
   
+  --port        Server port (for server command)
+                Default: 4000
+  
+  --playground  Enable GraphQL playground (for server command)
+                Default: true
+  
+  --cors        Enable CORS (for server command)
+                Default: true
+  
+  --log-level   Logging level for GraphQL server (debug|info|warn|error|none)
+                Default: info
+                Example: --log-level debug
+  
   --help        Show help message
 
 Examples:
@@ -77,6 +92,10 @@ Examples:
   redi-orm run app.js
   redi-orm run scripts/migrate-data.js
   redi-orm run --timeout 60000 long-running-script.js
+  
+  # Start GraphQL server
+  redi-orm server --db=sqlite://./myapp.db --schema=./schema.prisma
+  redi-orm server --db=postgresql://user:pass@localhost/db --port=8080
   
   # Auto-migrate (development)
   redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma
@@ -112,6 +131,10 @@ func main() {
 		force         bool
 		help          bool
 		timeout       int
+		port          int
+		playground    bool
+		cors          bool
+		logLevel      string
 	)
 
 	flag.StringVar(&dbURI, "db", "", "Database URI")
@@ -122,6 +145,10 @@ func main() {
 	flag.BoolVar(&force, "force", false, "Force destructive changes")
 	flag.BoolVar(&help, "help", false, "Show help message")
 	flag.IntVar(&timeout, "timeout", 0, "Execution timeout in milliseconds (for run command)")
+	flag.IntVar(&port, "port", 4000, "Server port (for server command)")
+	flag.BoolVar(&playground, "playground", true, "Enable GraphQL playground (for server command)")
+	flag.BoolVar(&cors, "cors", true, "Enable CORS (for server command)")
+	flag.StringVar(&logLevel, "log-level", "info", "Logging level for GraphQL server")
 
 	// Custom usage
 	flag.Usage = func() {
@@ -192,6 +219,13 @@ func main() {
 		// Pass remaining args after the script path as script arguments
 		scriptArgs := flag.Args()[1:]
 		runScript(scriptPath, scriptArgs, timeout)
+		return
+	case "server":
+		// Validate required flags
+		if dbURI == "" {
+			log.Fatal("Error: --db flag is required")
+		}
+		runServer(ctx, dbURI, schemaPath, port, playground, cors, logLevel)
 		return
 	}
 
@@ -515,4 +549,34 @@ func loadSchemaFromFile(path string) (map[string]*schema.Schema, error) {
 	fmt.Println()
 
 	return schemas, nil
+}
+
+func runServer(ctx context.Context, dbURI, schemaPath string, port int, playground, cors bool, logLevel string) {
+	// Create server configuration
+	config := graphql.ServerConfig{
+		DatabaseURI: dbURI,
+		SchemaPath:  schemaPath,
+		Port:        port,
+		Playground:  playground,
+		CORS:        cors,
+		LogLevel:    logLevel,
+	}
+
+	// Create and start server
+	server, err := graphql.NewServer(config)
+	if err != nil {
+		log.Fatalf("Failed to create GraphQL server: %v", err)
+	}
+
+	// Handle graceful shutdown
+	defer func() {
+		if err := server.Stop(); err != nil {
+			log.Printf("Error stopping server: %v", err)
+		}
+	}()
+
+	// Start the server (blocking)
+	if err := server.Start(); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
 }

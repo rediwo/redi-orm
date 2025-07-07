@@ -47,4 +47,5 @@ build/
 *.db
 test_*.db
 bin/
+tmp/
 tmp-*/

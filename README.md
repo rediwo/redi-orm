@@ -395,6 +395,230 @@ redi-orm migrate:generate --db=postgresql://user:pass@localhost/prod --schema=./
 redi-orm migrate:apply --db=postgresql://user:pass@localhost/prod --migrations=./migrations
 ```
 
+### GraphQL Server
+
+RediORM includes an automatic GraphQL API generator that creates a fully-featured GraphQL server from your Prisma schemas:
+
+```bash
+# Start GraphQL server with default settings
+redi-orm server --db=sqlite://./myapp.db --schema=./schema.prisma
+
+# Custom port and options
+redi-orm server --db=postgresql://user:pass@localhost/db --port=8080 --playground=true --cors=true
+
+# Configurable logging for debugging and monitoring
+redi-orm server --db=sqlite://./myapp.db --schema=./schema.prisma --log-level=debug
+```
+
+Features:
+- ✅ Automatic schema generation from Prisma models
+- ✅ Full CRUD operations (create, read, update, delete)
+- ✅ Batch operations (createMany, updateMany, deleteMany)
+- ✅ Complex where conditions and filtering
+- ✅ Sorting and pagination
+- ✅ **Relation support** - Query across model relationships with `include` syntax
+- ✅ GraphQL Playground for testing
+- ✅ CORS support for web applications
+- ✅ Type-safe resolvers with automatic field mapping
+- ✅ Count queries and aggregations
+- ✅ HTTP handler compatible with any Go web framework
+- ✅ **Configurable logging** - Monitor requests, performance, and errors
+
+#### GraphQL Schema Generation
+
+The GraphQL schema is automatically generated from your Prisma models:
+
+- Each model becomes a GraphQL type
+- CRUD operations are generated for each model
+- Relations are automatically resolved
+- Field types are mapped appropriately
+- Non-nullable fields are enforced
+
+#### Available Operations
+
+For each model (e.g., `User`), the following operations are generated:
+
+**Queries:**
+- `findUniqueUser(where: UserWhereInput!): User` - Find a single user
+- `findManyUser(where: UserWhereInput, orderBy: UserOrderByInput, limit: Int, offset: Int): [User!]!` - Find multiple users
+- `countUser(where: UserWhereInput): Int!` - Count users
+
+**Mutations:**
+- `createUser(data: UserCreateInput!): User!` - Create a user
+- `updateUser(where: UserWhereInput!, data: UserUpdateInput!): User!` - Update a user
+- `deleteUser(where: UserWhereInput!): User!` - Delete a user
+- `createManyUser(data: [UserCreateInput!]!): BatchPayload!` - Create multiple users
+- `updateManyUser(where: UserWhereInput, data: UserUpdateInput!): BatchPayload!` - Update multiple users
+- `deleteManyUser(where: UserWhereInput): BatchPayload!` - Delete multiple users
+
+#### Where Conditions
+
+The GraphQL API supports rich filtering with operators:
+
+```graphql
+where: {
+  # Exact match
+  email: { equals: "alice@example.com" }
+  
+  # String operators
+  name: { contains: "John" }
+  name: { startsWith: "J" }
+  name: { endsWith: "son" }
+  
+  # Comparison operators
+  age: { gt: 18 }
+  age: { gte: 21 }
+  age: { lt: 65 }
+  age: { lte: 100 }
+  
+  # List operators
+  role: { in: ["admin", "editor"] }
+  role: { notIn: ["guest"] }
+  
+  # Logical operators
+  AND: [
+    { published: { equals: true } }
+    { createdAt: { gt: "2024-01-01" } }
+  ]
+  OR: [
+    { title: { contains: "GraphQL" } }
+    { title: { contains: "API" } }
+  ]
+}
+```
+
+#### Example Queries
+
+```graphql
+# Find users with posts (relation support)
+query {
+  findManyUser(
+    where: { email: { contains: "@example.com" } }
+    orderBy: { createdAt: DESC }
+    limit: 10
+  ) {
+    id
+    name
+    email
+    posts {
+      id
+      title
+      published
+      author {
+        name
+        email
+      }
+    }
+    _count {
+      posts
+      comments
+    }
+  }
+}
+
+# Create user
+mutation {
+  createUser(data: {
+    name: "Alice"
+    email: "alice@example.com"
+  }) {
+    id
+    name
+    email
+  }
+}
+
+# Complex filtering with relations
+query {
+  findManyPost(
+    where: {
+      AND: [
+        { published: { equals: true } }
+        { author: { role: { equals: "admin" } } }
+        { createdAt: { gte: "2024-01-01" } }
+      ]
+    }
+    orderBy: { views: DESC }
+    limit: 20
+  ) {
+    title
+    author {
+      name
+      email
+    }
+    _count {
+      comments
+    }
+  }
+}
+
+# Batch operations
+mutation {
+  createManyTag(data: [
+    { name: "GraphQL" }
+    { name: "API" }
+    { name: "Tutorial" }
+  ]) {
+    count
+  }
+}
+```
+
+#### Logging Configuration
+
+The GraphQL server includes comprehensive logging for monitoring and debugging:
+
+```bash
+# Production (minimal logging)
+redi-orm server --db=sqlite://./app.db --schema=./schema.prisma --log-level=info
+
+# Development (full debugging)
+redi-orm server --db=sqlite://./app.db --schema=./schema.prisma --log-level=debug
+
+# Silent (no logging)
+redi-orm server --db=sqlite://./app.db --schema=./schema.prisma --log-level=none
+```
+
+**Log Levels:**
+- `debug` - Shows full requests, queries, variables, and responses
+- `info` - Shows operation types, execution times, and success/failure
+- `warn` - Shows warnings and errors
+- `error` - Shows only errors
+- `none` - Disables all logging
+
+**Sample Output (INFO level):**
+```
+🚀 GraphQL server ready at http://localhost:4000/graphql
+🎮 GraphQL Playground available at http://localhost:4000/graphql
+[GraphQL] 14:31:14 INFO: mutation createUser
+[GraphQL] 14:31:14 INFO: Success in 774µs
+[GraphQL] 14:31:14 INFO: query findManyUser
+[GraphQL] 14:31:14 INFO: Success in 237µs
+```
+
+#### Programmatic Usage
+
+You can also use the GraphQL handler programmatically in your Go applications:
+
+```go
+import (
+    "github.com/rediwo/redi-orm/graphql"
+    "github.com/rediwo/redi-orm/database"
+)
+
+// Create GraphQL handler
+db, _ := database.NewFromURI("sqlite://./app.db")
+schemas := loadYourSchemas()
+generator := graphql.NewSchemaGenerator(db, schemas)
+schema, _ := generator.Generate()
+handler := graphql.NewHandler(schema)
+
+// Use with any HTTP framework
+http.Handle("/graphql", handler)
+```
+
+See the [examples](./examples) directory for complete working examples.
+
 ## 🏗️ Architecture
 
 ### Directory Structure
@@ -406,7 +630,13 @@ redi-orm/
 │   ├── base/         # Shared driver functionality
 │   ├── sqlite/       # SQLite driver
 │   ├── mysql/        # MySQL driver
-│   └── postgresql/   # PostgreSQL driver
+│   ├── postgresql/   # PostgreSQL driver
+│   └── mongodb/      # MongoDB driver
+├── graphql/          # GraphQL API generator with relation support and logging
+│   ├── handler.go    # HTTP handler with configurable logging (framework-agnostic)
+│   ├── schema_generator.go # GraphQL schema generation with relation fields
+│   ├── resolver.go   # Auto-generated resolvers with field mapping
+│   └── server.go     # GraphQL server implementation
 ├── schema/           # Schema definition and parsing
 ├── migration/        # Migration system
 ├── modules/          # Feature modules
@@ -424,6 +654,7 @@ redi-orm/
 3. **Query Builders** - Type-safe query construction for all operations
 4. **Migration Engine** - Tracks and applies database schema changes
 5. **JavaScript Runtime** - Goja-based JS engine for dynamic operations
+6. **GraphQL Server** - Automatic API generation from schemas with full CRUD support, relation fields, and configurable logging
 
 ## 📊 Database Support
 
@@ -794,10 +1025,10 @@ make version
 - [x] CLI tool with timeout support
 - [x] GitHub Actions CI/CD pipeline
 - [x] Multi-platform binary releases
+- [x] GraphQL integration with relation support and configurable logging
 - [ ] Query optimization and caching
 - [ ] Connection pooling configuration
 - [ ] Middleware/plugin system
-- [ ] GraphQL integration
 - [ ] Database introspection tools
 - [ ] Performance monitoring and metrics
 
