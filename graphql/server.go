@@ -163,6 +163,11 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// Handler returns the GraphQL handler
+func (s *Server) Handler() http.Handler {
+	return s.handler
+}
+
 // corsMiddleware adds CORS headers if enabled
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

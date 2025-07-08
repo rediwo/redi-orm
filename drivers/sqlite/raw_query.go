@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/rediwo/redi-orm/types"
@@ -55,87 +54,35 @@ func (q *SQLiteRawQuery) Find(ctx context.Context, dest any) error {
 
 // FindOne executes the raw query and returns a single result
 func (q *SQLiteRawQuery) FindOne(ctx context.Context, dest any) error {
-	// For INSERT with RETURNING, we need to handle the case where the INSERT fails
-	// but the error is masked by "no rows in result set"
-	// Use driver's Query method which includes logging
-	rows, err := q.driver.Query(q.sql, q.args...)
-	if err != nil {
-		return fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer rows.Close()
-
-	// Check if we have any rows
-	if !rows.Next() {
-		// Special handling for INSERT ... RETURNING
-		if strings.Contains(strings.ToUpper(q.sql), "INSERT") && strings.Contains(strings.ToUpper(q.sql), "RETURNING") {
-			// Execute the query to get the actual error
-			_, execErr := q.driver.Exec(q.sql, q.args...)
-			if execErr != nil {
-				return execErr // Return the actual error (e.g., unique constraint violation)
-			}
-		}
-		return fmt.Errorf("sql: no rows in result set")
-	}
-
-	// Handle simple types directly
-	destType := reflect.TypeOf(dest)
-	if destType.Kind() == reflect.Ptr && utils.IsSimpleType(destType.Elem()) {
-		return rows.Scan(dest)
-	}
-
-	// For complex types, delegate to ScanRow which expects Next() to have been called
-	// Create a custom ScanRow implementation since rows.Next() was already called
-	columns, err := rows.Columns()
-	if err != nil {
-		return fmt.Errorf("failed to get columns: %w", err)
-	}
-
-	// Handle map[string]any
-	if destType.Kind() == reflect.Ptr && destType.Elem().Kind() == reflect.Map &&
-		destType.Elem().Key().Kind() == reflect.String &&
-		destType.Elem().Elem().Kind() == reflect.Interface {
-		values := make([]any, len(columns))
-		valuePtrs := make([]any, len(columns))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
+	// Special handling for INSERT...RETURNING to catch constraint violations
+	upperSQL := strings.ToUpper(strings.TrimSpace(q.sql))
+	if strings.HasPrefix(upperSQL, "INSERT") && strings.Contains(upperSQL, "RETURNING") {
+		// First try to execute the query
+		rows, err := q.driver.Query(q.sql, q.args...)
+		if err != nil {
 			return err
 		}
+		defer rows.Close()
 
-		result := make(map[string]any)
-		for i, col := range columns {
-			val := values[i]
-			// Handle byte arrays (convert to string)
-			if b, ok := val.([]byte); ok {
-				result[col] = string(b)
-			} else {
-				result[col] = val
+		// Use ScanRow which handles rows.Next() internally
+		err = utils.ScanRow(rows, dest)
+		if err != nil && err.Error() == "sql: no rows in result set" {
+			// No rows returned - this could be due to a constraint violation
+			// Try to execute without RETURNING to get the actual error
+			nonReturningSQL := q.sql
+			if idx := strings.LastIndex(strings.ToUpper(q.sql), "RETURNING"); idx != -1 {
+				nonReturningSQL = strings.TrimSpace(q.sql[:idx])
 			}
+
+			_, execErr := q.driver.Exec(nonReturningSQL, q.args...)
+			if execErr != nil {
+				return execErr // Return the actual constraint error
+			}
+			return err // Return the original "no rows" error
 		}
-
-		reflect.ValueOf(dest).Elem().Set(reflect.ValueOf(result))
-		return nil
-	}
-
-	// For other types, handle directly
-	values := make([]any, len(columns))
-	valuePtrs := make([]any, len(columns))
-	for i := range values {
-		valuePtrs[i] = &values[i]
-	}
-
-	if err := rows.Scan(valuePtrs...); err != nil {
 		return err
 	}
 
-	// For now, just handle the simple case directly
-	// This is good enough for the COUNT(*) query
-	if len(columns) == 1 && len(valuePtrs) == 1 {
-		reflect.ValueOf(dest).Elem().Set(reflect.ValueOf(values[0]).Convert(destType.Elem()))
-		return nil
-	}
-
-	return fmt.Errorf("complex type scanning not fully implemented in FindOne")
+	// For non-INSERT...RETURNING queries, use the standard method
+	return utils.ScanRowContext(q.driver.DB, ctx, q.sql, q.args, dest)
 }

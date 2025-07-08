@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"github.com/rediwo/redi-orm/migration"
 	_ "github.com/rediwo/redi-orm/modules/orm" // Import ORM module
 	"github.com/rediwo/redi-orm/prisma"
+	"github.com/rediwo/redi-orm/rest"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi/runtime"
@@ -36,7 +38,7 @@ Usage:
 
 Commands:
   run               Execute a JavaScript file with ORM support
-  server            Start GraphQL server with automatic schema generation
+  server            Start GraphQL and REST API server
   migrate           Run pending migrations
   migrate:generate  Generate new migration file
   migrate:apply     Apply pending migrations from directory
@@ -74,6 +76,8 @@ Flags:
   
   --port        Server port (for server command)
                 Default: 4000
+                GraphQL endpoint: http://localhost:4000/graphql
+                REST API endpoint: http://localhost:4000/api
   
   --playground  Enable GraphQL playground (for server command)
                 Default: true
@@ -81,11 +85,11 @@ Flags:
   --cors        Enable CORS (for server command)
                 Default: true
   
-  --log-level   Logging level for GraphQL server (debug|info|warn|error|none)
+  --log-level   Logging level for server (debug|info|warn|error|none)
                 Default: info
-                Controls both GraphQL operation logging and database SQL logging
-                - debug: Shows GraphQL operations + SQL queries with execution times
-                - info: Shows GraphQL operations only (no SQL)
+                Controls both GraphQL/REST operation logging and database SQL logging
+                - debug: Shows operations + SQL queries with execution times
+                - info: Shows operations only (no SQL)
                 - warn/error: Shows warnings/errors only  
                 - none: Disables all logging
                 Example: --log-level debug
@@ -98,7 +102,7 @@ Examples:
   redi-orm run scripts/migrate-data.js
   redi-orm run --timeout 60000 long-running-script.js
   
-  # Start GraphQL server
+  # Start GraphQL and REST API server
   redi-orm server --db=sqlite://./myapp.db --schema=./schema.prisma
   redi-orm server --db=postgresql://user:pass@localhost/db --port=8080
   
@@ -557,8 +561,42 @@ func loadSchemaFromFile(path string) (map[string]*schema.Schema, error) {
 }
 
 func runServer(ctx context.Context, dbURI, schemaPath string, port int, playground, cors bool, logLevel string) {
-	// Create server configuration
-	config := graphql.ServerConfig{
+	// Create database connection
+	db, err := database.NewFromURI(dbURI)
+	if err != nil {
+		log.Fatalf("Failed to create database: %v", err)
+	}
+
+	// Connect to database
+	if err := db.Connect(ctx); err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	// Load schema from file if provided
+	if schemaPath != "" {
+		if _, err := os.Stat(schemaPath); err == nil {
+			schemas, err := loadSchemaFromFile(schemaPath)
+			if err != nil {
+				log.Fatalf("Failed to load schema: %v", err)
+			}
+
+			// Register schemas with database
+			for _, schema := range schemas {
+				if err := db.RegisterSchema(schema.Name, schema); err != nil {
+					log.Fatalf("Failed to register schema %s: %v", schema.Name, err)
+				}
+			}
+
+			// Sync schemas
+			if err := db.SyncSchemas(ctx); err != nil {
+				log.Fatalf("Failed to sync schemas: %v", err)
+			}
+		}
+	}
+
+	// Create GraphQL server configuration
+	graphqlConfig := graphql.ServerConfig{
 		DatabaseURI: dbURI,
 		SchemaPath:  schemaPath,
 		Port:        port,
@@ -567,21 +605,76 @@ func runServer(ctx context.Context, dbURI, schemaPath string, port int, playgrou
 		LogLevel:    logLevel,
 	}
 
-	// Create and start server
-	server, err := graphql.NewServer(config)
+	// Create GraphQL server
+	graphqlServer, err := graphql.NewServer(graphqlConfig)
 	if err != nil {
 		log.Fatalf("Failed to create GraphQL server: %v", err)
 	}
 
-	// Handle graceful shutdown
-	defer func() {
-		if err := server.Stop(); err != nil {
-			log.Printf("Error stopping server: %v", err)
-		}
-	}()
+	// Create REST server configuration
+	restConfig := rest.ServerConfig{
+		Database:   db,
+		Port:       port,
+		LogLevel:   logLevel,
+		SchemaFile: schemaPath,
+	}
+
+	// Create REST server
+	restServer, err := rest.NewServer(restConfig)
+	if err != nil {
+		log.Fatalf("Failed to create REST server: %v", err)
+	}
+
+	// Create a multiplexer to handle both GraphQL and REST
+	mux := http.NewServeMux()
+
+	// Mount GraphQL at /graphql
+	mux.Handle("/graphql", graphqlServer.Handler())
+	if playground {
+		mux.Handle("/", graphqlServer.Handler()) // Playground at root
+	}
+
+	// Mount REST API at /api
+	mux.Handle("/api/", restServer.Router)
+
+	// Apply CORS if enabled
+	var handler http.Handler = mux
+	if cors {
+		handler = applyCORS(handler)
+	}
+
+	// Create HTTP server
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: handler,
+	}
+
+	// Start server
+	fmt.Printf("Starting server on http://localhost:%d\n", port)
+	fmt.Printf("  GraphQL endpoint: http://localhost:%d/graphql\n", port)
+	if playground {
+		fmt.Printf("  GraphQL Playground: http://localhost:%d/\n", port)
+	}
+	fmt.Printf("  REST API endpoint: http://localhost:%d/api\n", port)
+	fmt.Println()
 
 	// Start the server (blocking)
-	if err := server.Start(); err != nil {
+	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
+}
+
+func applyCORS(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Connection-Name")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		handler.ServeHTTP(w, r)
+	})
 }

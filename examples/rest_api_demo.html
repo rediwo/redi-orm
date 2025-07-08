@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RediORM REST API Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .danger {
+            background-color: #dc3545;
+        }
+        .danger:hover {
+            background-color: #c82333;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .response {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .success {
+            color: #28a745;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <h1>RediORM REST API Demo</h1>
+    
+    <div class="section">
+        <h2>API Configuration</h2>
+        <label>API Base URL:</label>
+        <input type="text" id="apiBase" value="http://localhost:8080/api" />
+        <label>Connection Name:</label>
+        <input type="text" id="connectionName" value="default" placeholder="default" />
+    </div>
+
+    <div class="section">
+        <h2>Create User</h2>
+        <input type="text" id="userName" placeholder="Name" />
+        <input type="email" id="userEmail" placeholder="Email" />
+        <input type="number" id="userAge" placeholder="Age" />
+        <button onclick="createUser()">Create User</button>
+        <div id="createResponse" class="response"></div>
+    </div>
+
+    <div class="section">
+        <h2>Users List</h2>
+        <button onclick="loadUsers()">Load Users</button>
+        <button onclick="loadUsersWithPosts()">Load Users with Posts</button>
+        <div id="usersList"></div>
+    </div>
+
+    <div class="section">
+        <h2>Query Users</h2>
+        <label>Filters (JSON):</label>
+        <textarea id="queryFilters" rows="3" placeholder='{"age": {"gt": 25}}'></textarea>
+        <label>Sort:</label>
+        <input type="text" id="querySort" placeholder="-age,name" />
+        <label>Limit:</label>
+        <input type="number" id="queryLimit" value="10" />
+        <button onclick="queryUsers()">Query</button>
+        <div id="queryResponse" class="response"></div>
+    </div>
+
+    <div class="section">
+        <h2>Raw API Call</h2>
+        <select id="method">
+            <option>GET</option>
+            <option>POST</option>
+            <option>PUT</option>
+            <option>DELETE</option>
+        </select>
+        <input type="text" id="endpoint" placeholder="/users/1" />
+        <textarea id="body" rows="4" placeholder='{"data": {"name": "John"}}'></textarea>
+        <button onclick="rawApiCall()">Send Request</button>
+        <div id="rawResponse" class="response"></div>
+    </div>
+
+    <script>
+        // Helper function to make API calls
+        async function apiCall(method, path, body = null) {
+            const apiBase = document.getElementById('apiBase').value;
+            const connectionName = document.getElementById('connectionName').value || 'default';
+            
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Connection-Name': connectionName
+                }
+            };
+            
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+            
+            try {
+                const response = await fetch(`${apiBase}${path}`, options);
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                return { success: false, error: { message: error.message } };
+            }
+        }
+
+        // Create user
+        async function createUser() {
+            const name = document.getElementById('userName').value;
+            const email = document.getElementById('userEmail').value;
+            const age = parseInt(document.getElementById('userAge').value);
+            
+            if (!name || !email || !age) {
+                alert('Please fill all fields');
+                return;
+            }
+            
+            const response = await apiCall('POST', '/users', {
+                data: { name, email, age }
+            });
+            
+            const responseDiv = document.getElementById('createResponse');
+            responseDiv.textContent = JSON.stringify(response, null, 2);
+            responseDiv.className = response.success ? 'response success' : 'response error';
+            
+            if (response.success) {
+                // Clear form
+                document.getElementById('userName').value = '';
+                document.getElementById('userEmail').value = '';
+                document.getElementById('userAge').value = '';
+                // Reload users list
+                loadUsers();
+            }
+        }
+
+        // Load users
+        async function loadUsers() {
+            const response = await apiCall('GET', '/users');
+            displayUsers(response);
+        }
+
+        // Load users with posts
+        async function loadUsersWithPosts() {
+            const response = await apiCall('GET', '/users?include=posts');
+            displayUsers(response);
+        }
+
+        // Display users in table
+        function displayUsers(response) {
+            const usersDiv = document.getElementById('usersList');
+            
+            if (!response.success) {
+                usersDiv.innerHTML = `<div class="error">Error: ${response.error.message}</div>`;
+                return;
+            }
+            
+            if (!response.data || response.data.length === 0) {
+                usersDiv.innerHTML = '<p>No users found</p>';
+                return;
+            }
+            
+            let html = '<table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Age</th><th>Actions</th></tr></thead><tbody>';
+            
+            response.data.forEach(user => {
+                html += `<tr>
+                    <td>${user.id}</td>
+                    <td>${user.name}</td>
+                    <td>${user.email}</td>
+                    <td>${user.age}</td>
+                    <td>
+                        <button onclick="editUser(${user.id})">Edit</button>
+                        <button class="danger" onclick="deleteUser(${user.id})">Delete</button>
+                    </td>
+                </tr>`;
+                
+                // If posts are included, show them
+                if (user.posts && user.posts.length > 0) {
+                    html += `<tr><td colspan="5" style="padding-left: 40px;">
+                        <strong>Posts:</strong><br/>`;
+                    user.posts.forEach(post => {
+                        html += `- ${post.title}<br/>`;
+                    });
+                    html += '</td></tr>';
+                }
+            });
+            
+            html += '</tbody></table>';
+            
+            if (response.pagination) {
+                html += `<p>Page ${response.pagination.page} of ${response.pagination.pages} (Total: ${response.pagination.total})</p>`;
+            }
+            
+            usersDiv.innerHTML = html;
+        }
+
+        // Delete user
+        async function deleteUser(id) {
+            if (!confirm('Are you sure you want to delete this user?')) {
+                return;
+            }
+            
+            const response = await apiCall('DELETE', `/users/${id}`);
+            
+            if (response.success) {
+                loadUsers();
+            } else {
+                alert(`Error: ${response.error.message}`);
+            }
+        }
+
+        // Edit user (simple prompt)
+        async function editUser(id) {
+            const newAge = prompt('Enter new age:');
+            if (!newAge) return;
+            
+            const response = await apiCall('PUT', `/users/${id}`, {
+                data: { age: parseInt(newAge) }
+            });
+            
+            if (response.success) {
+                loadUsers();
+            } else {
+                alert(`Error: ${response.error.message}`);
+            }
+        }
+
+        // Query users
+        async function queryUsers() {
+            let path = '/users?';
+            
+            const filters = document.getElementById('queryFilters').value;
+            if (filters) {
+                try {
+                    const filterObj = JSON.parse(filters);
+                    path += `where=${encodeURIComponent(JSON.stringify(filterObj))}&`;
+                } catch (e) {
+                    alert('Invalid JSON in filters');
+                    return;
+                }
+            }
+            
+            const sort = document.getElementById('querySort').value;
+            if (sort) {
+                path += `sort=${encodeURIComponent(sort)}&`;
+            }
+            
+            const limit = document.getElementById('queryLimit').value;
+            if (limit) {
+                path += `limit=${limit}&`;
+            }
+            
+            const response = await apiCall('GET', path);
+            
+            const responseDiv = document.getElementById('queryResponse');
+            responseDiv.textContent = JSON.stringify(response, null, 2);
+            responseDiv.className = response.success ? 'response success' : 'response error';
+        }
+
+        // Raw API call
+        async function rawApiCall() {
+            const method = document.getElementById('method').value;
+            const endpoint = document.getElementById('endpoint').value;
+            const bodyText = document.getElementById('body').value;
+            
+            let body = null;
+            if (bodyText && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+                try {
+                    body = JSON.parse(bodyText);
+                } catch (e) {
+                    alert('Invalid JSON in body');
+                    return;
+                }
+            }
+            
+            const response = await apiCall(method, endpoint, body);
+            
+            const responseDiv = document.getElementById('rawResponse');
+            responseDiv.textContent = JSON.stringify(response, null, 2);
+            responseDiv.className = response.success ? 'response success' : 'response error';
+        }
+
+        // Load users on page load
+        window.onload = loadUsers;
+    </script>
+</body>
+</html>

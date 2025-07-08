@@ -188,6 +188,14 @@ func (m *mockDatabase) RequiresLimitForOffset() bool {
 	return true
 }
 
+func (m *mockDatabase) SetLogger(logger any) {
+	// Mock implementation - do nothing
+}
+
+func (m *mockDatabase) GetLogger() any {
+	return nil
+}
+
 // Mock factory function
 func mockFactory(uri string) (types.Database, error) {
 	if uri != "mock://test" {

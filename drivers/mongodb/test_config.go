@@ -46,12 +46,12 @@ func cleanupTables(t *testing.T, db *MongoDB) {
 			continue
 		}
 
-		t.Logf("Dropping collection: %s", collectionName)
+		//t.Logf("Dropping collection: %s", collectionName)
 		err := database.Collection(collectionName).Drop(ctx)
 		if err != nil {
 			t.Logf("Failed to drop collection %s: %v", collectionName, err)
 		} else {
-			t.Logf("Successfully dropped collection: %s", collectionName)
+			//t.Logf("Successfully dropped collection: %s", collectionName)
 		}
 	}
 
@@ -71,7 +71,7 @@ func cleanupTables(t *testing.T, db *MongoDB) {
 	}
 
 	if nonSystemCollections == 0 {
-		t.Logf("Cleanup verified: all non-system collections removed")
+		//t.Logf("Cleanup verified: all non-system collections removed")
 	} else {
 		t.Logf("Cleanup incomplete: %d non-system collections remain", nonSystemCollections)
 	}

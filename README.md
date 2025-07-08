@@ -596,7 +596,170 @@ redi-orm server --db=sqlite://./app.db --schema=./schema.prisma --log-level=none
 - `info` - Shows operation types, execution times, and success/failure
 - `warn` - Shows warnings and errors
 - `error` - Shows only errors
-- `none` - Disables all logging
+
+### Server with GraphQL and REST APIs
+
+RediORM provides both GraphQL and REST APIs in a single server, giving you flexibility to use either or both:
+
+```bash
+# Start combined GraphQL and REST API server
+redi-orm server --db=sqlite://./myapp.db --schema=./schema.prisma
+
+# Custom port and options
+redi-orm server --db=postgresql://user:pass@localhost/db --port=8080 --log-level=debug
+
+# Access endpoints:
+# GraphQL: http://localhost:8080/graphql
+# GraphQL Playground: http://localhost:8080/
+# REST API: http://localhost:8080/api
+```
+
+Features:
+- ✅ Standard REST endpoints for all models
+- ✅ JSON request/response format
+- ✅ Complex filtering and query parameters
+- ✅ Pagination with metadata
+- ✅ Batch operations
+- ✅ Relation loading with includes
+- ✅ CORS support for web applications
+- ✅ Multiple database connections
+- ✅ Execution time tracking
+
+#### Available Endpoints
+
+For each model (e.g., `User`), REST endpoints use the exact model name from your Prisma schema:
+
+- `GET /api/User` - List all users
+- `GET /api/User/:id` - Get a specific user
+- `POST /api/User` - Create a new user
+- `PUT /api/User/:id` - Update a user
+- `DELETE /api/User/:id` - Delete a user
+- `POST /api/User/batch` - Create multiple users
+
+#### Query Parameters
+
+```bash
+# Pagination
+GET /api/User?page=2&limit=20
+
+# Sorting
+GET /api/User?sort=-age,name  # - prefix for DESC
+
+# Field selection
+GET /api/User?select=id,name,email
+
+# Filtering
+GET /api/User?filter[age][gt]=25&filter[name][contains]=John
+
+# Complex where conditions (JSON)
+GET /api/User?where={"age":{"gt":25},"name":{"contains":"John"}}
+
+# Include relations
+GET /api/User?include=posts
+GET /api/Post?include=author,comments
+
+# Search
+GET /api/User?q=john
+```
+
+#### Request/Response Format
+
+**Create User Request:**
+```json
+POST /api/users
+{
+  "data": {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "age": 30
+  }
+}
+```
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "age": 30
+  },
+  "meta": {
+    "execution_time": "15.234ms",
+    "timestamp": "2024-01-01T12:00:00Z"
+  }
+}
+```
+
+**Paginated Response:**
+```json
+{
+  "success": true,
+  "data": [...],
+  "pagination": {
+    "page": 2,
+    "limit": 20,
+    "total": 156,
+    "pages": 8
+  },
+  "meta": {
+    "execution_time": "23.456ms",
+    "timestamp": "2024-01-01T12:00:00Z"
+  }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "User not found",
+    "details": "No user with id 123"
+  },
+  "meta": {
+    "timestamp": "2024-01-01T12:00:00Z"
+  }
+}
+```
+
+#### JavaScript/AJAX Example
+
+```javascript
+// Using fetch API
+async function getUsers() {
+  const response = await fetch('http://localhost:8080/api/User?include=posts&limit=10', {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Connection-Name': 'default'  // Optional: specify database connection
+    }
+  });
+  const data = await response.json();
+  console.log(data);
+}
+
+// Create user
+async function createUser(userData) {
+  const response = await fetch('http://localhost:8080/api/User', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ data: userData })
+  });
+  const result = await response.json();
+  return result.data;
+}
+```
+
+See `examples/rest_api_demo.html` for a complete interactive demo.
+
+### Logging
+
+RediORM includes comprehensive logging support:
 
 **Sample Output (INFO level):**
 ```
