@@ -907,18 +907,20 @@ func isRetryableError(err error) bool {
 
 ```go
 func setupTestDB(t *testing.T) types.Database {
+    ctx := context.Background()
+    
     // Use in-memory SQLite for tests
     db, err := database.NewFromURI("sqlite://:memory:")
     require.NoError(t, err)
     
-    err = db.Connect(context.Background())
+    err = db.Connect(ctx)
     require.NoError(t, err)
     
     // Load test schemas
     db.AddSchema(userSchema)
     db.AddSchema(postSchema)
     
-    err = db.SyncSchemas(context.Background())
+    err = db.SyncSchemas(ctx)
     require.NoError(t, err)
     
     t.Cleanup(func() {

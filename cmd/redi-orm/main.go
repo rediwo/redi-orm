@@ -18,6 +18,7 @@ import (
 	_ "github.com/rediwo/redi-orm/drivers/postgresql" // Import PostgreSQL driver
 	_ "github.com/rediwo/redi-orm/drivers/sqlite"     // Import SQLite driver
 	"github.com/rediwo/redi-orm/graphql"
+	"github.com/rediwo/redi-orm/mcp"
 	"github.com/rediwo/redi-orm/migration"
 	_ "github.com/rediwo/redi-orm/modules/orm" // Import ORM module
 	"github.com/rediwo/redi-orm/prisma"
@@ -39,6 +40,7 @@ Usage:
 Commands:
   run               Execute a JavaScript file with ORM support
   server            Start GraphQL and REST API server
+  mcp               Start MCP (Model Context Protocol) server
   migrate           Run pending migrations
   migrate:generate  Generate new migration file
   migrate:apply     Apply pending migrations from directory
@@ -94,6 +96,11 @@ Flags:
                 - none: Disables all logging
                 Example: --log-level debug
   
+  --transport   MCP transport mode (stdio|http) (for mcp command)
+                Default: http
+                - stdio: Standard I/O (for local AI assistants)
+                - http: HTTP server with SSE (for remote access)
+  
   --help        Show help message
 
 Examples:
@@ -105,6 +112,10 @@ Examples:
   # Start GraphQL and REST API server
   redi-orm server --db=sqlite://./myapp.db --schema=./schema.prisma
   redi-orm server --db=postgresql://user:pass@localhost/db --port=8080
+  
+  # Start MCP server
+  redi-orm mcp --db=sqlite://./myapp.db --schema=./schema.prisma
+  redi-orm mcp --db=postgresql://user:pass@localhost/db --transport=http --port=3000
   
   # Auto-migrate (development)
   redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma
@@ -144,6 +155,14 @@ func main() {
 		playground    bool
 		cors          bool
 		logLevel      string
+		transport     string
+		
+		// Security flags
+		apiKey        string
+		enableAuth    bool
+		readOnlyMode  bool
+		rateLimit     int
+		allowedTables string
 	)
 
 	flag.StringVar(&dbURI, "db", "", "Database URI")
@@ -158,6 +177,14 @@ func main() {
 	flag.BoolVar(&playground, "playground", true, "Enable GraphQL playground (for server command)")
 	flag.BoolVar(&cors, "cors", true, "Enable CORS (for server command)")
 	flag.StringVar(&logLevel, "log-level", "info", "Logging level for GraphQL server")
+	flag.StringVar(&transport, "transport", "http", "MCP transport mode (stdio|http)")
+	
+	// Security flags
+	flag.StringVar(&apiKey, "api-key", "", "API key for HTTP transport authentication")
+	flag.BoolVar(&enableAuth, "enable-auth", false, "Enable authentication for HTTP transport")
+	flag.BoolVar(&readOnlyMode, "read-only", true, "Enable read-only mode (default: true)")
+	flag.IntVar(&rateLimit, "rate-limit", 60, "Requests per minute rate limit")
+	flag.StringVar(&allowedTables, "allowed-tables", "", "Comma-separated list of allowed tables")
 
 	// Custom usage
 	flag.Usage = func() {
@@ -235,6 +262,13 @@ func main() {
 			log.Fatal("Error: --db flag is required")
 		}
 		runServer(ctx, dbURI, schemaPath, port, playground, cors, logLevel)
+		return
+	case "mcp":
+		// Validate required flags
+		if dbURI == "" {
+			log.Fatal("Error: --db flag is required")
+		}
+		runMCP(ctx, dbURI, schemaPath, port, transport, logLevel, apiKey, enableAuth, readOnlyMode, rateLimit, allowedTables)
 		return
 	}
 
@@ -677,4 +711,76 @@ func applyCORS(handler http.Handler) http.Handler {
 
 		handler.ServeHTTP(w, r)
 	})
+}
+
+func runMCP(ctx context.Context, dbURI, schemaPath string, port int, transport, logLevel, apiKey string, enableAuth, readOnlyMode bool, rateLimit int, allowedTables string) {
+	// Parse allowed tables
+	var allowedTablesList []string
+	if allowedTables != "" {
+		allowedTablesList = strings.Split(allowedTables, ",")
+		for i, table := range allowedTablesList {
+			allowedTablesList[i] = strings.TrimSpace(table)
+		}
+	}
+
+	// Create MCP server configuration
+	config := mcp.ServerConfig{
+		DatabaseURI: dbURI,
+		SchemaPath:  schemaPath,
+		Transport:   transport,
+		Port:        port,
+		LogLevel:    logLevel,
+		ReadOnly:    readOnlyMode,
+		Security: mcp.SecurityConfig{
+			EnableAuth:      enableAuth,
+			APIKey:         apiKey,
+			EnableRateLimit: rateLimit > 0,
+			RequestsPerMin:  rateLimit,
+			BurstLimit:     rateLimit / 4, // 25% of rate limit as burst
+			AllowedTables:  allowedTablesList,
+			ReadOnlyMode:   readOnlyMode,
+			MaxQueryRows:   1000,
+		},
+	}
+
+	// Create MCP server
+	server, err := mcp.NewServer(config)
+	if err != nil {
+		log.Fatalf("Failed to create MCP server: %v", err)
+	}
+
+	// Start server
+	fmt.Printf("Starting MCP server\n")
+	fmt.Printf("  Database: %s\n", dbURI)
+	fmt.Printf("  Transport: %s\n", transport)
+	if transport == "http" {
+		fmt.Printf("  Port: %d\n", port)
+		fmt.Printf("  Authentication: %t\n", enableAuth)
+		if enableAuth {
+			fmt.Printf("  API Key: %s\n", "***")
+		}
+		if rateLimit > 0 {
+			fmt.Printf("  Rate Limit: %d req/min\n", rateLimit)
+		}
+	}
+	fmt.Printf("  Read-only Mode: %t\n", readOnlyMode)
+	fmt.Printf("  Log level: %s\n", logLevel)
+	if len(allowedTablesList) > 0 {
+		fmt.Printf("  Allowed Tables: %s\n", allowedTables)
+	}
+	fmt.Println()
+
+	if transport == "stdio" {
+		fmt.Println("MCP server is ready for JSON-RPC communication via stdio")
+		fmt.Println("Connect your AI assistant to this process")
+	} else {
+		fmt.Printf("MCP server is ready at http://localhost:%d\n", port)
+		fmt.Println("  - POST / for JSON-RPC requests")
+		fmt.Println("  - GET /events for Server-Sent Events")
+	}
+
+	// Start the server (blocking)
+	if err := server.Start(); err != nil {
+		log.Fatalf("MCP server error: %v", err)
+	}
 }
