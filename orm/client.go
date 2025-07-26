@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
@@ -198,11 +199,11 @@ func (td *transactionDatabase) GetMigrator() types.DatabaseMigrator {
 	return td.originalDB.GetMigrator()
 }
 
-func (td *transactionDatabase) SetLogger(logger any) {
-	td.originalDB.SetLogger(logger)
+func (td *transactionDatabase) SetLogger(l logger.Logger) {
+	td.originalDB.SetLogger(l)
 }
 
-func (td *transactionDatabase) GetLogger() any {
+func (td *transactionDatabase) GetLogger() logger.Logger {
 	return td.originalDB.GetLogger()
 }
 

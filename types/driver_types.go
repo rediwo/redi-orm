@@ -26,6 +26,7 @@ type DriverCapabilities interface {
 	SupportsDefaultValues() bool
 	RequiresLimitForOffset() bool
 	SupportsDistinctOn() bool
+	SupportsForeignKeys() bool
 
 	// Identifier quoting
 	QuoteIdentifier(name string) string

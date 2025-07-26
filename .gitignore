@@ -35,7 +35,9 @@ go.work.sum
 fixtures/routes/tests/
 
 /redi-orm
+/redi-mcp
 /cmd/redi-orm/redi-orm
+/cmd/redi-mcp/redi-mcp
 
 # Wails build output
 redi-app/
@@ -49,3 +51,4 @@ test_*.db
 bin/
 tmp/
 tmp-*/
+vendor/

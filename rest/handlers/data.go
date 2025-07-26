@@ -8,25 +8,25 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/rest/services"
 	"github.com/rediwo/redi-orm/rest/types"
 	ormTypes "github.com/rediwo/redi-orm/types"
-	"github.com/rediwo/redi-orm/utils"
 )
 
 // DataHandler handles data operations
 type DataHandler struct {
 	connHandler  *ConnectionHandler
 	queryBuilder *services.QueryBuilder
-	logger       utils.Logger
+	logger       logger.Logger
 }
 
 // NewDataHandler creates a new data handler
-func NewDataHandler(connHandler *ConnectionHandler, logger utils.Logger) *DataHandler {
+func NewDataHandler(connHandler *ConnectionHandler, l logger.Logger) *DataHandler {
 	return &DataHandler{
 		connHandler:  connHandler,
 		queryBuilder: services.NewQueryBuilder(),
-		logger:       logger,
+		logger:       l,
 	}
 }
 

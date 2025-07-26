@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/rediwo/redi-orm/types"
-	"github.com/rediwo/redi-orm/utils"
 )
 
 // Runner executes file-based migrations
@@ -49,13 +48,17 @@ func (r *Runner) RunMigrations(ctx context.Context) error {
 	}
 
 	if len(pending) == 0 {
-		utils.LogInfo("No pending migrations.")
+		if r.db.GetLogger() != nil {
+			r.db.GetLogger().Info("No pending migrations.")
+		}
 		return nil
 	}
 
-	utils.LogInfo("Found %d pending migration(s):", len(pending))
-	for _, m := range pending {
-		utils.LogInfo("  - %s: %s", m.Version, m.Name)
+	if r.db.GetLogger() != nil {
+		r.db.GetLogger().Info("Found %d pending migration(s):", len(pending))
+		for _, m := range pending {
+			r.db.GetLogger().Info("  - %s: %s", m.Version, m.Name)
+		}
 	}
 
 	// Apply each migration
@@ -65,7 +68,9 @@ func (r *Runner) RunMigrations(ctx context.Context) error {
 		}
 	}
 
-	utils.LogInfo("Successfully applied %d migration(s).", len(pending))
+	if r.db.GetLogger() != nil {
+		r.db.GetLogger().Info("Successfully applied %d migration(s).", len(pending))
+	}
 	return nil
 }
 
@@ -92,7 +97,9 @@ func (r *Runner) RollbackMigration(ctx context.Context) error {
 		return fmt.Errorf("failed to read migration file: %w", err)
 	}
 
-	utils.LogInfo("Rolling back migration %s: %s", migration.Version, migration.Name)
+	if r.db.GetLogger() != nil {
+		r.db.GetLogger().Info("Rolling back migration %s: %s", migration.Version, migration.Name)
+	}
 
 	// Execute down SQL
 	if err := r.executeSQLScript(ctx, migration.DownSQL); err != nil {
@@ -104,13 +111,17 @@ func (r *Runner) RollbackMigration(ctx context.Context) error {
 		return fmt.Errorf("failed to remove migration record: %w", err)
 	}
 
-	utils.LogInfo("Rollback completed successfully.")
+	if r.db.GetLogger() != nil {
+		r.db.GetLogger().Info("Rollback completed successfully.")
+	}
 	return nil
 }
 
 // applyMigration applies a single migration
 func (r *Runner) applyMigration(ctx context.Context, migration *types.MigrationFile) error {
-	utils.LogInfo("Applying migration %s: %s", migration.Version, migration.Name)
+	if r.db.GetLogger() != nil {
+		r.db.GetLogger().Info("Applying migration %s: %s", migration.Version, migration.Name)
+	}
 
 	// Verify checksum
 	if migration.Metadata.Checksum == "" {

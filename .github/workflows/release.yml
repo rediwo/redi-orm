@@ -74,28 +74,62 @@ jobs:
           ./"${BINARY_NAME}" version || echo "Binary test failed, but continuing..."
         fi
         
-        echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+        echo "ORM_BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
 
-    - name: Create archive
+    - name: Build redi-mcp binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
       run: |
-        # Create platform-specific archive
+        # Define binary name with platform suffix
+        BINARY_NAME="redi-mcp"
         if [ "${{ matrix.goos }}" = "windows" ]; then
-          # Windows: ZIP archive
-          zip "redi-orm-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip" "${BINARY_NAME}"
-          echo "ARCHIVE_NAME=redi-orm-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip" >> $GITHUB_ENV
+          BINARY_NAME="${BINARY_NAME}.exe"
+        fi
+        BINARY_NAME="${BINARY_NAME}-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}"
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          BINARY_NAME="${BINARY_NAME}.exe"
+        fi
+        
+        # Build binary with version injection
+        go build -o "${BINARY_NAME}" \
+          -ldflags "-s -w -X main.version=${{ env.VERSION }}" \
+          ./cmd/redi-mcp
+        
+        # Verify binary was created and works
+        if [ "${{ matrix.goos }}" != "windows" ]; then
+          ./"${BINARY_NAME}" version || echo "Binary test failed, but continuing..."
+        fi
+        
+        echo "MCP_BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+
+    - name: Create archives
+      run: |
+        # Create platform-specific archives for both binaries
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          # Windows: ZIP archives
+          zip "redi-orm-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip" "${ORM_BINARY_NAME}"
+          zip "redi-mcp-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip" "${MCP_BINARY_NAME}"
+          echo "ORM_ARCHIVE_NAME=redi-orm-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip" >> $GITHUB_ENV
+          echo "MCP_ARCHIVE_NAME=redi-mcp-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip" >> $GITHUB_ENV
         else
-          # Unix: TAR.GZ archive
-          tar -czf "redi-orm-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${BINARY_NAME}"
-          echo "ARCHIVE_NAME=redi-orm-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" >> $GITHUB_ENV
+          # Unix: TAR.GZ archives
+          tar -czf "redi-orm-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${ORM_BINARY_NAME}"
+          tar -czf "redi-mcp-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${MCP_BINARY_NAME}"
+          echo "ORM_ARCHIVE_NAME=redi-orm-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" >> $GITHUB_ENV
+          echo "MCP_ARCHIVE_NAME=redi-mcp-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" >> $GITHUB_ENV
         fi
 
     - name: Generate checksums
       run: |
-        # Generate SHA256 checksum
+        # Generate SHA256 checksums for both archives
         if command -v sha256sum >/dev/null; then
-          sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+          sha256sum "${ORM_ARCHIVE_NAME}" > "${ORM_ARCHIVE_NAME}.sha256"
+          sha256sum "${MCP_ARCHIVE_NAME}" > "${MCP_ARCHIVE_NAME}.sha256"
         elif command -v shasum >/dev/null; then
-          shasum -a 256 "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+          shasum -a 256 "${ORM_ARCHIVE_NAME}" > "${ORM_ARCHIVE_NAME}.sha256"
+          shasum -a 256 "${MCP_ARCHIVE_NAME}" > "${MCP_ARCHIVE_NAME}.sha256"
         fi
 
     - name: Upload artifacts
@@ -137,21 +171,30 @@ jobs:
       id: release_notes
       run: |
         cat > release_notes.md << 'EOF'
-        # RediORM CLI ${{ env.VERSION }}
+        # RediORM ${{ env.VERSION }}
 
         ## What's New
         
-        This release includes the RediORM CLI tool with comprehensive database migration and JavaScript runtime support.
+        This release includes both the RediORM CLI tool and the MCP (Model Context Protocol) server for AI assistant integration.
 
-        ## Features
+        ## 🚀 RediORM CLI Features
 
-        - **Multi-database support**: SQLite, MySQL, PostgreSQL
+        - **Multi-database support**: SQLite, MySQL, PostgreSQL, MongoDB
         - **Prisma-style schema definitions**: Familiar and powerful schema syntax
         - **JavaScript runtime**: Execute database operations using JavaScript with ORM support
         - **Migration system**: Auto-migration for development, file-based migrations for production
         - **Transaction support**: Full ACID transactions with savepoints
         - **Relation support**: One-to-one, one-to-many, many-to-many relations with eager loading
+        - **GraphQL & REST APIs**: Auto-generated APIs from your schema
         - **Raw query support**: Execute custom SQL when needed
+
+        ## 🤖 RediORM MCP Features
+
+        - **AI Integration**: Enable AI assistants to understand and interact with your database
+        - **Natural Language Queries**: AI can process requests like "find all users who posted this week"
+        - **Schema Understanding**: AI comprehends your data model relationships and constraints
+        - **Safe Operations**: Read-only mode by default, with granular permission control
+        - **Multiple Modes**: Stdio mode for Claude Desktop, HTTP streaming mode for Cursor/Windsurf
 
         ## Installation
 
@@ -200,6 +243,35 @@ jobs:
 
         ```bash
         redi-orm version
+        ```
+
+        ### Installing redi-mcp
+
+        Choose the appropriate MCP binary for your platform:
+
+        **Linux (AMD64)**:
+        ```bash
+        wget https://github.com/rediwo/redi-orm/releases/download/${{ env.VERSION }}/redi-mcp-${{ env.VERSION }}-linux-amd64.tar.gz
+        tar -xzf redi-mcp-${{ env.VERSION }}-linux-amd64.tar.gz
+        chmod +x redi-mcp-${{ env.VERSION }}-linux-amd64
+        sudo mv redi-mcp-${{ env.VERSION }}-linux-amd64 /usr/local/bin/redi-mcp
+        ```
+
+        **macOS (Intel)**:
+        ```bash
+        wget https://github.com/rediwo/redi-orm/releases/download/${{ env.VERSION }}/redi-mcp-${{ env.VERSION }}-darwin-amd64.tar.gz
+        tar -xzf redi-mcp-${{ env.VERSION }}-darwin-amd64.tar.gz
+        chmod +x redi-mcp-${{ env.VERSION }}-darwin-amd64
+        sudo mv redi-mcp-${{ env.VERSION }}-darwin-amd64 /usr/local/bin/redi-mcp
+        ```
+
+        **Windows**:
+        1. Download `redi-mcp-${{ env.VERSION }}-windows-amd64.zip`
+        2. Extract and add to PATH
+
+        Verify with:
+        ```bash
+        redi-mcp version
         ```
 
         ## Quick Start
@@ -271,6 +343,38 @@ jobs:
         redi-orm run app.js
         ```
 
+        ## MCP Quick Start
+
+        ### For Claude Desktop
+        Add to `~/.claude/claude_desktop_config.json`:
+        ```json
+        {
+          "mcpServers": {
+            "database": {
+              "command": "redi-mcp",
+              "args": ["--db=sqlite://./app.db", "--schema=./schema.prisma"]
+            }
+          }
+        }
+        ```
+
+        ### For Cursor/Windsurf
+        Add to `.cursor/config.json`:
+        ```json
+        {
+          "mcpServers": {
+            "orm-mcp": {
+              "url": "http://localhost:8080"
+            }
+          }
+        }
+        ```
+
+        Then start the MCP server:
+        ```bash
+        redi-mcp --db=sqlite://./app.db --schema=./schema.prisma --port=8080
+        ```
+
         ## Security
 
         All release assets include SHA256 checksums for verification. You can verify the integrity of your download:
@@ -286,7 +390,8 @@ jobs:
         ## Documentation
 
         - [GitHub Repository](https://github.com/rediwo/redi-orm)
-        - [CLI Usage Guide](https://github.com/rediwo/redi-orm/blob/main/cmd/redi-orm/README.md)
+        - [RediORM CLI Guide](https://github.com/rediwo/redi-orm/blob/main/cmd/redi-orm/README.md)
+        - [RediMCP Guide](https://github.com/rediwo/redi-orm/blob/main/cmd/redi-mcp/README.md)
         - [Examples](https://github.com/rediwo/redi-orm/tree/main/examples)
 
         ---
@@ -298,7 +403,7 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.VERSION }}
-        name: RediORM CLI ${{ env.VERSION }}
+        name: RediORM ${{ env.VERSION }}
         body_path: release_notes.md
         files: |
           release-assets/*.zip

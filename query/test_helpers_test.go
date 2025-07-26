@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
 )
@@ -86,11 +87,11 @@ func (m *mockDatabase) GetCapabilities() types.DriverCapabilities {
 	return &mockCapabilities{}
 }
 
-func (m *mockDatabase) SetLogger(logger any) {
+func (m *mockDatabase) SetLogger(log logger.Logger) {
 	// Mock implementation - do nothing
 }
 
-func (m *mockDatabase) GetLogger() any {
+func (m *mockDatabase) GetLogger() logger.Logger {
 	return nil
 }
 
@@ -174,4 +175,8 @@ func (m *mockCapabilities) SupportsArrayFields() bool {
 
 func (m *mockCapabilities) SupportsAggregationPipeline() bool {
 	return false
+}
+
+func (m *mockCapabilities) SupportsForeignKeys() bool {
+	return true
 }

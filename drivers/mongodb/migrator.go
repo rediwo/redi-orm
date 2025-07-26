@@ -225,3 +225,140 @@ func (m *MongoDBMigrator) GenerateMigrationSQL(plan *types.MigrationPlan) ([]str
 func (m *MongoDBMigrator) getIndexName(tableName string, fields []string) string {
 	return fmt.Sprintf("%s_%s_idx", tableName, strings.Join(fields, "_"))
 }
+
+// IsSystemTable checks if a collection is a system collection in MongoDB
+func (m *MongoDBMigrator) IsSystemTable(tableName string) bool {
+	// MongoDB system collections start with "system."
+	return strings.HasPrefix(tableName, "system.")
+}
+
+// MapFieldType maps schema field type to MongoDB type (not applicable for MongoDB)
+func (m *MongoDBMigrator) MapFieldType(field schema.Field) string {
+	// MongoDB is schemaless, return the field type name for documentation
+	return fmt.Sprintf("%v", field.Type)
+}
+
+// FormatDefaultValue formats default value (not applicable for MongoDB)
+func (m *MongoDBMigrator) FormatDefaultValue(value any) string {
+	// MongoDB doesn't have SQL-style defaults
+	return fmt.Sprintf("%v", value)
+}
+
+// GenerateColumnDefinitionFromColumnInfo is not applicable for MongoDB
+func (m *MongoDBMigrator) GenerateColumnDefinitionFromColumnInfo(col types.ColumnInfo) string {
+	// MongoDB is schemaless
+	return ""
+}
+
+// ConvertFieldToColumnInfo converts field to column info (limited support for MongoDB)
+func (m *MongoDBMigrator) ConvertFieldToColumnInfo(field schema.Field) *types.ColumnInfo {
+	return &types.ColumnInfo{
+		Name:       field.GetColumnName(),
+		Type:       fmt.Sprintf("%v", field.Type),
+		Nullable:   field.Nullable,
+		Default:    field.Default,
+		PrimaryKey: field.PrimaryKey,
+		Unique:     field.Unique,
+	}
+}
+
+// ParseDefaultValue parses MongoDB-specific default values to normalized form
+func (m *MongoDBMigrator) ParseDefaultValue(value any, fieldType schema.FieldType) any {
+	if value == nil {
+		return nil
+	}
+
+	// Convert to string for processing
+	strVal := fmt.Sprintf("%v", value)
+
+	// Strip surrounding quotes
+	strVal = strings.Trim(strVal, `'"`)
+
+	// Normalize common default functions
+	upperVal := strings.ToUpper(strVal)
+	switch {
+	case upperVal == "NOW()" || upperVal == "CURRENT_TIMESTAMP":
+		return "CURRENT_TIMESTAMP"
+	case upperVal == "NULL":
+		return nil
+	}
+
+	// MongoDB doesn't have database-level defaults, but we still normalize for consistency
+	return value
+}
+
+// NormalizeDefaultToPrismaFunction converts normalized defaults to Prisma function names
+func (m *MongoDBMigrator) NormalizeDefaultToPrismaFunction(value any, fieldType schema.FieldType) (string, bool) {
+	if value == nil {
+		return "", false
+	}
+
+	strVal, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+
+	switch strVal {
+	case "CURRENT_TIMESTAMP":
+		return "now", true
+	}
+
+	// Also check for the original value in case ParseDefaultValue wasn't called
+	upperVal := strings.ToUpper(strVal)
+	if upperVal == "NOW()" {
+		return "now", true
+	}
+
+	return "", false
+}
+
+// IsSystemIndex checks if an index is a system index
+func (m *MongoDBMigrator) IsSystemIndex(indexName string) bool {
+	// MongoDB system indexes
+	return indexName == "_id_" || strings.HasPrefix(indexName, "system.")
+}
+
+// MapDatabaseTypeToFieldType converts MongoDB field types to schema field types
+func (m *MongoDBMigrator) MapDatabaseTypeToFieldType(dbType string) schema.FieldType {
+	// MongoDB doesn't have explicit column types like SQL databases
+	// This method is primarily for compatibility
+	// In practice, MongoDB introspection would need to examine actual documents
+
+	// Normalize the type to lowercase
+	dbType = strings.ToLower(dbType)
+
+	// Handle BSON type names if encountered
+	switch dbType {
+	case "string":
+		return schema.FieldTypeString
+	case "int", "int32":
+		return schema.FieldTypeInt
+	case "long", "int64":
+		return schema.FieldTypeInt64
+	case "double":
+		return schema.FieldTypeFloat
+	case "decimal", "decimal128":
+		return schema.FieldTypeDecimal
+	case "bool", "boolean":
+		return schema.FieldTypeBool
+	case "date", "datetime", "timestamp":
+		return schema.FieldTypeDateTime
+	case "objectid":
+		return schema.FieldTypeObjectId
+	case "bindata", "binary":
+		return schema.FieldTypeBinary
+	case "object", "document":
+		return schema.FieldTypeDocument
+	case "array":
+		return schema.FieldTypeArray
+	default:
+		// Default to string for unknown types
+		return schema.FieldTypeString
+	}
+}
+
+// IsPrimaryKeyIndex checks if an index name indicates it's a primary key index
+func (m *MongoDBMigrator) IsPrimaryKeyIndex(indexName string) bool {
+	// In MongoDB, _id is the primary key
+	return indexName == "_id_" || indexName == "_id"
+}

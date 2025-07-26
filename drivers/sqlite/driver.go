@@ -73,22 +73,7 @@ func (s *SQLiteDB) SyncSchemas(ctx context.Context) error {
 
 // CreateModel creates a table for the given model
 func (s *SQLiteDB) CreateModel(ctx context.Context, modelName string) error {
-	schema, err := s.GetSchema(modelName)
-	if err != nil {
-		return fmt.Errorf("failed to get schema for model %s: %w", modelName, err)
-	}
-
-	sql, err := s.generateCreateTableSQL(schema)
-	if err != nil {
-		return fmt.Errorf("failed to generate CREATE TABLE SQL: %w", err)
-	}
-
-	_, err = s.Exec(sql)
-	if err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
-	}
-
-	return nil
+	return s.Driver.CreateModel(ctx, s, modelName)
 }
 
 // DropModel drops the table for the given model
@@ -206,12 +191,21 @@ func (s *SQLiteDB) generateCreateTableSQL(schema *schema.Schema) (string, error)
 
 			// Find the actual field to get the column name
 			var foreignKeyColumn string
+			var foreignKeyFieldExists bool
 			for _, field := range schema.Fields {
 				if field.Name == relation.ForeignKey {
 					foreignKeyColumn = field.GetColumnName()
+					foreignKeyFieldExists = true
 					break
 				}
 			}
+
+			// Skip if the foreign key field doesn't exist in this schema
+			// This happens when the foreign key is on the other side of a one-to-one relation
+			if !foreignKeyFieldExists {
+				continue
+			}
+
 			if foreignKeyColumn == "" {
 				foreignKeyColumn = relation.ForeignKey
 			}

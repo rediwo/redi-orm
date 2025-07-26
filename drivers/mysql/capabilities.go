@@ -33,6 +33,10 @@ func (c *MySQLCapabilities) SupportsDistinctOn() bool {
 	return false // MySQL doesn't support DISTINCT ON
 }
 
+func (c *MySQLCapabilities) SupportsForeignKeys() bool {
+	return true // MySQL (InnoDB) supports foreign key constraints
+}
+
 // Identifier quoting
 
 func (c *MySQLCapabilities) QuoteIdentifier(name string) string {

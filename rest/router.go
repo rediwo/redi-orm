@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/rest/handlers"
 	"github.com/rediwo/redi-orm/rest/middleware"
-	"github.com/rediwo/redi-orm/utils"
 )
 
 // Router handles REST API routing
@@ -14,23 +14,23 @@ type Router struct {
 	mux         *http.ServeMux
 	connHandler *handlers.ConnectionHandler
 	dataHandler *handlers.DataHandler
-	logger      utils.Logger
+	logger      logger.Logger
 }
 
 // NewRouter creates a new REST API router
-func NewRouter(logger utils.Logger) *Router {
-	if logger == nil {
-		logger = utils.NewDefaultLogger("REST")
+func NewRouter(l logger.Logger) *Router {
+	if l == nil {
+		l = logger.NewDefaultLogger("REST")
 	}
 
-	connHandler := handlers.NewConnectionHandler(logger)
-	dataHandler := handlers.NewDataHandler(connHandler, logger)
+	connHandler := handlers.NewConnectionHandler(l)
+	dataHandler := handlers.NewDataHandler(connHandler, l)
 
 	router := &Router{
 		mux:         http.NewServeMux(),
 		connHandler: connHandler,
 		dataHandler: dataHandler,
-		logger:      logger,
+		logger:      l,
 	}
 
 	router.setupRoutes()

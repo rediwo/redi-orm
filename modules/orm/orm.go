@@ -10,6 +10,7 @@ import (
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/eventloop"
 	"github.com/rediwo/redi-orm/database"
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/orm"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -72,11 +73,11 @@ func initModelsModule(config modules.ModuleConfig) error {
 
 		// Log levels
 		logLevels := vm.NewObject()
-		logLevels.Set("NONE", int(utils.LogLevelNone))
-		logLevels.Set("ERROR", int(utils.LogLevelError))
-		logLevels.Set("WARN", int(utils.LogLevelWarn))
-		logLevels.Set("INFO", int(utils.LogLevelInfo))
-		logLevels.Set("DEBUG", int(utils.LogLevelDebug))
+		logLevels.Set("NONE", int(logger.LogLevelNone))
+		logLevels.Set("ERROR", int(logger.LogLevelError))
+		logLevels.Set("WARN", int(logger.LogLevelWarn))
+		logLevels.Set("INFO", int(logger.LogLevelInfo))
+		logLevels.Set("DEBUG", int(logger.LogLevelDebug))
 		exports.Set("LogLevel", logLevels)
 
 		module.Set("exports", exports)
@@ -833,7 +834,7 @@ func ConvertValue(value any) any {
 
 // LoggerWrapper wraps a Go logger for JavaScript use
 type LoggerWrapper struct {
-	logger utils.Logger
+	logger logger.Logger
 }
 
 // createLoggerFunction creates a logger factory function for JavaScript
@@ -845,13 +846,13 @@ func (m *ModelsModule) createLoggerFunction(vm *js.Runtime) func(call js.Functio
 		}
 
 		// Create Go logger
-		logger := utils.NewDefaultLogger(prefix)
+		l := logger.NewDefaultLogger(prefix)
 
 		// Create JavaScript logger object
 		jsLogger := vm.NewObject()
 
 		// Create wrapper
-		wrapper := &LoggerWrapper{logger: logger}
+		wrapper := &LoggerWrapper{logger: l}
 
 		// Add methods
 		jsLogger.Set("setLevel", func(call js.FunctionCall) js.Value {
@@ -859,11 +860,11 @@ func (m *ModelsModule) createLoggerFunction(vm *js.Runtime) func(call js.Functio
 				level := call.Arguments[0].Export()
 				switch v := level.(type) {
 				case int64:
-					logger.SetLevel(utils.LogLevel(v))
+					l.SetLevel(logger.LogLevel(v))
 				case float64:
-					logger.SetLevel(utils.LogLevel(int(v)))
+					l.SetLevel(logger.LogLevel(int(v)))
 				case int:
-					logger.SetLevel(utils.LogLevel(v))
+					l.SetLevel(logger.LogLevel(v))
 				}
 			}
 			return js.Undefined()
@@ -874,14 +875,14 @@ func (m *ModelsModule) createLoggerFunction(vm *js.Runtime) func(call js.Functio
 				output := call.Arguments[0].String()
 				switch output {
 				case "stdout":
-					logger.SetOutput(os.Stdout)
+					l.SetOutput(os.Stdout)
 				case "stderr":
-					logger.SetOutput(os.Stderr)
+					l.SetOutput(os.Stderr)
 				default:
 					// Try to open as file
 					file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 					if err == nil {
-						logger.SetOutput(file)
+						l.SetOutput(file)
 					}
 				}
 			}
@@ -897,7 +898,7 @@ func (m *ModelsModule) createLoggerFunction(vm *js.Runtime) func(call js.Functio
 			for i := 1; i < len(call.Arguments); i++ {
 				args[i-1] = call.Arguments[i].Export()
 			}
-			logger.Debug(format, args...)
+			l.Debug(format, args...)
 			return js.Undefined()
 		})
 
@@ -910,7 +911,7 @@ func (m *ModelsModule) createLoggerFunction(vm *js.Runtime) func(call js.Functio
 			for i := 1; i < len(call.Arguments); i++ {
 				args[i-1] = call.Arguments[i].Export()
 			}
-			logger.Info(format, args...)
+			l.Info(format, args...)
 			return js.Undefined()
 		})
 
@@ -923,7 +924,7 @@ func (m *ModelsModule) createLoggerFunction(vm *js.Runtime) func(call js.Functio
 			for i := 1; i < len(call.Arguments); i++ {
 				args[i-1] = call.Arguments[i].Export()
 			}
-			logger.Warn(format, args...)
+			l.Warn(format, args...)
 			return js.Undefined()
 		})
 
@@ -936,12 +937,21 @@ func (m *ModelsModule) createLoggerFunction(vm *js.Runtime) func(call js.Functio
 			for i := 1; i < len(call.Arguments); i++ {
 				args[i-1] = call.Arguments[i].Export()
 			}
-			logger.Error(format, args...)
+			l.Error(format, args...)
 			return js.Undefined()
 		})
 
 		// Store the wrapper in the logger object
 		jsLogger.Set("__wrapper", wrapper)
+
+		// Add log level constants
+		levels := vm.NewObject()
+		levels.Set("NONE", int(logger.LogLevelNone))
+		levels.Set("ERROR", int(logger.LogLevelError))
+		levels.Set("WARN", int(logger.LogLevelWarn))
+		levels.Set("INFO", int(logger.LogLevelInfo))
+		levels.Set("DEBUG", int(logger.LogLevelDebug))
+		jsLogger.Set("levels", levels)
 
 		return jsLogger
 	}

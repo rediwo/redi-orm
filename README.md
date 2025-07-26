@@ -10,6 +10,8 @@ A modern, AI-native ORM for Go with Prisma-like JavaScript interface. RediORM br
 - **📊 Auto-Generated APIs** - GraphQL and REST servers from your schema
 - **🔗 Smart Relations** - Eager loading, nested queries, relation management
 - **🚀 Production Ready** - Migrations, transactions, connection pooling, logging
+- **📋 Schema Management** - Prisma-compatible schemas with auto-generation from databases
+- **🎨 Developer Experience** - Color-coded logging, helpful error messages, consistent API
 
 ## 🚀 Quick Start
 
@@ -66,11 +68,44 @@ func main() {
     
     // Use ORM
     client := orm.NewClient(db)
+    
+    // Create user
     user, _ := client.Model("User").Create(`{
         "data": {
             "name": "Alice",
             "email": "alice@example.com"
         }
+    }`)
+    
+    // Find many with complex queries
+    users, _ := client.Model("User").FindMany(`{
+        "where": {
+            "email": { "contains": "@example.com" }
+        },
+        "include": { "posts": true },
+        "orderBy": { "name": "asc" }
+    }`)
+    
+    // Advanced query with OR conditions
+    adminsOr25, _ := client.Model("User").FindMany(`{
+        "where": {
+            "OR": [
+                {"age": 25},
+                {"role": "admin"}
+            ]
+        }
+    }`)
+    
+    // Query with operators
+    products, _ := client.Model("Product").FindMany(`{
+        "where": {
+            "AND": [
+                {"price": {"gte": 100, "lte": 500}},
+                {"name": {"startsWith": "Pro"}}
+            ]
+        },
+        "orderBy": {"price": "desc"},
+        "take": 10
     }`)
 }
 ```
@@ -101,11 +136,46 @@ async function main() {
     
     // Query with relations
     const users = await db.models.User.findMany({
+        where: { email: { contains: "@example.com" } },
         include: { posts: true },
-        where: { email: { contains: "@example.com" } }
+        orderBy: { name: "asc" }
+    });
+    
+    // Advanced query with OR conditions
+    const adminsOr25 = await db.models.User.findMany({
+        where: {
+            OR: [
+                { age: 25 },
+                { role: "admin" }
+            ]
+        }
+    });
+    
+    // Complex query with operators
+    const products = await db.models.Product.findMany({
+        where: {
+            AND: [
+                { price: { gte: 100, lte: 500 } },
+                { name: { startsWith: "Pro" } }
+            ]
+        },
+        orderBy: { price: "desc" },
+        take: 10
     });
 }
 ```
+
+### Query Operators
+
+RediORM supports a rich set of query operators:
+
+- **Comparison**: `equals`, `gt`, `gte`, `lt`, `lte`
+- **List**: `in`, `notIn`
+- **String**: `contains`, `startsWith`, `endsWith`
+- **Logical**: `AND`, `OR`, `NOT`
+- **Pagination**: `take`, `skip`
+- **Sorting**: `orderBy` (with `asc`/`desc`)
+- **Relations**: `include` (with nested support)
 
 ## 🤖 AI Integration (MCP)
 
@@ -180,9 +250,89 @@ redi-orm run script.js
 redi-orm migrate --db=sqlite://./app.db --schema=./schema.prisma
 
 # Start servers
-redi-orm server --db=sqlite://./app.db    # GraphQL + REST
-redi-orm mcp --db=sqlite://./app.db       # MCP for AI
+redi-orm server --db=sqlite://./app.db --schema=./schema.prisma    # GraphQL + REST
+redi-mcp --db=sqlite://./app.db --schema=./schema.prisma           # MCP for AI
 ```
+
+## 🤖 AI Integration with MCP
+
+### Model Context Protocol (MCP) Server
+
+RediORM includes a built-in MCP server that enables AI assistants to understand and interact with your database through natural language.
+
+```bash
+# Install and run MCP server
+go install github.com/rediwo/redi-orm/cmd/redi-mcp@latest
+
+# Stdio mode (for Claude Desktop)
+redi-mcp --db=sqlite://./app.db --schema=./schema.prisma
+
+# HTTP streaming mode (for Cursor, Windsurf, web apps)
+redi-mcp --db=sqlite://./app.db --schema=./schema.prisma --port=8080
+
+# Production configuration with security
+redi-mcp --db=postgresql://readonly:pass@localhost/myapp --schema=./prisma \
+  --port=8080 \
+  --log-level=info \
+  --read-only=true \
+  --rate-limit=100
+```
+
+### MCP Features
+
+- **Natural Language Queries** - AI can understand requests like "find all users who posted this week"
+- **Schema Understanding** - AI comprehends your data model relationships and constraints
+- **Safe Operations** - Read-only mode by default, with granular permission control
+- **Tool Integration** - Works with Claude, GitHub Copilot, and other MCP-compatible AI assistants
+
+### MCP Server Modes
+
+#### 1. Stdio Mode (Default)
+Best for desktop AI applications like Claude Desktop:
+
+```json
+// Claude Desktop config (~/.claude/claude_desktop_config.json)
+{
+  "mcpServers": {
+    "database": {
+      "command": "redi-mcp",
+      "args": ["--db=postgresql://localhost/myapp", "--schema=./prisma"]
+    }
+  }
+}
+```
+
+#### 2. HTTP Streaming Mode
+For web-based AI tools like Cursor, Windsurf, and remote access. HTTP mode uses streaming by default:
+
+```bash
+# Start HTTP server (streaming mode by default)
+redi-mcp --db=postgresql://localhost/myapp --schema=./prisma --port=8080
+```
+
+Configure in Cursor/Windsurf:
+```json
+// .cursor/config.json or .windsurf/config.json
+{
+  "mcpServers": {
+    "orm-mcp": {
+      "url": "http://localhost:8080"
+    }
+  }
+}
+```
+
+HTTP endpoints:
+- `/` - Streaming MCP protocol endpoint
+- `/sse` - Server-Sent Events endpoint
+
+### What AI Assistants Can Do
+
+Now your AI assistant can:
+- Query data using natural language - "Show me users who signed up this month"
+- Generate reports and analytics - "Create a weekly sales summary"
+- Suggest schema improvements - "What indexes would improve performance?"
+- Help debug data issues - "Why are some orders missing user references?"
 
 ## 📚 Documentation
 

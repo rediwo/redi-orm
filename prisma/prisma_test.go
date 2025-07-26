@@ -349,10 +349,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 enum UserRole {
   ADMIN
   USER
@@ -476,7 +472,6 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
-  output   = "./generated/client"
 }
 
 enum Status {
@@ -941,6 +936,98 @@ enum Status {
 
 		if !found {
 			t.Errorf("enum value %s missing correct @map(%q) attribute", enumValue.Name, expectedMapping)
+		}
+	}
+}
+
+func TestOneToOneRelation(t *testing.T) {
+	// Test one-to-one relation parsing
+	schema := `
+model User {
+  id      Int      @id @default(autoincrement())
+  name    String
+  profile Profile?
+}
+
+model Profile {
+  id     Int    @id @default(autoincrement())
+  bio    String
+  userId Int    @unique
+  user   User   @relation(fields: [userId], references: [id])
+}`
+
+	lexer := NewLexer(schema)
+	parser := NewParser(lexer)
+
+	prismaSchema := parser.ParseSchema()
+
+	if len(parser.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", parser.Errors())
+	}
+
+	// Test conversion
+	converter := NewConverter()
+	reormSchemas, err := converter.Convert(prismaSchema)
+	if err != nil {
+		t.Fatalf("conversion error: %v", err)
+	}
+
+	// Check User schema
+	userSchema := reormSchemas["User"]
+	if userSchema == nil {
+		t.Fatal("User schema not found")
+	}
+
+	// Check Profile schema
+	profileSchema := reormSchemas["Profile"]
+	if profileSchema == nil {
+		t.Fatal("Profile schema not found")
+	}
+
+	// User should NOT have a profile_id field
+	for _, field := range userSchema.Fields {
+		if field.Name == "profile_id" || field.Name == "profileId" {
+			t.Errorf("User schema should not have a profile_id field, but found: %s", field.Name)
+		}
+	}
+
+	// Profile should have userId field
+	userIdField, err := profileSchema.GetField("userId")
+	if err != nil {
+		t.Errorf("Profile schema should have userId field: %v", err)
+	} else {
+		if !userIdField.Unique {
+			t.Error("Profile.userId should be unique for one-to-one relation")
+		}
+	}
+
+	// Check relations
+	userProfileRelation, exists := userSchema.Relations["profile"]
+	if !exists {
+		t.Fatal("User should have 'profile' relation")
+	}
+	if userProfileRelation.Type != "oneToOne" {
+		t.Errorf("User.profile should be OneToOne relation, got: %s", userProfileRelation.Type)
+	}
+	if userProfileRelation.ForeignKey != "userId" {
+		t.Errorf("User.profile foreign key should be 'userId', got: %s", userProfileRelation.ForeignKey)
+	}
+
+	profileUserRelation, exists := profileSchema.Relations["user"]
+	if !exists {
+		t.Fatal("Profile should have 'user' relation")
+	}
+	if profileUserRelation.Type != "manyToOne" {
+		t.Errorf("Profile.user should be ManyToOne relation, got: %s", profileUserRelation.Type)
+	}
+	if profileUserRelation.ForeignKey != "userId" {
+		t.Errorf("Profile.user foreign key should be 'userId', got: %s", profileUserRelation.ForeignKey)
+	}
+
+	// Validate all schemas
+	for name, s := range reormSchemas {
+		if err := s.Validate(); err != nil {
+			t.Errorf("schema %s validation failed: %v", name, err)
 		}
 	}
 }

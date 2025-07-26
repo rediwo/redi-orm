@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/rediwo/redi-orm/types"
-	"github.com/rediwo/redi-orm/utils"
 )
 
 // SelectQueryImpl implements the SelectQuery interface
@@ -66,8 +65,9 @@ func (q *SelectQueryImpl) Include(relations ...string) types.SelectQuery {
 			LeftJoin, // Use LEFT JOIN to include records without relations
 		)
 		if err != nil {
-			// Log error but continue - we might handle this differently in production
-			utils.LogWarn("Failed to add join for relation %s: %v", relation, err)
+			// Skip join if error occurs - relation might not be properly configured
+			// In production, this could be logged if a logger is available
+			continue
 		}
 	}
 
@@ -97,8 +97,9 @@ func (q *SelectQueryImpl) IncludeWithOptions(path string, opt *types.IncludeOpti
 		LeftJoin, // Use LEFT JOIN to include records without relations
 	)
 	if err != nil {
-		// Log error but continue - we might handle this differently in production
-		utils.LogWarn("Failed to add join for relation %s: %v", path, err)
+		// Skip join if error occurs - relation might not be properly configured
+		// In production, this could be logged if a logger is available
+		return newQuery
 	}
 
 	return newQuery

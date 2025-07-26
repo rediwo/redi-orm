@@ -36,6 +36,11 @@ func (c *MongoDBCapabilities) SupportsDistinctOn() bool {
 	return false
 }
 
+func (c *MongoDBCapabilities) SupportsForeignKeys() bool {
+	// MongoDB doesn't support foreign key constraints
+	return false
+}
+
 // Identifier quoting
 func (c *MongoDBCapabilities) QuoteIdentifier(name string) string {
 	// MongoDB doesn't quote identifiers

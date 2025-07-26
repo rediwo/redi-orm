@@ -7,22 +7,22 @@ import (
 	"sync"
 
 	"github.com/rediwo/redi-orm/database"
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/rest/types"
-	"github.com/rediwo/redi-orm/utils"
 )
 
 // ConnectionHandler handles database connections
 type ConnectionHandler struct {
 	connections map[string]database.Database
 	mu          sync.RWMutex
-	logger      utils.Logger
+	logger      logger.Logger
 }
 
 // NewConnectionHandler creates a new connection handler
-func NewConnectionHandler(logger utils.Logger) *ConnectionHandler {
+func NewConnectionHandler(l logger.Logger) *ConnectionHandler {
 	return &ConnectionHandler{
 		connections: make(map[string]database.Database),
-		logger:      logger,
+		logger:      l,
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	_ "github.com/rediwo/redi-orm/drivers/mysql"      // Import MySQL driver for tests
 	_ "github.com/rediwo/redi-orm/drivers/postgresql" // Import PostgreSQL driver for tests
 	_ "github.com/rediwo/redi-orm/drivers/sqlite"     // Import SQLite driver for tests
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/registry"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -51,6 +52,7 @@ func (c *mockCapabilities) SupportsTransactions() bool        { return true }
 func (c *mockCapabilities) SupportsNestedDocuments() bool     { return false }
 func (c *mockCapabilities) SupportsArrayFields() bool         { return false }
 func (c *mockCapabilities) SupportsAggregationPipeline() bool { return false }
+func (c *mockCapabilities) SupportsForeignKeys() bool         { return true }
 
 func (m *mockDatabase) Connect(ctx context.Context) error {
 	m.connected = true
@@ -188,11 +190,11 @@ func (m *mockDatabase) RequiresLimitForOffset() bool {
 	return true
 }
 
-func (m *mockDatabase) SetLogger(logger any) {
+func (m *mockDatabase) SetLogger(l logger.Logger) {
 	// Mock implementation - do nothing
 }
 
-func (m *mockDatabase) GetLogger() any {
+func (m *mockDatabase) GetLogger() logger.Logger {
 	return nil
 }
 

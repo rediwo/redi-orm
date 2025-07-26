@@ -9,12 +9,12 @@ import (
 
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
-	"github.com/rediwo/redi-orm/utils"
 )
 
 // Manager coordinates the migration process
 type Manager struct {
 	db          *sql.DB
+	database    types.Database // Keep reference to database for logging
 	migrator    types.DatabaseMigrator
 	history     *HistoryManager
 	differ      *Differ
@@ -42,6 +42,7 @@ func NewManager(db types.Database, options types.MigrationOptions) (*Manager, er
 
 	manager := &Manager{
 		db:       sqlDB.GetDB(),
+		database: db,
 		migrator: migrator,
 		history:  history,
 		differ:   differ,
@@ -272,20 +273,22 @@ func (m *Manager) ResetMigrations() error {
 
 // printMigrationPlan prints the migration plan for dry run
 func (m *Manager) printMigrationPlan(changes []types.SchemaChange) {
-	utils.LogInfo("\n=== MIGRATION PLAN (DRY RUN) ===")
+	if m.database.GetLogger() != nil {
+		m.database.GetLogger().Info("\n=== MIGRATION PLAN (DRY RUN) ===")
 
-	for i, change := range changes {
-		utils.LogInfo("%d. %s", i+1, change.Type)
-		if change.TableName != "" {
-			utils.LogInfo("   Table: %s", change.TableName)
+		for i, change := range changes {
+			m.database.GetLogger().Info("%d. %s", i+1, change.Type)
+			if change.TableName != "" {
+				m.database.GetLogger().Info("   Table: %s", change.TableName)
+			}
+			if change.ColumnName != "" {
+				m.database.GetLogger().Info("   Column: %s", change.ColumnName)
+			}
+			m.database.GetLogger().Info("   SQL: %s", change.SQL)
 		}
-		if change.ColumnName != "" {
-			utils.LogInfo("   Column: %s", change.ColumnName)
-		}
-		utils.LogInfo("   SQL: %s", change.SQL)
+
+		m.database.GetLogger().Info("\n=== END MIGRATION PLAN ===")
 	}
-
-	utils.LogInfo("\n=== END MIGRATION PLAN ===")
 }
 
 // hasDestructiveChanges checks if the migration contains destructive changes

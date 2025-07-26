@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/rediwo/redi-orm/utils"
+	"github.com/rediwo/redi-orm/logger"
 )
 
 // Logging logs HTTP requests
-func Logging(logger utils.Logger) Middleware {
+func Logging(l logger.Logger) Middleware {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -22,7 +22,7 @@ func Logging(logger utils.Logger) Middleware {
 			next(wrapped, r)
 
 			duration := time.Since(start)
-			logger.Info("%s %s %d %v", r.Method, r.URL.Path, wrapped.statusCode, duration)
+			l.Info("%s %s %d %v", r.Method, r.URL.Path, wrapped.statusCode, duration)
 		}
 	}
 }

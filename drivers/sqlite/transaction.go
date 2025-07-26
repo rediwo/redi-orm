@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rediwo/redi-orm/base"
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -171,8 +172,9 @@ func (td *SQLiteTransactionDB) Exec(query string, args ...any) (sql.Result, erro
 	result, err := td.transaction.tx.Exec(query, args...)
 	duration := time.Since(start)
 
-	if logger, ok := td.database.GetLogger().(utils.Logger); ok && logger != nil {
-		logger.LogSQL(query, args, duration)
+	if l := td.database.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
 	}
 
 	return result, err
@@ -183,8 +185,9 @@ func (td *SQLiteTransactionDB) Query(query string, args ...any) (*sql.Rows, erro
 	rows, err := td.transaction.tx.Query(query, args...)
 	duration := time.Since(start)
 
-	if logger, ok := td.database.GetLogger().(utils.Logger); ok && logger != nil {
-		logger.LogSQL(query, args, duration)
+	if l := td.database.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
 	}
 
 	return rows, err
@@ -195,8 +198,9 @@ func (td *SQLiteTransactionDB) QueryRow(query string, args ...any) *sql.Row {
 	row := td.transaction.tx.QueryRow(query, args...)
 	duration := time.Since(start)
 
-	if logger, ok := td.database.GetLogger().(utils.Logger); ok && logger != nil {
-		logger.LogSQL(query, args, duration)
+	if l := td.database.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
 	}
 
 	return row
@@ -206,11 +210,11 @@ func (td *SQLiteTransactionDB) GetMigrator() types.DatabaseMigrator {
 	return td.database.GetMigrator()
 }
 
-func (td *SQLiteTransactionDB) SetLogger(logger any) {
-	td.database.SetLogger(logger)
+func (td *SQLiteTransactionDB) SetLogger(l logger.Logger) {
+	td.database.SetLogger(l)
 }
 
-func (td *SQLiteTransactionDB) GetLogger() any {
+func (td *SQLiteTransactionDB) GetLogger() logger.Logger {
 	return td.database.GetLogger()
 }
 
@@ -242,8 +246,9 @@ func (q *SQLiteTransactionRawQuery) Exec(ctx context.Context) (types.Result, err
 	result, err := q.tx.ExecContext(ctx, q.sql, q.args...)
 	duration := time.Since(start)
 
-	if logger, ok := q.database.GetLogger().(utils.Logger); ok && logger != nil {
-		logger.LogSQL(q.sql, q.args, duration)
+	if l := q.database.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(q.sql, q.args, duration)
 	}
 
 	if err != nil {
@@ -264,8 +269,9 @@ func (q *SQLiteTransactionRawQuery) Find(ctx context.Context, dest any) error {
 	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
 	duration := time.Since(start)
 
-	if logger, ok := q.database.GetLogger().(utils.Logger); ok && logger != nil {
-		logger.LogSQL(q.sql, q.args, duration)
+	if l := q.database.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(q.sql, q.args, duration)
 	}
 
 	if err != nil {
@@ -281,8 +287,9 @@ func (q *SQLiteTransactionRawQuery) FindOne(ctx context.Context, dest any) error
 	err := utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
 	duration := time.Since(start)
 
-	if logger, ok := q.database.GetLogger().(utils.Logger); ok && logger != nil {
-		logger.LogSQL(q.sql, q.args, duration)
+	if l := q.database.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(q.sql, q.args, duration)
 	}
 
 	return err

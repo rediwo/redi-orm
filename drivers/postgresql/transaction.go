@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/rediwo/redi-orm/base"
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -89,6 +91,7 @@ func (t *PostgreSQLTransaction) Raw(query string, args ...any) types.RawQuery {
 		tx:   t.tx,
 		sql:  query,
 		args: args,
+		db:   t.db,
 	}
 }
 
@@ -97,13 +100,22 @@ type PostgreSQLTransactionRawQuery struct {
 	tx   *sql.Tx
 	sql  string
 	args []any
+	db   *PostgreSQLDB
 }
 
 // Exec executes the query within the transaction
 func (q *PostgreSQLTransactionRawQuery) Exec(ctx context.Context) (types.Result, error) {
 	// Convert ? placeholders to $1, $2, etc.
 	sql := convertPlaceholders(q.sql)
+	start := time.Now()
 	result, err := q.tx.ExecContext(ctx, sql, q.args...)
+	duration := time.Since(start)
+
+	if l := q.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(sql, q.args, duration)
+	}
+
 	if err != nil {
 		return types.Result{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -121,7 +133,15 @@ func (q *PostgreSQLTransactionRawQuery) Exec(ctx context.Context) (types.Result,
 func (q *PostgreSQLTransactionRawQuery) Find(ctx context.Context, dest any) error {
 	// Convert ? placeholders to $1, $2, etc.
 	sql := convertPlaceholders(q.sql)
+	start := time.Now()
 	rows, err := q.tx.QueryContext(ctx, sql, q.args...)
+	duration := time.Since(start)
+
+	if l := q.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(sql, q.args, duration)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -134,7 +154,16 @@ func (q *PostgreSQLTransactionRawQuery) Find(ctx context.Context, dest any) erro
 func (q *PostgreSQLTransactionRawQuery) FindOne(ctx context.Context, dest any) error {
 	// Convert ? placeholders to $1, $2, etc.
 	sql := convertPlaceholders(q.sql)
-	return utils.ScanRowContext(q.tx, ctx, sql, q.args, dest)
+	start := time.Now()
+	err := utils.ScanRowContext(q.tx, ctx, sql, q.args, dest)
+	duration := time.Since(start)
+
+	if l := q.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(sql, q.args, duration)
+	}
+
+	return err
 }
 
 // PostgreSQLTransactionDB wraps PostgreSQLDB for transaction context
@@ -159,6 +188,7 @@ func (t *PostgreSQLTransactionDB) Raw(query string, args ...any) types.RawQuery 
 		tx:   t.tx,
 		sql:  query,
 		args: args,
+		db:   t.PostgreSQLDB,
 	}
 }
 
@@ -251,21 +281,48 @@ func (t *PostgreSQLTransactionDB) GetMigrator() types.DatabaseMigrator {
 func (t *PostgreSQLTransactionDB) Exec(query string, args ...any) (sql.Result, error) {
 	// Convert ? placeholders to $1, $2, etc.
 	query = convertPlaceholders(query)
-	return t.tx.Exec(query, args...)
+	start := time.Now()
+	result, err := t.tx.Exec(query, args...)
+	duration := time.Since(start)
+
+	if l := t.PostgreSQLDB.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
+	}
+
+	return result, err
 }
 
 // Query executes a raw SQL query that returns rows within the transaction
 func (t *PostgreSQLTransactionDB) Query(query string, args ...any) (*sql.Rows, error) {
 	// Convert ? placeholders to $1, $2, etc.
 	query = convertPlaceholders(query)
-	return t.tx.Query(query, args...)
+	start := time.Now()
+	rows, err := t.tx.Query(query, args...)
+	duration := time.Since(start)
+
+	if l := t.PostgreSQLDB.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
+	}
+
+	return rows, err
 }
 
 // QueryRow executes a raw SQL query that returns a single row within the transaction
 func (t *PostgreSQLTransactionDB) QueryRow(query string, args ...any) *sql.Row {
 	// Convert ? placeholders to $1, $2, etc.
 	query = convertPlaceholders(query)
-	return t.tx.QueryRow(query, args...)
+	start := time.Now()
+	row := t.tx.QueryRow(query, args...)
+	duration := time.Since(start)
+
+	if l := t.PostgreSQLDB.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
+	}
+
+	return row
 }
 
 // Connect is not supported within a transaction
@@ -281,4 +338,14 @@ func (t *PostgreSQLTransactionDB) Close() error {
 // Ping is not supported within a transaction
 func (t *PostgreSQLTransactionDB) Ping(ctx context.Context) error {
 	return fmt.Errorf("cannot ping within a transaction")
+}
+
+// SetLogger delegates to the main database
+func (t *PostgreSQLTransactionDB) SetLogger(l logger.Logger) {
+	t.PostgreSQLDB.SetLogger(l)
+}
+
+// GetLogger delegates to the main database
+func (t *PostgreSQLTransactionDB) GetLogger() logger.Logger {
+	return t.PostgreSQLDB.GetLogger()
 }

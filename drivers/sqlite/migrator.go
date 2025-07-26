@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -558,6 +559,132 @@ func (m *SQLiteMigrator) IsSystemTable(tableName string) bool {
 		lower == "sqlite_stat4"
 }
 
+// ParseDefaultValue parses SQLite-specific default values to normalized form
+func (m *SQLiteMigrator) ParseDefaultValue(value any, fieldType schema.FieldType) any {
+	if value == nil {
+		return nil
+	}
+
+	// Convert to string for processing
+	strVal := fmt.Sprintf("%v", value)
+
+	// Strip surrounding quotes that SQLite might add
+	strVal = strings.Trim(strVal, `'"`)
+
+	// Normalize common SQLite default functions
+	upperVal := strings.ToUpper(strVal)
+	switch {
+	case upperVal == "CURRENT_TIMESTAMP" || upperVal == "DATETIME('NOW')" || upperVal == "DATETIME(NOW)" || upperVal == "NOW()":
+		return "CURRENT_TIMESTAMP"
+	case upperVal == "NULL":
+		return nil
+	}
+
+	// Type-specific parsing
+	switch fieldType {
+	case schema.FieldTypeBool:
+		// SQLite stores booleans as 0/1
+		if strVal == "0" || strVal == "false" || strVal == "FALSE" {
+			return false
+		} else if strVal == "1" || strVal == "true" || strVal == "TRUE" {
+			return true
+		}
+	case schema.FieldTypeInt, schema.FieldTypeInt64:
+		// Try to parse as integer
+		if i, err := strconv.ParseInt(strVal, 10, 64); err == nil {
+			return i
+		}
+	case schema.FieldTypeFloat, schema.FieldTypeDecimal:
+		// Try to parse as float
+		if f, err := strconv.ParseFloat(strVal, 64); err == nil {
+			return f
+		}
+	}
+
+	// Return as string for other types
+	return strVal
+}
+
+// NormalizeDefaultToPrismaFunction converts normalized defaults to Prisma function names
+func (m *SQLiteMigrator) NormalizeDefaultToPrismaFunction(value any, fieldType schema.FieldType) (string, bool) {
+	if value == nil {
+		return "", false
+	}
+
+	strVal, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+
+	switch strVal {
+	case "CURRENT_TIMESTAMP":
+		return "now", true
+		// SQLite doesn't have built-in UUID generation
+		// Auto-increment is handled differently in SQLite
+	}
+
+	return "", false
+}
+
+// MapDatabaseTypeToFieldType converts SQLite column types to schema field types
+func (m *SQLiteMigrator) MapDatabaseTypeToFieldType(dbType string) schema.FieldType {
+	// Normalize the type to lowercase and remove size specifications
+	dbType = strings.ToLower(dbType)
+
+	// Remove size specifications like (255) or (10,2)
+	if idx := strings.Index(dbType, "("); idx != -1 {
+		dbType = dbType[:idx]
+	}
+
+	// Trim any whitespace
+	dbType = strings.TrimSpace(dbType)
+
+	// SQLite type mappings
+	switch dbType {
+	// Integer types
+	case "integer", "int", "tinyint", "smallint", "mediumint", "bigint":
+		return schema.FieldTypeInt
+	case "int2", "int8":
+		return schema.FieldTypeInt
+
+	// Floating point types
+	case "real", "double", "double precision", "float":
+		return schema.FieldTypeFloat
+	case "decimal", "numeric":
+		return schema.FieldTypeDecimal
+
+	// String types
+	case "text", "varchar", "character", "char", "clob":
+		return schema.FieldTypeString
+	case "nvarchar", "nchar":
+		return schema.FieldTypeString
+
+	// Boolean types
+	case "boolean", "bool":
+		return schema.FieldTypeBool
+
+	// Date/Time types
+	case "date", "datetime", "timestamp":
+		return schema.FieldTypeDateTime
+
+	// Binary types
+	case "blob":
+		return schema.FieldTypeBinary
+
+	// Default to string for unknown types
+	default:
+		return schema.FieldTypeString
+	}
+}
+
+// IsPrimaryKeyIndex checks if an index name indicates it's a primary key index
+func (m *SQLiteMigrator) IsPrimaryKeyIndex(indexName string) bool {
+	lower := strings.ToLower(indexName)
+	return strings.HasPrefix(lower, "sqlite_autoindex_") && strings.Contains(lower, "_pk") ||
+		strings.Contains(lower, "primary") ||
+		strings.HasPrefix(lower, "pk_")
+}
+
 // Additional wrapper methods to satisfy the types.DatabaseMigrator interface
 
 // GenerateCreateTableSQL wraps to match the DatabaseMigrator interface
@@ -586,4 +713,9 @@ func (w *SQLiteMigratorWrapper) CompareSchema(existingTable *types.TableInfo, de
 // IsSystemTable delegates to the specific implementation
 func (w *SQLiteMigratorWrapper) IsSystemTable(tableName string) bool {
 	return w.specific.IsSystemTable(tableName)
+}
+
+// GetSpecific returns the specific migrator implementation
+func (w *SQLiteMigratorWrapper) GetSpecific() types.DatabaseSpecificMigrator {
+	return w.specific
 }

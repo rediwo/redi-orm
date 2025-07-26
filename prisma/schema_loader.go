@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/rediwo/redi-orm/schema"
@@ -62,4 +63,59 @@ func ParseSchemaFile(filename string) (map[string]*schema.Schema, error) {
 
 	// Parse the content
 	return ParseSchema(string(content))
+}
+
+// LoadSchemaFromPath loads Prisma schemas from a file or directory
+// This function supports loading a single .prisma file or all .prisma files from a directory
+func LoadSchemaFromPath(path string) (map[string]*schema.Schema, error) {
+	// Check if path exists
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("schema path not found: %s", path)
+	}
+
+	allSchemas := make(map[string]*schema.Schema)
+
+	// If it's a directory, load all .prisma files
+	if info.IsDir() {
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read directory: %w", err)
+		}
+
+		var prismaFiles []string
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".prisma") {
+				prismaFiles = append(prismaFiles, filepath.Join(path, entry.Name()))
+			}
+		}
+
+		if len(prismaFiles) == 0 {
+			return nil, fmt.Errorf("no .prisma files found in directory: %s", path)
+		}
+
+		for _, file := range prismaFiles {
+			schemas, err := ParseSchemaFile(file)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load %s: %w", filepath.Base(file), err)
+			}
+
+			// Merge schemas
+			for name, schema := range schemas {
+				if _, exists := allSchemas[name]; exists {
+					return nil, fmt.Errorf("duplicate model '%s' found in %s", name, filepath.Base(file))
+				}
+				allSchemas[name] = schema
+			}
+		}
+	} else {
+		// It's a single file
+		schemas, err := ParseSchemaFile(path)
+		if err != nil {
+			return nil, err
+		}
+		allSchemas = schemas
+	}
+
+	return allSchemas, nil
 }

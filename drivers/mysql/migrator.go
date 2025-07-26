@@ -3,6 +3,7 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/rediwo/redi-orm/base"
@@ -428,6 +429,14 @@ func (m *MySQLMigrator) IsSystemIndex(indexName string) bool {
 		strings.Contains(lower, "primary_key")
 }
 
+// IsPrimaryKeyIndex checks if an index name indicates it's a primary key index
+func (m *MySQLMigrator) IsPrimaryKeyIndex(indexName string) bool {
+	lower := strings.ToLower(indexName)
+	return lower == "primary" ||
+		strings.Contains(lower, "primary_key") ||
+		strings.HasPrefix(lower, "pk_")
+}
+
 // IsSystemTable checks if a table is a system table in MySQL
 func (m *MySQLMigrator) IsSystemTable(tableName string) bool {
 	lower := strings.ToLower(tableName)
@@ -445,6 +454,140 @@ func (m *MySQLMigrator) IsSystemTable(tableName string) bool {
 		lower == "information_schema" ||
 		lower == "performance_schema" ||
 		lower == "sys"
+}
+
+// ParseDefaultValue parses MySQL-specific default values to normalized form
+func (m *MySQLMigrator) ParseDefaultValue(value any, fieldType schema.FieldType) any {
+	if value == nil {
+		return nil
+	}
+
+	// Convert to string for processing
+	strVal := fmt.Sprintf("%v", value)
+
+	// Strip surrounding quotes that MySQL might add
+	strVal = strings.Trim(strVal, `'"`)
+
+	// Normalize common MySQL default functions
+	upperVal := strings.ToUpper(strVal)
+	switch upperVal {
+	case "CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()", "NOW()":
+		return "CURRENT_TIMESTAMP"
+	case "UUID()":
+		return "UUID"
+	case "NULL":
+		return nil
+	}
+
+	// Type-specific parsing
+	switch fieldType {
+	case schema.FieldTypeBool:
+		// MySQL might return 0/1 for boolean defaults
+		if strVal == "0" || strVal == "false" || strVal == "FALSE" {
+			return false
+		} else if strVal == "1" || strVal == "true" || strVal == "TRUE" {
+			return true
+		}
+	case schema.FieldTypeInt, schema.FieldTypeInt64:
+		// Try to parse as integer
+		if i, err := strconv.ParseInt(strVal, 10, 64); err == nil {
+			return i
+		}
+	case schema.FieldTypeFloat, schema.FieldTypeDecimal:
+		// Try to parse as float
+		if f, err := strconv.ParseFloat(strVal, 64); err == nil {
+			return f
+		}
+	}
+
+	// Return as string for other types
+	return strVal
+}
+
+// NormalizeDefaultToPrismaFunction converts normalized defaults to Prisma function names
+func (m *MySQLMigrator) NormalizeDefaultToPrismaFunction(value any, fieldType schema.FieldType) (string, bool) {
+	if value == nil {
+		return "", false
+	}
+
+	strVal, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+
+	switch strVal {
+	case "CURRENT_TIMESTAMP":
+		return "now", true
+	case "UUID":
+		return "uuid", true
+	case "AUTO_INCREMENT":
+		return "autoincrement", true
+	}
+
+	return "", false
+}
+
+// MapDatabaseTypeToFieldType converts MySQL column types to schema field types
+func (m *MySQLMigrator) MapDatabaseTypeToFieldType(dbType string) schema.FieldType {
+	// Normalize the type to lowercase and remove size specifications
+	dbType = strings.ToLower(dbType)
+
+	// Remove size specifications like (255) or (10,2)
+	if idx := strings.Index(dbType, "("); idx != -1 {
+		// Special handling for TINYINT(1) which is boolean in MySQL
+		if strings.HasPrefix(dbType, "tinyint(1)") {
+			return schema.FieldTypeBool
+		}
+		dbType = dbType[:idx]
+	}
+
+	// Trim any whitespace
+	dbType = strings.TrimSpace(dbType)
+
+	// MySQL-specific type mappings
+	switch dbType {
+	// Integer types
+	case "tinyint":
+		return schema.FieldTypeInt
+	case "smallint", "mediumint", "int", "integer":
+		return schema.FieldTypeInt
+	case "bigint":
+		return schema.FieldTypeInt64
+
+	// Floating point types
+	case "float", "double", "real":
+		return schema.FieldTypeFloat
+	case "decimal", "numeric":
+		return schema.FieldTypeDecimal
+
+	// String types
+	case "varchar", "char":
+		return schema.FieldTypeString
+	case "text", "tinytext", "mediumtext", "longtext":
+		return schema.FieldTypeString
+
+	// Boolean types
+	case "bool", "boolean":
+		return schema.FieldTypeBool
+
+	// Date/Time types
+	case "date", "datetime", "timestamp", "time", "year":
+		return schema.FieldTypeDateTime
+
+	// Binary types
+	case "binary", "varbinary":
+		return schema.FieldTypeBinary
+	case "blob", "tinyblob", "mediumblob", "longblob":
+		return schema.FieldTypeBinary
+
+	// JSON type
+	case "json":
+		return schema.FieldTypeJSON
+
+	// Default to string for unknown types
+	default:
+		return schema.FieldTypeString
+	}
 }
 
 // Additional wrapper methods to satisfy the types.DatabaseMigrator interface
@@ -475,4 +618,9 @@ func (w *MySQLMigratorWrapper) CompareSchema(existingTable *types.TableInfo, des
 // IsSystemTable delegates to the specific implementation
 func (w *MySQLMigratorWrapper) IsSystemTable(tableName string) bool {
 	return w.specific.IsSystemTable(tableName)
+}
+
+// GetSpecific returns the specific migrator implementation
+func (w *MySQLMigratorWrapper) GetSpecific() types.DatabaseSpecificMigrator {
+	return w.specific
 }

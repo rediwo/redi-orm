@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/rediwo/redi-orm/database"
-	"github.com/rediwo/redi-orm/utils"
+	"github.com/rediwo/redi-orm/logger"
 )
 
 // Server represents a REST API server
@@ -14,7 +14,7 @@ type Server struct {
 	db     database.Database
 	Router *Router // Exported for testing
 	port   int
-	logger utils.Logger
+	logger logger.Logger
 }
 
 // ServerConfig holds server configuration
@@ -28,28 +28,17 @@ type ServerConfig struct {
 // NewServer creates a new REST API server
 func NewServer(config ServerConfig) (*Server, error) {
 	// Set up logger
-	logLevel := utils.LogLevelInfo
+	logLevel := logger.LogLevelInfo
 	if config.LogLevel != "" {
-		switch config.LogLevel {
-		case "debug":
-			logLevel = utils.LogLevelDebug
-		case "info":
-			logLevel = utils.LogLevelInfo
-		case "warn":
-			logLevel = utils.LogLevelWarn
-		case "error":
-			logLevel = utils.LogLevelError
-		case "none":
-			logLevel = utils.LogLevelNone
-		}
+		logLevel = logger.ParseLogLevel(config.LogLevel)
 	}
 
-	logger := utils.NewDefaultLogger("REST")
-	logger.SetLevel(logLevel)
+	l := logger.NewDefaultLogger("REST")
+	l.SetLevel(logLevel)
 
 	// Set logger on database if provided
 	if config.Database != nil {
-		config.Database.SetLogger(logger)
+		config.Database.SetLogger(l)
 
 		// Only connect if not already connected
 		ctx := context.Background()
@@ -74,7 +63,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}
 
 	// Create router
-	router := NewRouter(logger)
+	router := NewRouter(l)
 
 	// Add default database connection if provided
 	if config.Database != nil {
@@ -90,7 +79,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 		db:     config.Database,
 		Router: router,
 		port:   config.Port,
-		logger: logger,
+		logger: l,
 	}, nil
 }
 

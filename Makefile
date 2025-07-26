@@ -6,7 +6,7 @@ VERSION := $(shell git describe --tags --exact-match 2>/dev/null || git describe
 # Build flags with version injection
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-orm test-docker docker-up docker-down docker-wait clean fmt lint vet deps build install cli-build cli-install release-build
+.PHONY: help test test-verbose test-short test-cover test-race test-integration test-benchmark test-sqlite test-mysql test-postgresql test-orm test-docker docker-up docker-down docker-wait clean fmt lint vet deps build install build-orm build-mcp install-orm install-mcp cli-build cli-install release-build
 
 # Default target
 help:
@@ -27,8 +27,12 @@ help:
 	@echo "  vet           - Run go vet"
 	@echo "  deps          - Download and tidy module dependencies"
 	@echo "  clean         - Clean build artifacts"
-	@echo "  cli-build     - Build the CLI tool"
-	@echo "  cli-install   - Install the CLI tool globally"
+	@echo "  build-orm     - Build the redi-orm CLI tool"
+	@echo "  build-mcp     - Build the redi-mcp CLI tool"
+	@echo "  install-orm   - Install the redi-orm CLI tool globally"
+	@echo "  install-mcp   - Install the redi-mcp CLI tool globally"
+	@echo "  cli-build     - Build both CLI tools (deprecated, use build-orm/build-mcp)"
+	@echo "  cli-install   - Install both CLI tools (deprecated, use install-orm/install-mcp)"
 	@echo "  release-build - Build CLI with version injection for release"
 	@echo "  version       - Show current version"
 
@@ -83,13 +87,26 @@ clean:
 	rm -f *.db
 	rm -f test_*.db
 	rm -f ./redi-orm
+	rm -f ./redi-mcp
 
-# CLI targets
-cli-build:
+# Individual CLI build targets
+build-orm:
 	go build -o redi-orm ./cmd/redi-orm
 
-cli-install:
+build-mcp:
+	go build -o redi-mcp ./cmd/redi-mcp
+
+# Individual CLI install targets
+install-orm:
 	go install ./cmd/redi-orm
+
+install-mcp:
+	go install ./cmd/redi-mcp
+
+# Legacy CLI targets (for backward compatibility)
+cli-build: build-orm build-mcp
+
+cli-install: install-orm install-mcp
 
 # Release build with version injection
 release-build:

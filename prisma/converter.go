@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rediwo/redi-orm/schema"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // Converter converts Prisma AST to ReORM Schema objects
@@ -338,15 +339,33 @@ func (c *Converter) addRelations(modelStmt *ModelStatement) error {
 
 		if field.List {
 			// Array field indicates one-to-many relation
-			relationType = schema.RelationOneToMany
+			relationType = "oneToMany"
 			// Foreign key is in the related model
 			foreignKey = strings.ToLower(modelStmt.Name) + "_id"
 		} else {
-			// Single field indicates many-to-one relation
-			relationType = schema.RelationManyToOne
-			// Look for a corresponding foreign key field
+			// Single field could be many-to-one or one-to-one
+			// Check if there's a @relation attribute to determine the correct type
+			hasRelationAttribute := false
+			for _, attr := range field.Attributes {
+				if attr.Name == "relation" {
+					hasRelationAttribute = true
+					break
+				}
+			}
+
+			// If no @relation attribute, this might be the inverse side of a one-to-one
+			// We'll default to many-to-one but won't add a foreign key if we can't find one
+			relationType = "manyToOne"
 			foreignKey = c.findForeignKeyField(modelStmt, relatedModel)
-			if foreignKey == "" {
+
+			// If there's no foreign key field in the current model and no @relation attribute,
+			// this is likely the inverse side of a one-to-one relation
+			if foreignKey == "" && !hasRelationAttribute {
+				// Don't create a foreign key - it should be in the related model
+				// We'll fix this in the fixInverseRelationForeignKeys pass
+				relationType = "oneToOne"
+			} else if foreignKey == "" {
+				// Only create a default foreign key if there's a @relation attribute
 				foreignKey = strings.ToLower(relatedModel) + "_id"
 			}
 		}
@@ -451,7 +470,7 @@ func (c *Converter) extractIndexes(attrs []*BlockAttribute) []schema.Index {
 					}
 					if len(fields) > 0 {
 						indexes = append(indexes, schema.Index{
-							Name:   fmt.Sprintf("idx_%s", strings.Join(fields, "_")),
+							Name:   utils.GenerateIndexName("", fields, false, ""),
 							Fields: fields,
 							Unique: false,
 						})
@@ -469,7 +488,7 @@ func (c *Converter) extractIndexes(attrs []*BlockAttribute) []schema.Index {
 					}
 					if len(fields) > 0 {
 						indexes = append(indexes, schema.Index{
-							Name:   fmt.Sprintf("uniq_%s", strings.Join(fields, "_")),
+							Name:   utils.GenerateIndexName("", fields, true, ""),
 							Fields: fields,
 							Unique: true,
 						})
@@ -567,27 +586,36 @@ func (c *Converter) extractCompositeKey(attrs []*BlockAttribute) []string {
 	return nil
 }
 
-// fixInverseRelationForeignKeys updates foreign keys in OneToMany relations
+// fixInverseRelationForeignKeys updates foreign keys in OneToMany and OneToOne relations
 // by looking at the corresponding ManyToOne relations
 func (c *Converter) fixInverseRelationForeignKeys() error {
 	// For each schema
 	for modelName, currentSchema := range c.schemas {
-		// For each OneToMany relation
+		// For each relation
 		for relationName, relation := range currentSchema.Relations {
-			if relation.Type == schema.RelationOneToMany {
+			if relation.Type == "oneToMany" || relation.Type == "oneToOne" {
 				// Find the related model's schema
 				relatedSchema, exists := c.schemas[relation.Model]
 				if !exists {
 					continue
 				}
 
-				// Look for the inverse ManyToOne relation
+				// Look for the inverse relation
 				for _, relatedRelation := range relatedSchema.Relations {
-					if relatedRelation.Type == schema.RelationManyToOne &&
-						relatedRelation.Model == modelName {
-						// Found the inverse relation - copy its foreign key
+					if relatedRelation.Model == modelName {
+						// Found a relation pointing back to the current model
 						if relatedRelation.ForeignKey != "" {
+							// Copy the foreign key from the related model
 							relation.ForeignKey = relatedRelation.ForeignKey
+
+							// If the related relation has a unique foreign key, this is a one-to-one
+							if relation.Type == "oneToOne" {
+								// Keep it as OneToOne
+							} else if c.isForeignKeyUnique(relatedSchema, relatedRelation.ForeignKey) {
+								// Convert OneToMany to OneToOne if the foreign key is unique
+								relation.Type = "oneToOne"
+							}
+
 							// Update the relation in the schema
 							currentSchema.AddRelation(relationName, relation)
 						}
@@ -599,4 +627,23 @@ func (c *Converter) fixInverseRelationForeignKeys() error {
 	}
 
 	return nil
+}
+
+// isForeignKeyUnique checks if a foreign key field has a unique constraint
+func (c *Converter) isForeignKeyUnique(s *schema.Schema, foreignKey string) bool {
+	// Check if the field itself is marked as unique
+	for _, field := range s.Fields {
+		if field.Name == foreignKey && field.Unique {
+			return true
+		}
+	}
+
+	// Check if the field is part of a unique index
+	for _, index := range s.Indexes {
+		if index.Unique && len(index.Fields) == 1 && index.Fields[0] == foreignKey {
+			return true
+		}
+	}
+
+	return false
 }

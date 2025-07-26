@@ -33,6 +33,10 @@ func (c *SQLiteCapabilities) SupportsDistinctOn() bool {
 	return false // SQLite doesn't support DISTINCT ON
 }
 
+func (c *SQLiteCapabilities) SupportsForeignKeys() bool {
+	return true // SQLite supports foreign key constraints
+}
+
 // Identifier quoting
 
 func (c *SQLiteCapabilities) QuoteIdentifier(name string) string {

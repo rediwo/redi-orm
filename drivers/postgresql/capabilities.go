@@ -33,6 +33,10 @@ func (c *PostgreSQLCapabilities) SupportsDistinctOn() bool {
 	return true // PostgreSQL supports DISTINCT ON
 }
 
+func (c *PostgreSQLCapabilities) SupportsForeignKeys() bool {
+	return true // PostgreSQL supports foreign key constraints
+}
+
 // Identifier quoting
 
 func (c *PostgreSQLCapabilities) QuoteIdentifier(name string) string {

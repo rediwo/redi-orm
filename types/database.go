@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/schema"
 )
 
@@ -82,8 +83,8 @@ type Database interface {
 	GetMigrator() DatabaseMigrator
 
 	// Logger configuration
-	SetLogger(logger any) // Using any to avoid circular dependency with utils
-	GetLogger() any
+	SetLogger(l logger.Logger)
+	GetLogger() logger.Logger
 }
 
 // ModelQuery interface for model-based queries
@@ -403,17 +404,26 @@ type DatabaseSpecificMigrator interface {
 	GenerateColumnDefinitionFromColumnInfo(col ColumnInfo) string
 	ConvertFieldToColumnInfo(field schema.Field) *ColumnInfo
 
+	// Default value handling
+	ParseDefaultValue(value any, fieldType schema.FieldType) any
+	NormalizeDefaultToPrismaFunction(value any, fieldType schema.FieldType) (string, bool)
+
 	// Index management
 	IsSystemIndex(indexName string) bool
+	IsPrimaryKeyIndex(indexName string) bool
 
 	// Table management
 	IsSystemTable(tableName string) bool
+
+	// Type conversion from database to schema
+	MapDatabaseTypeToFieldType(dbType string) schema.FieldType
 }
 
 type DatabaseMigrator interface {
 	// Introspection
 	GetTables() ([]string, error)
 	GetTableInfo(tableName string) (*TableInfo, error)
+	IsSystemTable(tableName string) bool
 
 	// SQL Generation
 	GenerateCreateTableSQL(schema any) (string, error)

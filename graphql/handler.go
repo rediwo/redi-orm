@@ -10,17 +10,7 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/handler"
-)
-
-// LogLevel represents logging verbosity
-type LogLevel int
-
-const (
-	LogLevelNone LogLevel = iota
-	LogLevelError
-	LogLevelWarn
-	LogLevelInfo
-	LogLevelDebug
+	"github.com/rediwo/redi-orm/logger"
 )
 
 // Handler provides a generic HTTP handler for GraphQL requests
@@ -29,7 +19,7 @@ type Handler struct {
 	pretty            bool
 	graphiQLEnabled   bool
 	playgroundEnabled bool
-	logLevel          LogLevel
+	logger            logger.Logger
 }
 
 // NewHandler creates a new GraphQL HTTP handler
@@ -39,7 +29,7 @@ func NewHandler(schema *graphql.Schema) *Handler {
 		pretty:            true,
 		graphiQLEnabled:   false,
 		playgroundEnabled: true,
-		logLevel:          LogLevelInfo,
+		logger:            logger.NewDefaultLogger("GraphQL"),
 	}
 }
 
@@ -63,44 +53,10 @@ func (h *Handler) EnablePlayground() *Handler {
 	return h
 }
 
-// SetLogLevel sets the logging verbosity level
-func (h *Handler) SetLogLevel(level LogLevel) *Handler {
-	h.logLevel = level
+// SetLogger sets the logger for this handler
+func (h *Handler) SetLogger(l logger.Logger) *Handler {
+	h.logger = l
 	return h
-}
-
-// ANSI color codes
-const (
-	colorReset  = "\033[0m"
-	colorGray   = "\033[90m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorRed    = "\033[31m"
-)
-
-// logf logs a message at the specified level
-func (h *Handler) logf(level LogLevel, format string, args ...any) {
-	if h.logLevel >= level {
-		levelStr := ""
-		colorCode := ""
-		switch level {
-		case LogLevelError:
-			levelStr = "ERROR"
-			colorCode = colorRed
-		case LogLevelWarn:
-			levelStr = "WARN"
-			colorCode = colorYellow
-		case LogLevelInfo:
-			levelStr = "INFO"
-			colorCode = colorGreen
-		case LogLevelDebug:
-			levelStr = "DEBUG"
-			colorCode = colorGray
-		}
-		// Use custom logger without default timestamp
-		message := fmt.Sprintf("[GraphQL] %s%s%s: %s", colorCode, levelStr, colorReset, fmt.Sprintf(format, args...))
-		fmt.Println(message)
-	}
 }
 
 // ServeHTTP implements the http.Handler interface
@@ -155,20 +111,20 @@ func (h *Handler) ServeGraphQL(w http.ResponseWriter, r *http.Request) {
 			// Parse JSON body
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
-				h.logf(LogLevelError, "Failed to read request body: %v", err)
+				h.logger.Error("Failed to read request body: %v", err)
 				h.writeError(w, "Failed to read request body", http.StatusBadRequest)
 				return
 			}
 			defer r.Body.Close()
 
-			if h.logLevel >= LogLevelDebug {
-				h.logf(LogLevelDebug, "Request body: %s", h.truncateString(string(body), 100))
+			if h.logger.GetLevel() >= logger.LogLevelDebug {
+				h.logger.Debug("Request body: %s", h.truncateString(string(body), 100))
 			}
 
 			if err := json.Unmarshal(body, &params); err != nil {
-				h.logf(LogLevelError, "JSON parse error: %v", err)
-				if h.logLevel >= LogLevelDebug {
-					h.logf(LogLevelDebug, "Raw body: %s", h.truncateString(string(body), 100))
+				h.logger.Error("JSON parse error: %v", err)
+				if h.logger.GetLevel() >= logger.LogLevelDebug {
+					h.logger.Debug("Raw body: %s", h.truncateString(string(body), 100))
 				}
 				h.writeError(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
 				return
@@ -177,18 +133,18 @@ func (h *Handler) ServeGraphQL(w http.ResponseWriter, r *http.Request) {
 			// Raw GraphQL query
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
-				h.logf(LogLevelError, "Failed to read request body: %v", err)
+				h.logger.Error("Failed to read request body: %v", err)
 				h.writeError(w, "Failed to read request body", http.StatusBadRequest)
 				return
 			}
 			defer r.Body.Close()
 
 			params.Query = string(body)
-			if h.logLevel >= LogLevelDebug {
-				h.logf(LogLevelDebug, "GraphQL query: %s", h.truncateString(params.Query, 100))
+			if h.logger.GetLevel() >= logger.LogLevelDebug {
+				h.logger.Debug("GraphQL query: %s", h.truncateString(params.Query, 100))
 			}
 		} else {
-			h.logf(LogLevelWarn, "Unsupported content type: %s", contentType)
+			h.logger.Warn("Unsupported content type: %s", contentType)
 			h.writeError(w, "Unsupported content type", http.StatusBadRequest)
 			return
 		}
@@ -214,17 +170,17 @@ func (h *Handler) ServeGraphQL(w http.ResponseWriter, r *http.Request) {
 
 	// Log the request at info level
 	if operationName != "" {
-		h.logf(LogLevelInfo, "%s %s", operationType, operationName)
+		h.logger.Info("%s %s", operationType, operationName)
 	} else {
-		h.logf(LogLevelInfo, "%s request", operationType)
+		h.logger.Info("%s request", operationType)
 	}
 
 	// Debug level: show full query and variables
-	if h.logLevel >= LogLevelDebug {
-		h.logf(LogLevelDebug, "Query: %s", h.truncateString(params.Query, 100))
+	if h.logger.GetLevel() >= logger.LogLevelDebug {
+		h.logger.Debug("Query: %s", h.truncateString(params.Query, 100))
 		if params.Variables != nil && len(params.Variables) > 0 {
 			variablesJSON, _ := json.Marshal(params.Variables)
-			h.logf(LogLevelDebug, "Variables: %s", h.truncateString(string(variablesJSON), 100))
+			h.logger.Debug("Variables: %s", h.truncateString(string(variablesJSON), 100))
 		}
 	}
 
@@ -240,18 +196,18 @@ func (h *Handler) ServeGraphQL(w http.ResponseWriter, r *http.Request) {
 	// Log execution results
 	duration := time.Since(startTime)
 	if len(result.Errors) > 0 {
-		h.logf(LogLevelError, "Failed in %v - %d error(s)", duration, len(result.Errors))
+		h.logger.Error("Failed in %v - %d error(s)", duration, len(result.Errors))
 		for i, err := range result.Errors {
-			h.logf(LogLevelError, "  %d: %s", i+1, err.Message)
+			h.logger.Error("  %d: %s", i+1, err.Message)
 		}
 	} else {
-		h.logf(LogLevelInfo, "Success in %v", duration)
+		h.logger.Info("Success in %v", duration)
 	}
 
 	// Debug level: show full response
-	if h.logLevel >= LogLevelDebug && result.Data != nil {
+	if h.logger.GetLevel() >= logger.LogLevelDebug && result.Data != nil {
 		responseJSON, _ := json.Marshal(result.Data)
-		h.logf(LogLevelDebug, "Response: %s", h.truncateString(string(responseJSON), 100))
+		h.logger.Debug("Response: %s", h.truncateString(string(responseJSON), 100))
 	}
 
 	// Write response
@@ -285,7 +241,7 @@ func (h *Handler) ServeGraphiQL(w http.ResponseWriter, r *http.Request) {
 
 // writeError writes an error response
 func (h *Handler) writeError(w http.ResponseWriter, message string, code int) {
-	h.logf(LogLevelError, "HTTP %d: %s", code, message)
+	h.logger.Error("HTTP %d: %s", code, message)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	response := map[string]any{

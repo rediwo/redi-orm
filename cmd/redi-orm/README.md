@@ -1,6 +1,6 @@
 # RediORM CLI
 
-Command-line interface for RediORM - run JavaScript files, manage migrations, start API servers, and integrate with AI assistants.
+Command-line interface for RediORM - run JavaScript files, manage migrations, and start API servers.
 
 ## Installation
 
@@ -21,10 +21,6 @@ redi-orm run --timeout=30000 long-running-script.js
 # Start GraphQL and REST API server
 redi-orm server --db=sqlite://./myapp.db --schema=./schema.prisma
 redi-orm server --db=postgresql://user:pass@localhost/db --port=8080
-
-# Start MCP server for AI assistants (provides both stdio and HTTP access)
-redi-orm mcp --db=sqlite://./myapp.db --schema=./schema.prisma
-redi-orm mcp --db=postgresql://user:pass@localhost/db --port=3000
 
 # Run migrations
 redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma
@@ -88,7 +84,9 @@ model Post {
 #### Common Flags
 - `--help`: Show help message
 - `--db`: Database connection URI (required for most commands)
-- `--schema`: Path to schema file (default: `./schema.prisma`)
+- `--schema`: Path to schema file or directory (default: `./schema.prisma`)
+  - Single file: loads one .prisma file
+  - Directory: loads all .prisma files in the directory
 
 #### Run Command Flags
 - `--timeout`: Execution timeout in milliseconds (default: 0 = no timeout)
@@ -100,15 +98,6 @@ model Post {
 - `--playground`: Enable GraphQL playground (default: true)
 - `--cors`: Enable CORS (default: true)
 - `--log-level`: Logging level: debug|info|warn|error|none (default: info)
-
-#### MCP Command Flags
-- `--port`: HTTP port (default: 3000)
-- `--log-level`: Logging level: debug|info|warn|error|none (default: info)
-- `--read-only`: Enable read-only mode (default: true)
-- `--enable-auth`: Enable API key authentication
-- `--api-key`: API key for authentication
-- `--rate-limit`: Requests per minute rate limit (default: 60)
-- `--allowed-tables`: Comma-separated list of allowed tables
 
 #### Migration Flags
 - `--migrations`: Path to migrations directory (default: `./migrations`)
@@ -307,33 +296,9 @@ redi-orm server \
 - GraphQL Playground: `http://localhost:{port}/` (if enabled)
 - REST API: `http://localhost:{port}/api`
 
-### MCP Server for AI Assistants
-
-Start an MCP server that provides both stdio (for local AI) and HTTP (for web apps) access:
-
-```bash
-# Basic MCP server
-redi-orm mcp --db=sqlite://./app.db --schema=./schema.prisma
-
-# Production MCP with security
-redi-orm mcp \
-  --db=postgresql://readonly:pass@localhost/db \
-  --port=3000 \
-  --read-only \
-  --allowed-tables=users,posts \
-  --enable-auth \
-  --api-key=your-secret-key
-```
-
-**Access Methods:**
-- Stdio: For local AI assistants like Claude Desktop
-- HTTP: `http://localhost:{port}/` for web applications
-- SSE: `http://localhost:{port}/events` for real-time updates
-
 ## Notes
 
 - **JavaScript Runtime**: RediORM includes Goja engine - no Node.js required
 - **Migrations**: Tracked in a `redi_migrations` table
 - **Transactions**: All database operations run in transactions for safety
 - **MongoDB**: Requires replica set for transactions, migrations limited to indexes
-- **MCP**: Automatically provides both stdio and HTTP access simultaneously

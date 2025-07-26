@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/rediwo/redi-orm/base"
 	"github.com/rediwo/redi-orm/sql"
 	"github.com/rediwo/redi-orm/types"
-	"github.com/rediwo/redi-orm/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -108,7 +108,9 @@ func (q *MongoDBRawQuery) FindOne(ctx context.Context, dest any) error {
 	var cmd MongoDBCommand
 	if err := cmd.FromJSON(q.command); err != nil {
 		// Log the command for debugging
-		utils.LogError("MongoDB FindOne - Failed to parse command: %s", q.command)
+		if q.mongoDb != nil && q.mongoDb.GetLogger() != nil {
+			q.mongoDb.GetLogger().Error("MongoDB FindOne - Failed to parse command: %s", q.command)
+		}
 		return fmt.Errorf("failed to parse MongoDB command: %w", err)
 	}
 
@@ -152,12 +154,11 @@ func (q *MongoDBRawQuery) executeInsert(ctx context.Context, collection *mongo.C
 
 	// Log the command
 	if q.mongoDb != nil && q.mongoDb.GetLogger() != nil {
-		if logger, ok := q.mongoDb.GetLogger().(utils.Logger); ok {
-			cmdJSON, _ := cmd.ToJSON()
-			defer func() {
-				logger.LogCommand(cmdJSON, time.Since(start))
-			}()
-		}
+		dbLogger := base.NewDBLogger(q.mongoDb.GetLogger())
+		cmdJSON, _ := cmd.ToJSON()
+		defer func() {
+			dbLogger.LogCommand(cmdJSON, time.Since(start))
+		}()
 	}
 
 	if q.session != nil {
@@ -206,12 +207,11 @@ func (q *MongoDBRawQuery) executeUpdate(ctx context.Context, collection *mongo.C
 
 	// Log the command
 	if q.mongoDb != nil && q.mongoDb.GetLogger() != nil {
-		if logger, ok := q.mongoDb.GetLogger().(utils.Logger); ok {
-			cmdJSON, _ := cmd.ToJSON()
-			defer func() {
-				logger.LogCommand(cmdJSON, time.Since(start))
-			}()
-		}
+		dbLogger := base.NewDBLogger(q.mongoDb.GetLogger())
+		cmdJSON, _ := cmd.ToJSON()
+		defer func() {
+			dbLogger.LogCommand(cmdJSON, time.Since(start))
+		}()
 	}
 
 	var result *mongo.UpdateResult
@@ -243,12 +243,11 @@ func (q *MongoDBRawQuery) executeDelete(ctx context.Context, collection *mongo.C
 
 	// Log the command
 	if q.mongoDb != nil && q.mongoDb.GetLogger() != nil {
-		if logger, ok := q.mongoDb.GetLogger().(utils.Logger); ok {
-			cmdJSON, _ := cmd.ToJSON()
-			defer func() {
-				logger.LogCommand(cmdJSON, time.Since(start))
-			}()
-		}
+		dbLogger := base.NewDBLogger(q.mongoDb.GetLogger())
+		cmdJSON, _ := cmd.ToJSON()
+		defer func() {
+			dbLogger.LogCommand(cmdJSON, time.Since(start))
+		}()
 	}
 
 	var result *mongo.DeleteResult

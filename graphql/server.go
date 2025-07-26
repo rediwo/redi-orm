@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/rediwo/redi-orm/database"
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/prisma"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
-	"github.com/rediwo/redi-orm/utils"
 )
 
 // Server represents a GraphQL server
@@ -49,36 +48,18 @@ func NewServer(config ServerConfig) (*Server, error) {
 
 	// Set up database logger based on log level
 	if config.LogLevel != "" {
-		dbLogger := utils.NewDefaultLogger("RediORM")
-		// Map GraphQL log level to utils log level
-		switch config.LogLevel {
-		case "debug", "DEBUG":
-			dbLogger.SetLevel(utils.LogLevelDebug)
-		case "info", "INFO":
-			dbLogger.SetLevel(utils.LogLevelInfo)
-		case "warn", "WARN", "warning", "WARNING":
-			dbLogger.SetLevel(utils.LogLevelWarn)
-		case "error", "ERROR":
-			dbLogger.SetLevel(utils.LogLevelError)
-		case "none", "NONE", "off", "OFF":
-			dbLogger.SetLevel(utils.LogLevelNone)
-		default:
-			dbLogger.SetLevel(utils.LogLevelInfo)
-		}
+		dbLogger := logger.NewDefaultLogger("DB")
+		logLevel := logger.ParseLogLevel(config.LogLevel)
+		dbLogger.SetLevel(logLevel)
 		db.SetLogger(dbLogger)
 	}
 
-	// Load schemas from file
-	content, err := loadSchemaFile(config.SchemaPath)
+	// Load schemas from file or directory
+	schemas, err := prisma.LoadSchemaFromPath(config.SchemaPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load schema file: %w", err)
+		return nil, fmt.Errorf("failed to load schema: %w", err)
 	}
-
-	// Parse schemas
-	schemas, err := prisma.ParseSchema(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse schema: %w", err)
-	}
+	log.Printf("Loaded %d models from schema", len(schemas))
 
 	// Register schemas with database
 	for modelName, schema := range schemas {
@@ -105,10 +86,11 @@ func NewServer(config ServerConfig) (*Server, error) {
 		handler.EnablePlayground()
 	}
 
-	// Set log level
+	// Set logger with appropriate log level
 	if config.LogLevel != "" {
-		logLevel := parseLogLevel(config.LogLevel)
-		handler.SetLogLevel(logLevel)
+		graphqlLogger := logger.NewDefaultLogger("GraphQL")
+		graphqlLogger.SetLevel(logger.ParseLogLevel(config.LogLevel))
+		handler.SetLogger(graphqlLogger)
 	}
 
 	return &Server{
@@ -185,31 +167,4 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-// loadSchemaFile loads schema content from a file
-func loadSchemaFile(path string) (string, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	return string(content), nil
-}
-
-// parseLogLevel parses a log level string
-func parseLogLevel(level string) LogLevel {
-	switch level {
-	case "debug", "DEBUG":
-		return LogLevelDebug
-	case "info", "INFO":
-		return LogLevelInfo
-	case "warn", "WARN", "warning", "WARNING":
-		return LogLevelWarn
-	case "error", "ERROR":
-		return LogLevelError
-	case "none", "NONE", "off", "OFF":
-		return LogLevelNone
-	default:
-		return LogLevelInfo
-	}
 }

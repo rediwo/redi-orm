@@ -103,18 +103,7 @@ func (p *PostgreSQLDB) SyncSchemas(ctx context.Context) error {
 
 // CreateModel creates a table from the registered schema
 func (p *PostgreSQLDB) CreateModel(ctx context.Context, modelName string) error {
-	s, err := p.GetSchema(modelName)
-	if err != nil {
-		return err
-	}
-
-	sql, err := p.generateCreateTableSQL(s)
-	if err != nil {
-		return err
-	}
-
-	_, err = p.DB.ExecContext(ctx, sql)
-	return err
+	return p.Driver.CreateModel(ctx, p, modelName)
 }
 
 // DropModel drops a table
@@ -245,12 +234,21 @@ func (p *PostgreSQLDB) generateCreateTableSQL(schema *schema.Schema) (string, er
 
 			// Find the actual field to get the column name
 			var foreignKeyColumn string
+			var foreignKeyFieldExists bool
 			for _, field := range schema.Fields {
 				if field.Name == relation.ForeignKey {
 					foreignKeyColumn = field.GetColumnName()
+					foreignKeyFieldExists = true
 					break
 				}
 			}
+
+			// Skip if the foreign key field doesn't exist in this schema
+			// This happens when the foreign key is on the other side of a one-to-one relation
+			if !foreignKeyFieldExists {
+				continue
+			}
+
 			if foreignKeyColumn == "" {
 				// If field not found, use the relation.ForeignKey as is (might be already a column name)
 				foreignKeyColumn = relation.ForeignKey

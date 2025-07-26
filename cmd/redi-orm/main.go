@@ -18,12 +18,13 @@ import (
 	_ "github.com/rediwo/redi-orm/drivers/postgresql" // Import PostgreSQL driver
 	_ "github.com/rediwo/redi-orm/drivers/sqlite"     // Import SQLite driver
 	"github.com/rediwo/redi-orm/graphql"
-	"github.com/rediwo/redi-orm/mcp"
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/migration"
 	_ "github.com/rediwo/redi-orm/modules/orm" // Import ORM module
 	"github.com/rediwo/redi-orm/prisma"
 	"github.com/rediwo/redi-orm/rest"
 	"github.com/rediwo/redi-orm/schema"
+	"github.com/rediwo/redi-orm/schema/generator"
 	"github.com/rediwo/redi-orm/types"
 	"github.com/rediwo/redi/runtime"
 )
@@ -40,7 +41,7 @@ Usage:
 Commands:
   run               Execute a JavaScript file with ORM support
   server            Start GraphQL and REST API server
-  mcp               Start MCP (Model Context Protocol) server
+  pull              Pull schema from existing database tables
   migrate           Run pending migrations
   migrate:generate  Generate new migration file
   migrate:apply     Apply pending migrations from directory
@@ -57,8 +58,9 @@ Flags:
                 - mysql://user:pass@localhost:3306/dbname
                 - postgresql://user:pass@localhost:5432/dbname
   
-  --schema      Path to schema file (default: ./schema.prisma)
+  --schema      Path to schema file or directory (default: ./schema.prisma)
                 Supports Prisma-style schema definitions
+                If directory: loads all .prisma files in the directory
   
   --migrations  Path to migrations directory (default: ./migrations)
                 Used for file-based migrations in production
@@ -96,11 +98,6 @@ Flags:
                 - none: Disables all logging
                 Example: --log-level debug
   
-  --transport   MCP transport mode (stdio|http) (for mcp command)
-                Default: http
-                - stdio: Standard I/O (for local AI assistants)
-                - http: HTTP server with SSE (for remote access)
-  
   --help        Show help message
 
 Examples:
@@ -112,10 +109,6 @@ Examples:
   # Start GraphQL and REST API server
   redi-orm server --db=sqlite://./myapp.db --schema=./schema.prisma
   redi-orm server --db=postgresql://user:pass@localhost/db --port=8080
-  
-  # Start MCP server
-  redi-orm mcp --db=sqlite://./myapp.db --schema=./schema.prisma
-  redi-orm mcp --db=postgresql://user:pass@localhost/db --transport=http --port=3000
   
   # Auto-migrate (development)
   redi-orm migrate --db=sqlite://./myapp.db --schema=./schema.prisma
@@ -155,18 +148,10 @@ func main() {
 		playground    bool
 		cors          bool
 		logLevel      string
-		transport     string
-		
-		// Security flags
-		apiKey        string
-		enableAuth    bool
-		readOnlyMode  bool
-		rateLimit     int
-		allowedTables string
 	)
 
 	flag.StringVar(&dbURI, "db", "", "Database URI")
-	flag.StringVar(&schemaPath, "schema", "./schema.prisma", "Path to schema file")
+	flag.StringVar(&schemaPath, "schema", "./schema.prisma", "Path to schema file or directory")
 	flag.StringVar(&migrationsDir, "migrations", "./migrations", "Path to migrations directory")
 	flag.StringVar(&mode, "mode", "auto", "Migration mode: auto|file")
 	flag.StringVar(&name, "name", "", "Migration name")
@@ -177,14 +162,6 @@ func main() {
 	flag.BoolVar(&playground, "playground", true, "Enable GraphQL playground (for server command)")
 	flag.BoolVar(&cors, "cors", true, "Enable CORS (for server command)")
 	flag.StringVar(&logLevel, "log-level", "info", "Logging level for GraphQL server")
-	flag.StringVar(&transport, "transport", "http", "MCP transport mode (stdio|http)")
-	
-	// Security flags
-	flag.StringVar(&apiKey, "api-key", "", "API key for HTTP transport authentication")
-	flag.BoolVar(&enableAuth, "enable-auth", false, "Enable authentication for HTTP transport")
-	flag.BoolVar(&readOnlyMode, "read-only", true, "Enable read-only mode (default: true)")
-	flag.IntVar(&rateLimit, "rate-limit", 60, "Requests per minute rate limit")
-	flag.StringVar(&allowedTables, "allowed-tables", "", "Comma-separated list of allowed tables")
 
 	// Custom usage
 	flag.Usage = func() {
@@ -263,12 +240,12 @@ func main() {
 		}
 		runServer(ctx, dbURI, schemaPath, port, playground, cors, logLevel)
 		return
-	case "mcp":
+	case "pull":
 		// Validate required flags
 		if dbURI == "" {
 			log.Fatal("Error: --db flag is required")
 		}
-		runMCP(ctx, dbURI, schemaPath, port, transport, logLevel, apiKey, enableAuth, readOnlyMode, rateLimit, allowedTables)
+		runPull(ctx, dbURI, schemaPath, logLevel)
 		return
 	}
 
@@ -567,25 +544,26 @@ func runScript(scriptPath string, args []string, timeoutMs int) {
 }
 
 func loadSchemaFromFile(path string) (map[string]*schema.Schema, error) {
-	// Check if file exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil, fmt.Errorf("schema file not found: %s", path)
+	// Check if path exists
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("schema path not found: %s", path)
 	}
 
-	// Read file contents
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read schema file: %w", err)
+	// Log what we're doing
+	if info.IsDir() {
+		fmt.Printf("Loading schemas from directory %s:\n", path)
+	} else {
+		fmt.Printf("Loading schema from file %s\n", filepath.Base(path))
 	}
 
-	// Parse schema
-	schemas, err := prisma.ParseSchema(string(content))
+	schemas, err := prisma.LoadSchemaFromPath(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse schema: %w", err)
+		return nil, err
 	}
 
 	// Log loaded models
-	fmt.Printf("Loaded %d models from %s:\n", len(schemas), filepath.Base(path))
+	fmt.Printf("Loaded %d models total:\n", len(schemas))
 	for name := range schemas {
 		fmt.Printf("  - %s\n", name)
 	}
@@ -713,74 +691,86 @@ func applyCORS(handler http.Handler) http.Handler {
 	})
 }
 
-func runMCP(ctx context.Context, dbURI, schemaPath string, port int, transport, logLevel, apiKey string, enableAuth, readOnlyMode bool, rateLimit int, allowedTables string) {
-	// Parse allowed tables
-	var allowedTablesList []string
-	if allowedTables != "" {
-		allowedTablesList = strings.Split(allowedTables, ",")
-		for i, table := range allowedTablesList {
-			allowedTablesList[i] = strings.TrimSpace(table)
-		}
-	}
+func runPull(ctx context.Context, dbURI, schemaPath, logLevel string) {
+	// Create logger
+	l := logger.NewDefaultLogger("Pull")
+	l.SetLevel(logger.ParseLogLevel(logLevel))
 
-	// Create MCP server configuration
-	config := mcp.ServerConfig{
-		DatabaseURI: dbURI,
-		SchemaPath:  schemaPath,
-		Transport:   transport,
-		Port:        port,
-		LogLevel:    logLevel,
-		ReadOnly:    readOnlyMode,
-		Security: mcp.SecurityConfig{
-			EnableAuth:      enableAuth,
-			APIKey:         apiKey,
-			EnableRateLimit: rateLimit > 0,
-			RequestsPerMin:  rateLimit,
-			BurstLimit:     rateLimit / 4, // 25% of rate limit as burst
-			AllowedTables:  allowedTablesList,
-			ReadOnlyMode:   readOnlyMode,
-			MaxQueryRows:   1000,
-		},
-	}
-
-	// Create MCP server
-	server, err := mcp.NewServer(config)
+	// Connect to database
+	l.Info("Connecting to database...")
+	db, err := database.NewFromURI(dbURI)
 	if err != nil {
-		log.Fatalf("Failed to create MCP server: %v", err)
+		log.Fatalf("Failed to create database: %v", err)
 	}
 
-	// Start server
-	fmt.Printf("Starting MCP server\n")
-	fmt.Printf("  Database: %s\n", dbURI)
-	fmt.Printf("  Transport: %s\n", transport)
-	if transport == "http" {
-		fmt.Printf("  Port: %d\n", port)
-		fmt.Printf("  Authentication: %t\n", enableAuth)
-		if enableAuth {
-			fmt.Printf("  API Key: %s\n", "***")
-		}
-		if rateLimit > 0 {
-			fmt.Printf("  Rate Limit: %d req/min\n", rateLimit)
-		}
+	if err := db.Connect(ctx); err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	fmt.Printf("  Read-only Mode: %t\n", readOnlyMode)
-	fmt.Printf("  Log level: %s\n", logLevel)
-	if len(allowedTablesList) > 0 {
-		fmt.Printf("  Allowed Tables: %s\n", allowedTables)
-	}
-	fmt.Println()
+	defer db.Close()
 
-	if transport == "stdio" {
-		fmt.Println("MCP server is ready for JSON-RPC communication via stdio")
-		fmt.Println("Connect your AI assistant to this process")
+	// Set logger for database operations
+	dbLogger := logger.NewDefaultLogger("Database")
+	dbLogger.SetLevel(logger.ParseLogLevel(logLevel))
+	db.SetLogger(dbLogger)
+
+	// Get migrator
+	migrator := db.GetMigrator()
+	if migrator == nil {
+		log.Fatal("Database does not support schema introspection")
+	}
+
+	// Create schema persistence
+	persistence := generator.NewSchemaPersistence(schemaPath, l, migrator)
+
+	// Load existing schemas to check what we already have
+	existingSchemas, err := persistence.LoadSchemas()
+	if err != nil {
+		log.Fatalf("Failed to load existing schemas: %v", err)
+	}
+
+	// Track existing models
+	existingModels := make(map[string]bool)
+	for _, s := range existingSchemas {
+		existingModels[s.Name] = true
+		existingModels[s.TableName] = true
+	}
+
+	// Generate schemas with relations
+	l.Info("Generating schemas from database tables...")
+	schemas, err := generator.GenerateSchemasFromTablesWithRelations(migrator)
+	if err != nil {
+		log.Fatalf("Failed to generate schemas: %v", err)
+	}
+
+	// Save only new schemas
+	generatedCount := 0
+	for _, generatedSchema := range schemas {
+		// Check if we already have a schema for this model
+		if existingModels[generatedSchema.Name] || existingModels[generatedSchema.TableName] {
+			l.Debug("Schema already exists for model %s (table %s)", generatedSchema.Name, generatedSchema.TableName)
+			continue
+		}
+
+		// Save the generated schema to file
+		if err := persistence.SaveSchema(generatedSchema); err != nil {
+			l.Error("Failed to save schema for model %s: %v", generatedSchema.Name, err)
+			continue
+		}
+
+		generatedCount++
+		l.Info("Generated schema for table %s as model %s", generatedSchema.TableName, generatedSchema.Name)
+
+		// Log relations if any
+		if len(generatedSchema.Relations) > 0 {
+			for relName, rel := range generatedSchema.Relations {
+				l.Debug("  - Relation %s: %s to %s", relName, rel.Type, rel.Model)
+			}
+		}
+	}
+
+	if generatedCount > 0 {
+		l.Info("Successfully pulled %d schemas from database with relations", generatedCount)
 	} else {
-		fmt.Printf("MCP server is ready at http://localhost:%d\n", port)
-		fmt.Println("  - POST / for JSON-RPC requests")
-		fmt.Println("  - GET /events for Server-Sent Events")
-	}
-
-	// Start the server (blocking)
-	if err := server.Start(); err != nil {
-		log.Fatalf("MCP server error: %v", err)
+		l.Info("No new schemas to generate - all tables already have schemas")
 	}
 }

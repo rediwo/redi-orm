@@ -110,6 +110,10 @@ func (m *mockCapabilities) SupportsArrayFields() bool {
 	return false
 }
 
+func (m *mockCapabilities) SupportsForeignKeys() bool {
+	return m.driverType != "sqlite"
+}
+
 func (m *mockCapabilities) SupportsAggregationPipeline() bool {
 	return false
 }

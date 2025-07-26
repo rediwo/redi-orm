@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/rediwo/redi-orm/base"
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/query"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
@@ -38,7 +40,7 @@ func (t *MySQLTransaction) Model(modelName string) types.ModelQuery {
 
 // Raw creates a new raw query within the transaction
 func (t *MySQLTransaction) Raw(sql string, args ...any) types.RawQuery {
-	return &MySQLTransactionRawQuery{tx: t.tx, sql: sql, args: args}
+	return &MySQLTransactionRawQuery{tx: t.tx, sql: sql, args: args, db: t.db}
 }
 
 // Commit commits the transaction
@@ -210,26 +212,53 @@ func (tdb *MySQLTransactionDB) SyncSchemas(ctx context.Context) error {
 
 // Exec executes a query within the transaction
 func (tdb *MySQLTransactionDB) Exec(query string, args ...any) (sql.Result, error) {
-	return tdb.tx.tx.Exec(query, args...)
+	start := time.Now()
+	result, err := tdb.tx.tx.Exec(query, args...)
+	duration := time.Since(start)
+
+	if l := tdb.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
+	}
+
+	return result, err
 }
 
 // Query executes a query within the transaction
 func (tdb *MySQLTransactionDB) Query(query string, args ...any) (*sql.Rows, error) {
-	return tdb.tx.tx.Query(query, args...)
+	start := time.Now()
+	rows, err := tdb.tx.tx.Query(query, args...)
+	duration := time.Since(start)
+
+	if l := tdb.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
+	}
+
+	return rows, err
 }
 
 // QueryRow executes a query within the transaction
 func (tdb *MySQLTransactionDB) QueryRow(query string, args ...any) *sql.Row {
-	return tdb.tx.tx.QueryRow(query, args...)
+	start := time.Now()
+	row := tdb.tx.tx.QueryRow(query, args...)
+	duration := time.Since(start)
+
+	if l := tdb.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(query, args, duration)
+	}
+
+	return row
 }
 
 // SetLogger delegates to the main database
-func (tdb *MySQLTransactionDB) SetLogger(logger any) {
-	tdb.db.SetLogger(logger)
+func (tdb *MySQLTransactionDB) SetLogger(l logger.Logger) {
+	tdb.db.SetLogger(l)
 }
 
 // GetLogger delegates to the main database
-func (tdb *MySQLTransactionDB) GetLogger() any {
+func (tdb *MySQLTransactionDB) GetLogger() logger.Logger {
 	return tdb.db.GetLogger()
 }
 
@@ -238,11 +267,20 @@ type MySQLTransactionRawQuery struct {
 	tx   *sql.Tx
 	sql  string
 	args []any
+	db   *MySQLDB
 }
 
 // Exec executes the query within a transaction
 func (q *MySQLTransactionRawQuery) Exec(ctx context.Context) (types.Result, error) {
+	start := time.Now()
 	result, err := q.tx.ExecContext(ctx, q.sql, q.args...)
+	duration := time.Since(start)
+
+	if l := q.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(q.sql, q.args, duration)
+	}
+
 	if err != nil {
 		return types.Result{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -265,7 +303,15 @@ func (q *MySQLTransactionRawQuery) Exec(ctx context.Context) (types.Result, erro
 
 // Find executes the query and scans results into dest within a transaction
 func (q *MySQLTransactionRawQuery) Find(ctx context.Context, dest any) error {
+	start := time.Now()
 	rows, err := q.tx.QueryContext(ctx, q.sql, q.args...)
+	duration := time.Since(start)
+
+	if l := q.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(q.sql, q.args, duration)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -276,5 +322,14 @@ func (q *MySQLTransactionRawQuery) Find(ctx context.Context, dest any) error {
 
 // FindOne executes the query and scans a single result into dest within a transaction
 func (q *MySQLTransactionRawQuery) FindOne(ctx context.Context, dest any) error {
-	return utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
+	start := time.Now()
+	err := utils.ScanRowContext(q.tx, ctx, q.sql, q.args, dest)
+	duration := time.Since(start)
+
+	if l := q.db.GetLogger(); l != nil {
+		dbLogger := base.NewDBLogger(l)
+		dbLogger.LogSQL(q.sql, q.args, duration)
+	}
+
+	return err
 }

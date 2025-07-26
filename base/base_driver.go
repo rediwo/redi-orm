@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rediwo/redi-orm/logger"
 	"github.com/rediwo/redi-orm/prisma"
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
-	"github.com/rediwo/redi-orm/utils"
 )
 
 // Driver provides common functionality for all database drivers
@@ -22,7 +22,8 @@ type Driver struct {
 	FieldMapper types.FieldMapper
 	Schemas     map[string]*schema.Schema
 	SchemasMu   sync.RWMutex
-	Logger      any // Using any to avoid circular dependency
+	Logger      logger.Logger
+	dbLogger    *DBLogger // For SQL-specific logging
 }
 
 // NewDriver creates a new base driver instance
@@ -105,6 +106,64 @@ func (b *Driver) GetModels() []string {
 // GetModelSchema returns schema for a model (alias for GetSchema)
 func (b *Driver) GetModelSchema(modelName string) (*schema.Schema, error) {
 	return b.GetSchema(modelName)
+}
+
+// CreateModel creates a single model table in the database
+func (b *Driver) CreateModel(ctx context.Context, db types.Database, modelName string) error {
+	// Get the schema for this model
+	sch, err := b.GetSchema(modelName)
+	if err != nil {
+		return err
+	}
+
+	// Get the migrator from the database
+	migrator := db.GetMigrator()
+	if migrator == nil {
+		return fmt.Errorf("database does not support migrations")
+	}
+
+	// Check if table already exists
+	tables, err := migrator.GetTables()
+	if err != nil {
+		return fmt.Errorf("failed to get tables: %w", err)
+	}
+
+	for _, table := range tables {
+		if table == sch.TableName {
+			// Table already exists, no need to create
+			return nil
+		}
+	}
+
+	// Generate and execute create table SQL
+	createSQL, err := migrator.GenerateCreateTableSQL(sch)
+	if err != nil {
+		return fmt.Errorf("failed to generate create table SQL for %s: %w", sch.TableName, err)
+	}
+
+	if err := migrator.ApplyMigration(createSQL); err != nil {
+		return fmt.Errorf("failed to create table %s: %w", sch.TableName, err)
+	}
+
+	// Create indexes for the new table
+	for _, index := range sch.Indexes {
+		// Convert field names to column names
+		columnNames := make([]string, len(index.Fields))
+		for i, fieldName := range index.Fields {
+			if field := sch.GetFieldByName(fieldName); field != nil {
+				columnNames[i] = field.GetColumnName()
+			} else {
+				columnNames[i] = fieldName // Fallback to field name
+			}
+		}
+
+		indexSQL := migrator.GenerateCreateIndexSQL(sch.TableName, index.Name, columnNames, index.Unique)
+		if err := migrator.ApplyMigration(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index %s on table %s: %w", index.Name, sch.TableName, err)
+		}
+	}
+
+	return nil
 }
 
 // LoadSchema loads schema from content string (accumulates schemas)
@@ -235,7 +294,7 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 				len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0) {
 
 				// Log migration plan details
-				if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
+				if b.Logger != nil {
 					logger.Warn("Table '%s' needs migration:", sch.TableName)
 
 					// Log column changes
@@ -254,7 +313,7 @@ func (b *Driver) SyncSchemas(ctx context.Context, db types.Database) error {
 							if change.OldColumn.Default != change.NewColumn.Default {
 								changes = append(changes, fmt.Sprintf("default: %v -> %v", change.OldColumn.Default, change.NewColumn.Default))
 							}
-							logger.Warn("  - Modifying column '%s': %s", change.ColumnName, strings.Join(changes, ", "))
+							b.Logger.Warn("  - Modifying column '%s': %s", change.ColumnName, strings.Join(changes, ", "))
 						}
 					}
 					for _, change := range plan.DropColumns {
@@ -330,8 +389,8 @@ func (b *Driver) Exec(query string, args ...any) (sql.Result, error) {
 	result, err := b.DB.Exec(query, args...)
 	duration := time.Since(start)
 
-	if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
-		logger.LogSQL(query, args, duration)
+	if b.dbLogger != nil {
+		b.dbLogger.LogSQL(query, args, duration)
 	}
 
 	return result, err
@@ -343,8 +402,8 @@ func (b *Driver) Query(query string, args ...any) (*sql.Rows, error) {
 	rows, err := b.DB.Query(query, args...)
 	duration := time.Since(start)
 
-	if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
-		logger.LogSQL(query, args, duration)
+	if b.dbLogger != nil {
+		b.dbLogger.LogSQL(query, args, duration)
 	}
 
 	return rows, err
@@ -356,20 +415,22 @@ func (b *Driver) QueryRow(query string, args ...any) *sql.Row {
 	row := b.DB.QueryRow(query, args...)
 	duration := time.Since(start)
 
-	if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
-		logger.LogSQL(query, args, duration)
+	if b.dbLogger != nil {
+		b.dbLogger.LogSQL(query, args, duration)
 	}
 
 	return row
 }
 
 // SetLogger sets the logger for the driver
-func (b *Driver) SetLogger(logger any) {
-	b.Logger = logger
+func (b *Driver) SetLogger(l logger.Logger) {
+	b.Logger = l
+	// Create or update the DB logger
+	b.dbLogger = NewDBLogger(l)
 }
 
 // GetLogger returns the logger for the driver
-func (b *Driver) GetLogger() any {
+func (b *Driver) GetLogger() logger.Logger {
 	return b.Logger
 }
 
@@ -436,18 +497,18 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 		}
 
 		// Debug: Check if plan has any changes
-		if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
+		if b.Logger != nil {
 			hasChanges := plan != nil && (len(plan.AddColumns) > 0 || len(plan.ModifyColumns) > 0 ||
 				len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0)
 			if hasChanges && plan != nil {
-				logger.Debug("Table '%s' migration plan details:", sch.TableName)
-				logger.Debug("  - AddColumns: %d", len(plan.AddColumns))
-				logger.Debug("  - ModifyColumns: %d", len(plan.ModifyColumns))
-				logger.Debug("  - DropColumns: %d", len(plan.DropColumns))
-				logger.Debug("  - AddIndexes: %d", len(plan.AddIndexes))
-				logger.Debug("  - DropIndexes: %d", len(plan.DropIndexes))
+				b.Logger.Debug("Table '%s' migration plan details:", sch.TableName)
+				b.Logger.Debug("  - AddColumns: %d", len(plan.AddColumns))
+				b.Logger.Debug("  - ModifyColumns: %d", len(plan.ModifyColumns))
+				b.Logger.Debug("  - DropColumns: %d", len(plan.DropColumns))
+				b.Logger.Debug("  - AddIndexes: %d", len(plan.AddIndexes))
+				b.Logger.Debug("  - DropIndexes: %d", len(plan.DropIndexes))
 			} else {
-				logger.Debug("Table '%s' has no migration changes", sch.TableName)
+				b.Logger.Debug("Table '%s' has no migration changes", sch.TableName)
 			}
 		}
 
@@ -456,12 +517,12 @@ func (b *Driver) syncSchemasWithDeferredConstraints(ctx context.Context, db type
 			len(plan.DropColumns) > 0 || len(plan.AddIndexes) > 0 || len(plan.DropIndexes) > 0) {
 
 			// Log migration plan details
-			if logger, ok := b.Logger.(utils.Logger); ok && logger != nil {
-				logger.Warn("Table '%s' needs migration:", sch.TableName)
+			if b.Logger != nil {
+				b.Logger.Warn("Table '%s' needs migration:", sch.TableName)
 
 				// Log column changes
 				for _, change := range plan.AddColumns {
-					logger.Warn("  - Adding column: %s", change.ColumnName)
+					b.Logger.Warn("  - Adding column: %s", change.ColumnName)
 				}
 				for _, change := range plan.ModifyColumns {
 					if change.OldColumn != nil && change.NewColumn != nil {

@@ -4,1249 +4,790 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"time"
 
-	"github.com/rediwo/redi-orm/utils"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/rediwo/redi-orm/logger"
+	"github.com/rediwo/redi-orm/orm"
+	"github.com/rediwo/redi-orm/schema"
 )
 
-// Tool definitions
-var tools = []Tool{
-	// ORM Data Operation Tools
-	{
-		Name:        "data.findMany",
+// addToolWithLogging wraps mcp.AddTool to add logging for registration and invocation
+func addToolWithLogging[In, Out any](s *SDKServer, tool *mcp.Tool, handler func(context.Context, *mcp.ServerSession, *mcp.CallToolParamsFor[In]) (*mcp.CallToolResultFor[Out], error)) {
+	// Log tool registration
+	s.logger.Info("Registering tool: %s - %s", tool.Name, tool.Description)
+
+	// Wrap the handler to add invocation logging
+	wrappedHandler := func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[In]) (*mcp.CallToolResultFor[Out], error) {
+		startTime := time.Now()
+		s.logger.Info("Tool invoked: %s", tool.Name)
+
+		// Log parameters at debug level
+		if s.logger.GetLevel() >= logger.LogLevelDebug {
+			paramsJSON, _ := json.Marshal(params.Arguments)
+			s.logger.Debug("  Parameters: %s", string(paramsJSON))
+		}
+
+		// Call the actual handler
+		result, err := handler(ctx, session, params)
+
+		// Log result
+		duration := time.Since(startTime)
+		if err != nil {
+			s.logger.Error("Tool %s failed after %v: %v", tool.Name, duration, err)
+		} else {
+			s.logger.Info("Tool %s completed in %v", tool.Name, duration)
+		}
+
+		return result, err
+	}
+
+	// Register the tool with wrapped handler
+	mcp.AddTool[In, Out](s.mcpServer, tool, wrappedHandler)
+}
+
+// Tool parameter structs
+type ModelFindManyParams struct {
+	Model   string         `json:"model" jsonschema:"Model name"`
+	Where   map[string]any `json:"where,omitempty" jsonschema:"Filter conditions"`
+	Include map[string]any `json:"include,omitempty" jsonschema:"Relations to include"`
+	OrderBy map[string]any `json:"orderBy,omitempty" jsonschema:"Sort order"`
+	Take    *int           `json:"take,omitempty" jsonschema:"Limit results"`
+	Skip    *int           `json:"skip,omitempty" jsonschema:"Skip results"`
+}
+
+type ModelFindUniqueParams struct {
+	Model   string         `json:"model" jsonschema:"Model name"`
+	Where   map[string]any `json:"where" jsonschema:"Unique identifier"`
+	Include map[string]any `json:"include,omitempty" jsonschema:"Relations to include"`
+}
+
+type ModelCreateParams struct {
+	Model string         `json:"model" jsonschema:"Model name"`
+	Data  map[string]any `json:"data" jsonschema:"Data to create"`
+}
+
+type ModelUpdateParams struct {
+	Model string         `json:"model" jsonschema:"Model name"`
+	Where map[string]any `json:"where" jsonschema:"Filter to find records"`
+	Data  map[string]any `json:"data" jsonschema:"Data to update"`
+}
+
+type ModelDeleteParams struct {
+	Model string         `json:"model" jsonschema:"Model name"`
+	Where map[string]any `json:"where" jsonschema:"Filter to find records"`
+}
+
+type ModelCountParams struct {
+	Model string         `json:"model" jsonschema:"Model name"`
+	Where map[string]any `json:"where,omitempty" jsonschema:"Filter conditions"`
+}
+
+type ModelAggregateParams struct {
+	Model   string          `json:"model" jsonschema:"Model name"`
+	Where   map[string]any  `json:"where,omitempty" jsonschema:"Filter conditions"`
+	Count   *bool           `json:"count,omitempty"`
+	Avg     map[string]bool `json:"avg,omitempty"`
+	Sum     map[string]bool `json:"sum,omitempty"`
+	Min     map[string]bool `json:"min,omitempty"`
+	Max     map[string]bool `json:"max,omitempty"`
+	GroupBy []string        `json:"groupBy,omitempty"`
+}
+
+type SchemaModelsParams struct{}
+
+type SchemaDescribeParams struct {
+	Model string `json:"model" jsonschema:"Model name"`
+}
+
+type MigrationCreateParams struct {
+	Name    string `json:"name" jsonschema:"Migration name"`
+	Preview *bool  `json:"preview,omitempty" jsonschema:"Preview changes without creating"`
+}
+
+type MigrationApplyParams struct {
+	DryRun *bool `json:"dry_run,omitempty" jsonschema:"Preview without applying"`
+}
+
+type MigrationStatusParams struct{}
+
+type TransactionParams struct {
+	Operations []TransactionOperation `json:"operations" jsonschema:"Array of operations to execute"`
+}
+
+type TransactionOperation struct {
+	Tool      string         `json:"tool" jsonschema:"Tool name (e.g. model.create)"`
+	Arguments map[string]any `json:"arguments" jsonschema:"Tool arguments"`
+}
+
+// registerTools registers all MCP tools with the SDK server
+func (s *SDKServer) registerTools() {
+	// Model operations
+	findManySchema, _ := jsonschema.For[ModelFindManyParams]()
+	addToolWithLogging[ModelFindManyParams, any](s, &mcp.Tool{
+		Name:        "model.findMany",
 		Description: "Query multiple records with Prisma-style filters",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"model": {"type": "string", "description": "Model name"},
-				"where": {"type": "object", "description": "Filter conditions"},
-				"include": {"type": "object", "description": "Relations to include"},
-				"orderBy": {"type": "object", "description": "Sort order"},
-				"take": {"type": "integer", "description": "Limit results"},
-				"skip": {"type": "integer", "description": "Skip results"}
-			},
-			"required": ["model"]
-		}`),
-	},
-	{
-		Name:        "data.findUnique",
+		InputSchema: findManySchema,
+	}, s.handleModelFindMany)
+
+	findUniqueSchema, _ := jsonschema.For[ModelFindUniqueParams]()
+	addToolWithLogging[ModelFindUniqueParams, any](s, &mcp.Tool{
+		Name:        "model.findUnique",
 		Description: "Find a single record by unique field",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"model": {"type": "string", "description": "Model name"},
-				"where": {"type": "object", "description": "Unique identifier"},
-				"include": {"type": "object", "description": "Relations to include"}
-			},
-			"required": ["model", "where"]
-		}`),
-	},
-	{
-		Name:        "data.create",
-		Description: "Create a new record using ORM",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"model": {"type": "string", "description": "Model name"},
-				"data": {"type": "object", "description": "Data to create"}
-			},
-			"required": ["model", "data"]
-		}`),
-	},
-	{
-		Name:        "data.update",
-		Description: "Update records using ORM",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"model": {"type": "string", "description": "Model name"},
-				"where": {"type": "object", "description": "Filter to find records"},
-				"data": {"type": "object", "description": "Data to update"}
-			},
-			"required": ["model", "where", "data"]
-		}`),
-	},
-	{
-		Name:        "data.delete",
-		Description: "Delete records using ORM",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"model": {"type": "string", "description": "Model name"},
-				"where": {"type": "object", "description": "Filter to find records"}
-			},
-			"required": ["model", "where"]
-		}`),
-	},
-	{
-		Name:        "data.count",
+		InputSchema: findUniqueSchema,
+	}, s.handleModelFindUnique)
+
+	createSchema, _ := jsonschema.For[ModelCreateParams]()
+	addToolWithLogging[ModelCreateParams, any](s, &mcp.Tool{
+		Name:        "model.create",
+		Description: "Create a new record",
+		InputSchema: createSchema,
+	}, s.handleModelCreate)
+
+	updateSchema, _ := jsonschema.For[ModelUpdateParams]()
+	addToolWithLogging[ModelUpdateParams, any](s, &mcp.Tool{
+		Name:        "model.update",
+		Description: "Update existing records",
+		InputSchema: updateSchema,
+	}, s.handleModelUpdate)
+
+	deleteSchema, _ := jsonschema.For[ModelDeleteParams]()
+	addToolWithLogging[ModelDeleteParams, any](s, &mcp.Tool{
+		Name:        "model.delete",
+		Description: "Delete records",
+		InputSchema: deleteSchema,
+	}, s.handleModelDelete)
+
+	countSchema, _ := jsonschema.For[ModelCountParams]()
+	addToolWithLogging[ModelCountParams, any](s, &mcp.Tool{
+		Name:        "model.count",
 		Description: "Count records with optional filters",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"model": {"type": "string", "description": "Model name"},
-				"where": {"type": "object", "description": "Filter conditions"}
-			},
-			"required": ["model"]
-		}`),
-	},
-	{
-		Name:        "data.aggregate",
+		InputSchema: countSchema,
+	}, s.handleModelCount)
+
+	aggregateSchema, _ := jsonschema.For[ModelAggregateParams]()
+	addToolWithLogging[ModelAggregateParams, any](s, &mcp.Tool{
+		Name:        "model.aggregate",
 		Description: "Perform aggregation queries",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"model": {"type": "string", "description": "Model name"},
-				"where": {"type": "object", "description": "Filter conditions"},
-				"count": {"type": "boolean"},
-				"avg": {"type": "object"},
-				"sum": {"type": "object"},
-				"min": {"type": "object"},
-				"max": {"type": "object"},
-				"groupBy": {"type": "array", "items": {"type": "string"}}
-			},
-			"required": ["model"]
-		}`),
-	},
-	// Legacy SQL Tools
-	{
-		Name:        "query",
-		Description: "Execute a read-only SQL query",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"sql": {
-					"type": "string",
-					"description": "SQL query to execute (SELECT only)"
-				},
-				"parameters": {
-					"type": "array",
-					"description": "Query parameters",
-					"items": {}
-				}
-			},
-			"required": ["sql"]
-		}`),
-	},
-	{
-		Name:        "inspect_schema",
-		Description: "Get detailed schema information for a table",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"table": {
-					"type": "string",
-					"description": "Table name to inspect"
-				}
-			},
-			"required": ["table"]
-		}`),
-	},
-	{
-		Name:        "list_tables",
-		Description: "List all available tables in the database",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {}
-		}`),
-	},
-	{
-		Name:        "count_records",
-		Description: "Count records in a table with optional filters",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"table": {
-					"type": "string",
-					"description": "Table name"
-				},
-				"where": {
-					"type": "object",
-					"description": "Filter conditions"
-				}
-			},
-			"required": ["table"]
-		}`),
-	},
-	{
-		Name:        "batch_query",
-		Description: "Execute multiple read-only SQL queries in a batch",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"queries": {
-					"type": "array",
-					"description": "Array of SQL queries to execute",
-					"items": {
-						"type": "object",
-						"properties": {
-							"sql": {
-								"type": "string",
-								"description": "SQL query to execute"
-							},
-							"parameters": {
-								"type": "array",
-								"description": "Query parameters",
-								"items": {}
-							},
-							"label": {
-								"type": "string",
-								"description": "Optional label for this query"
-							}
-						},
-						"required": ["sql"]
-					}
-				},
-				"fail_fast": {
-					"type": "boolean",
-					"description": "Stop execution on first error (default: false)",
-					"default": false
-				}
-			},
-			"required": ["queries"]
-		}`),
-	},
-	{
-		Name:        "stream_query",
-		Description: "Execute a query with streaming results for large datasets",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"sql": {
-					"type": "string",
-					"description": "SQL query to execute (SELECT only)"
-				},
-				"parameters": {
-					"type": "array",
-					"description": "Query parameters",
-					"items": {}
-				},
-				"batch_size": {
-					"type": "integer",
-					"description": "Number of rows per batch (default: 100)",
-					"default": 100,
-					"minimum": 1,
-					"maximum": 1000
-				}
-			},
-			"required": ["sql"]
-		}`),
-	},
-	{
-		Name:        "analyze_table",
-		Description: "Perform statistical analysis on a table",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"table": {
-					"type": "string",
-					"description": "Table name to analyze"
-				},
-				"columns": {
-					"type": "array",
-					"description": "Specific columns to analyze (default: all)",
-					"items": {
-						"type": "string"
-					}
-				},
-				"sample_size": {
-					"type": "integer",
-					"description": "Number of sample rows to analyze (default: 1000)",
-					"default": 1000,
-					"minimum": 100,
-					"maximum": 10000
-				}
-			},
-			"required": ["table"]
-		}`),
-	},
-	{
-		Name:        "generate_sample",
-		Description: "Generate sample data from a table",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"table": {
-					"type": "string",
-					"description": "Table name to sample from"
-				},
-				"count": {
-					"type": "integer",
-					"description": "Number of sample rows (default: 10)",
-					"default": 10,
-					"minimum": 1,
-					"maximum": 100
-				},
-				"random": {
-					"type": "boolean",
-					"description": "Use random sampling (default: false)",
-					"default": false
-				},
-				"where": {
-					"type": "object",
-					"description": "Filter conditions for sampling"
-				}
-			},
-			"required": ["table"]
-		}`),
-	},
+		InputSchema: aggregateSchema,
+	}, s.handleModelAggregate)
+
+	// Schema operations
+	modelsSchema, _ := jsonschema.For[SchemaModelsParams]()
+	addToolWithLogging[SchemaModelsParams, any](s, &mcp.Tool{
+		Name:        "schema.models",
+		Description: "List all models with their fields and relationships",
+		InputSchema: modelsSchema,
+	}, s.handleSchemaModels)
+
+	describeSchema, _ := jsonschema.For[SchemaDescribeParams]()
+	addToolWithLogging[SchemaDescribeParams, any](s, &mcp.Tool{
+		Name:        "schema.describe",
+		Description: "Get detailed information about a specific model",
+		InputSchema: describeSchema,
+	}, s.handleSchemaDescribe)
+
+	// Migration operations
+	migrationCreateSchema, _ := jsonschema.For[MigrationCreateParams]()
+	addToolWithLogging[MigrationCreateParams, any](s, &mcp.Tool{
+		Name:        "migration.create",
+		Description: "Create a new migration based on schema changes",
+		InputSchema: migrationCreateSchema,
+	}, s.handleMigrationCreate)
+
+	migrationApplySchema, _ := jsonschema.For[MigrationApplyParams]()
+	addToolWithLogging[MigrationApplyParams, any](s, &mcp.Tool{
+		Name:        "migration.apply",
+		Description: "Apply pending migrations to the database",
+		InputSchema: migrationApplySchema,
+	}, s.handleMigrationApply)
+
+	migrationStatusSchema, _ := jsonschema.For[MigrationStatusParams]()
+	addToolWithLogging[MigrationStatusParams, any](s, &mcp.Tool{
+		Name:        "migration.status",
+		Description: "Show current migration status",
+		InputSchema: migrationStatusSchema,
+	}, s.handleMigrationStatus)
+
+	// Transaction operation
+	transactionSchema, _ := jsonschema.For[TransactionParams]()
+	addToolWithLogging[TransactionParams, any](s, &mcp.Tool{
+		Name:        "transaction",
+		Description: "Execute multiple operations in a transaction",
+		InputSchema: transactionSchema,
+	}, s.handleTransaction)
 }
 
-// ListTools returns available tools
-func (s *Server) ListTools() []Tool {
-	result := make([]Tool, len(tools))
-	copy(result, tools)
-	
-	// Add model and schema management tools if schemas are loaded
-	if len(s.schemas) > 0 {
-		// These tools are only available when schemas are loaded
-		result = append(result, Tool{
-			Name:        "model.create",
-			Description: "Create a new Prisma model definition",
-			InputSchema: json.RawMessage(`{
-				"type": "object",
-				"properties": {
-					"name": {"type": "string", "description": "Model name"},
-					"fields": {
-						"type": "array",
-						"items": {
-							"type": "object",
-							"properties": {
-								"name": {"type": "string"},
-								"type": {"type": "string"},
-								"attributes": {"type": "array", "items": {"type": "string"}},
-								"default": {},
-								"relation": {"type": "object"}
-							},
-							"required": ["name", "type"]
-						}
-					}
-				},
-				"required": ["name", "fields"]
-			}`),
-		})
-		
-		result = append(result, Tool{
-			Name:        "schema.sync",
-			Description: "Synchronize schema changes to database",
-			InputSchema: json.RawMessage(`{
-				"type": "object",
-				"properties": {
-					"force": {"type": "boolean", "description": "Force destructive changes"}
-				}
-			}`),
-		})
-	}
-	
-	return result
-}
+// Tool handlers
+func (s *SDKServer) handleModelFindMany(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[ModelFindManyParams]) (*mcp.CallToolResultFor[any], error) {
 
-// CallTool executes a tool
-func (s *Server) CallTool(ctx context.Context, name string, arguments json.RawMessage) (*ToolResult, error) {
-	s.logger.Debug("Calling tool: %s", name)
-
-	// Handle ORM data tools
-	if strings.HasPrefix(name, "data.") {
-		return s.callDataTool(ctx, name, arguments)
-	}
-	
-	// Handle model management tools
-	if strings.HasPrefix(name, "model.") {
-		return s.callModelTool(ctx, name, arguments)
-	}
-	
-	// Handle schema management tools
-	if strings.HasPrefix(name, "schema.") {
-		return s.callSchemaTool(ctx, name, arguments)
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("findMany"); err != nil {
+		s.logger.Error("Read-only mode error: %v", err)
+		return nil, err
 	}
 
-	// Handle legacy SQL tools
-	switch name {
-	case "query":
-		return s.executeQuery(ctx, arguments)
-	case "inspect_schema":
-		return s.inspectSchema(ctx, arguments)
-	case "list_tables":
-		return s.listTables(ctx, arguments)
-	case "count_records":
-		return s.countRecords(ctx, arguments)
-	case "batch_query":
-		return s.executeBatchQuery(ctx, arguments)
-	case "stream_query":
-		return s.executeStreamQuery(ctx, arguments)
-	case "analyze_table":
-		return s.analyzeTable(ctx, arguments)
-	case "generate_sample":
-		return s.generateSample(ctx, arguments)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", name)
-	}
-}
-
-// executeQuery handles SQL query execution
-func (s *Server) executeQuery(ctx context.Context, arguments json.RawMessage) (*ToolResult, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	// Build ORM query
+	query := map[string]any{
+		"findMany": map[string]any{},
 	}
 
-	var args struct {
-		SQL        string        `json:"sql"`
-		Parameters []interface{} `json:"parameters"`
+	if params.Arguments.Where != nil {
+		query["findMany"].(map[string]any)["where"] = params.Arguments.Where
+	}
+	if params.Arguments.Include != nil {
+		query["findMany"].(map[string]any)["include"] = params.Arguments.Include
+	}
+	if params.Arguments.OrderBy != nil {
+		query["findMany"].(map[string]any)["orderBy"] = params.Arguments.OrderBy
+	}
+	if params.Arguments.Take != nil {
+		query["findMany"].(map[string]any)["take"] = *params.Arguments.Take
+	}
+	if params.Arguments.Skip != nil {
+		query["findMany"].(map[string]any)["skip"] = *params.Arguments.Skip
 	}
 
-	if err := json.Unmarshal(arguments, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	// Validate query through security manager
-	if err := s.security.ValidateQuery(args.SQL); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Security error: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Execute query using Raw API
-	var results []map[string]interface{}
-	rawQuery := s.db.Raw(args.SQL, args.Parameters...)
-	if err := rawQuery.Find(ctx, &results); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Query error: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Check row limit
-	if len(results) > s.config.MaxQueryRows {
-		results = results[:s.config.MaxQueryRows]
-		s.logger.Warn("Query results truncated to limit: %d", s.config.MaxQueryRows)
-	}
-
-	// Format results
-	response := map[string]interface{}{
-		"query":   args.SQL,
-		"results": results,
-		"count":   len(results),
-	}
-
-	data, err := json.MarshalIndent(response, "", "  ")
+	// Execute query
+	queryJSON, err := json.Marshal(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal results: %w", err)
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
 	}
 
-	return &ToolResult{
-		Content: []ToolContent{
-			{
-				Type: "text",
-				Text: string(data),
-			},
+	client := orm.NewClient(s.db)
+	result, err := client.Model(params.Arguments.Model).Query(string(queryJSON))
+	if err != nil {
+		s.logger.Error("model.findMany query failed for model %s: %v", params.Arguments.Model, err)
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	// Return result
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
 		},
 	}, nil
 }
 
-// inspectSchema handles table schema inspection
-func (s *Server) inspectSchema(ctx context.Context, arguments json.RawMessage) (*ToolResult, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not connected")
+func (s *SDKServer) handleModelFindUnique(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[ModelFindUniqueParams]) (*mcp.CallToolResultFor[any], error) {
+
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("findUnique"); err != nil {
+		s.logger.Error("Read-only mode error: %v", err)
+		return nil, err
 	}
 
-	var args struct {
-		Table string `json:"table"`
+	// Build ORM query
+	query := map[string]any{
+		"findUnique": map[string]any{
+			"where": params.Arguments.Where,
+		},
 	}
 
-	if err := json.Unmarshal(arguments, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
+	if params.Arguments.Include != nil {
+		query["findUnique"].(map[string]any)["include"] = params.Arguments.Include
 	}
 
-	// Validate table access through security manager
-	if err := s.security.ValidateTableAccess(args.Table); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Security error: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-	
-	// Legacy check for backward compatibility
-	if !s.isTableAllowed(args.Table) {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Error: Table '%s' is not allowed", args.Table),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Get table schema
-	tableInfo, err := s.getTableSchema(ctx, args.Table)
+	// Execute query
+	queryJSON, err := json.Marshal(query)
 	if err != nil {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Error inspecting table: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
 	}
 
-	// Format results
-	data, err := json.MarshalIndent(tableInfo, "", "  ")
+	client := orm.NewClient(s.db)
+	result, err := client.Model(params.Arguments.Model).Query(string(queryJSON))
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal schema: %w", err)
+		s.logger.Error("model.findUnique query failed for model %s: %v", params.Arguments.Model, err)
+		return nil, fmt.Errorf("query failed: %w", err)
 	}
 
-	return &ToolResult{
-		Content: []ToolContent{
-			{
-				Type: "text",
-				Text: string(data),
-			},
+	// Return result
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
 		},
 	}, nil
 }
 
-// listTables handles table listing
-func (s *Server) listTables(ctx context.Context, arguments json.RawMessage) (*ToolResult, error) {
+func (s *SDKServer) handleModelCreate(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[ModelCreateParams]) (*mcp.CallToolResultFor[any], error) {
+
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("create"); err != nil {
+		s.logger.Error("Read-only mode error: %v", err)
+		return nil, err
+	}
+
+	// Build ORM query
+	query := map[string]any{
+		"create": map[string]any{
+			"data": params.Arguments.Data,
+		},
+	}
+
+	// Execute query
+	queryJSON, err := json.Marshal(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	client := orm.NewClient(s.db)
+	result, err := client.Model(params.Arguments.Model).Query(string(queryJSON))
+	if err != nil {
+		s.logger.Error("model.create failed for model %s: %v", params.Arguments.Model, err)
+		return nil, fmt.Errorf("create failed: %w", err)
+	}
+
+	// Return result
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
+		},
+	}, nil
+}
+
+func (s *SDKServer) handleModelUpdate(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[ModelUpdateParams]) (*mcp.CallToolResultFor[any], error) {
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("update"); err != nil {
+		s.logger.Error("Read-only mode error: %v", err)
+		return nil, err
+	}
+
+	// Build ORM query
+	query := map[string]any{
+		"update": map[string]any{
+			"where": params.Arguments.Where,
+			"data":  params.Arguments.Data,
+		},
+	}
+
+	// Execute query
+	queryJSON, err := json.Marshal(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	client := orm.NewClient(s.db)
+	result, err := client.Model(params.Arguments.Model).Query(string(queryJSON))
+	if err != nil {
+		s.logger.Error("model.update failed for model %s: %v", params.Arguments.Model, err)
+		return nil, fmt.Errorf("update failed: %w", err)
+	}
+
+	// Return result
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
+		},
+	}, nil
+}
+
+func (s *SDKServer) handleModelDelete(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[ModelDeleteParams]) (*mcp.CallToolResultFor[any], error) {
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("delete"); err != nil {
+		s.logger.Error("Read-only mode error: %v", err)
+		return nil, err
+	}
+
+	// Build ORM query
+	query := map[string]any{
+		"delete": map[string]any{
+			"where": params.Arguments.Where,
+		},
+	}
+
+	// Execute query
+	queryJSON, err := json.Marshal(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	client := orm.NewClient(s.db)
+	result, err := client.Model(params.Arguments.Model).Query(string(queryJSON))
+	if err != nil {
+		s.logger.Error("model.delete failed for model %s: %v", params.Arguments.Model, err)
+		return nil, fmt.Errorf("delete failed: %w", err)
+	}
+
+	// Return result
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
+		},
+	}, nil
+}
+
+func (s *SDKServer) handleModelCount(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[ModelCountParams]) (*mcp.CallToolResultFor[any], error) {
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("count"); err != nil {
+		return nil, err
+	}
+
+	// Build ORM query
+	query := map[string]any{
+		"count": map[string]any{},
+	}
+
+	if params.Arguments.Where != nil {
+		query["count"].(map[string]any)["where"] = params.Arguments.Where
+	}
+
+	// Execute query
+	queryJSON, err := json.Marshal(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	client := orm.NewClient(s.db)
+	result, err := client.Model(params.Arguments.Model).Query(string(queryJSON))
+	if err != nil {
+		return nil, fmt.Errorf("count failed: %w", err)
+	}
+
+	// Return result
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
+		},
+	}, nil
+}
+
+func (s *SDKServer) handleModelAggregate(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[ModelAggregateParams]) (*mcp.CallToolResultFor[any], error) {
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("aggregate"); err != nil {
+		return nil, err
+	}
+
+	// Build ORM query
+	query := map[string]any{
+		"aggregate": map[string]any{},
+	}
+
+	aggMap := query["aggregate"].(map[string]any)
+
+	if params.Arguments.Where != nil {
+		aggMap["where"] = params.Arguments.Where
+	}
+	if params.Arguments.Count != nil && *params.Arguments.Count {
+		aggMap["_count"] = true
+	}
+	if params.Arguments.Avg != nil {
+		aggMap["_avg"] = params.Arguments.Avg
+	}
+	if params.Arguments.Sum != nil {
+		aggMap["_sum"] = params.Arguments.Sum
+	}
+	if params.Arguments.Min != nil {
+		aggMap["_min"] = params.Arguments.Min
+	}
+	if params.Arguments.Max != nil {
+		aggMap["_max"] = params.Arguments.Max
+	}
+	if len(params.Arguments.GroupBy) > 0 {
+		aggMap["groupBy"] = params.Arguments.GroupBy
+	}
+
+	// Execute query
+	queryJSON, err := json.Marshal(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	client := orm.NewClient(s.db)
+	result, err := client.Model(params.Arguments.Model).Query(string(queryJSON))
+	if err != nil {
+		return nil, fmt.Errorf("aggregate failed: %w", err)
+	}
+
+	// Return result
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
+		},
+	}, nil
+}
+
+func (s *SDKServer) handleSchemaModels(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[SchemaModelsParams]) (*mcp.CallToolResultFor[any], error) {
+	models := make([]map[string]any, 0, len(s.schemas))
+
+	for _, schema := range s.schemas {
+		model := map[string]any{
+			"name":      schema.Name,
+			"tableName": schema.TableName,
+			"fields":    schema.Fields,
+			"indexes":   schema.Indexes,
+			"relations": schema.Relations,
+		}
+		models = append(models, model)
+	}
+
+	result := map[string]any{
+		"count":  len(models),
+		"models": models,
+	}
+
+	// Return result
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
+		},
+	}, nil
+}
+
+func (s *SDKServer) handleSchemaDescribe(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[SchemaDescribeParams]) (*mcp.CallToolResultFor[any], error) {
+	for _, schema := range s.schemas {
+		if schema.Name == params.Arguments.Model {
+			result := map[string]any{
+				"name":         schema.Name,
+				"tableName":    schema.TableName,
+				"fields":       schema.Fields,
+				"indexes":      schema.Indexes,
+				"relations":    schema.Relations,
+				"compositeKey": schema.CompositeKey,
+			}
+
+			// Return result
+			resultJSON, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal result: %w", err)
+			}
+
+			return &mcp.CallToolResultFor[any]{
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: string(resultJSON)},
+				},
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("model not found: %s", params.Arguments.Model)
+}
+
+func (s *SDKServer) handleMigrationCreate(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[MigrationCreateParams]) (*mcp.CallToolResultFor[any], error) {
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("migration.create"); err != nil {
+		return nil, err
+	}
+
 	if s.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	// Get all tables using migrator
+	// Get current database schema
 	migrator := s.db.GetMigrator()
 	tables, err := migrator.GetTables()
 	if err != nil {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Error listing tables: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
+		return nil, fmt.Errorf("failed to get tables: %w", err)
 	}
 
-	// Filter allowed tables
-	allowedTables := make([]string, 0, len(tables))
+	// Compare with loaded schemas
+	changes := []string{}
+
+	// Check for new tables
+	existingTables := make(map[string]bool)
 	for _, table := range tables {
-		if s.isTableAllowed(table) {
-			allowedTables = append(allowedTables, table)
+		existingTables[table] = true
+	}
+
+	for _, schema := range s.schemas {
+		if !existingTables[schema.TableName] {
+			changes = append(changes, fmt.Sprintf("CREATE TABLE %s", schema.TableName))
 		}
 	}
 
-	// Format results
-	response := map[string]interface{}{
-		"database_type": s.db.GetDriverType(),
-		"tables":        allowedTables,
-		"count":         len(allowedTables),
+	// Prepare result
+	result := map[string]any{
+		"name":    params.Arguments.Name,
+		"changes": changes,
+		"preview": params.Arguments.Preview != nil && *params.Arguments.Preview,
 	}
 
-	data, err := json.MarshalIndent(response, "", "  ")
+	if params.Arguments.Preview == nil || !*params.Arguments.Preview {
+		// Actually create migration file
+		timestamp := time.Now().Format("20060102150405")
+		filename := fmt.Sprintf("%s_%s.sql", timestamp, params.Arguments.Name)
+		result["filename"] = filename
+		result["status"] = "created"
+	} else {
+		result["status"] = "preview"
+	}
+
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal tables: %w", err)
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
 	}
 
-	return &ToolResult{
-		Content: []ToolContent{
-			{
-				Type: "text",
-				Text: string(data),
-			},
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
 		},
 	}, nil
 }
 
-// countRecords handles record counting
-func (s *Server) countRecords(ctx context.Context, arguments json.RawMessage) (*ToolResult, error) {
+func (s *SDKServer) handleMigrationApply(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[MigrationApplyParams]) (*mcp.CallToolResultFor[any], error) {
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("migration.apply"); err != nil {
+		return nil, err
+	}
+
 	if s.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	var args struct {
-		Table string                 `json:"table"`
-		Where map[string]interface{} `json:"where"`
-	}
+	dryRun := params.Arguments.DryRun != nil && *params.Arguments.DryRun
 
-	if err := json.Unmarshal(arguments, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	// Validate table access through security manager
-	if err := s.security.ValidateTableAccess(args.Table); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Security error: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-	
-	// Legacy check for backward compatibility
-	if !s.isTableAllowed(args.Table) {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Error: Table '%s' is not allowed", args.Table),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Build count query
-	query := fmt.Sprintf("SELECT COUNT(*) as count FROM %s", args.Table)
-	var parameters []interface{}
-
-	// Add WHERE conditions if provided
-	if len(args.Where) > 0 {
-		conditions := make([]string, 0, len(args.Where))
-		for field, value := range args.Where {
-			conditions = append(conditions, fmt.Sprintf("%s = ?", field))
-			parameters = append(parameters, value)
+	// Sync schemas with database
+	var syncErr error
+	if !dryRun {
+		// Register schemas with database
+		for _, sch := range s.schemas {
+			if err := s.db.RegisterSchema(sch.Name, sch); err != nil {
+				return nil, fmt.Errorf("failed to register schema %s: %w", sch.Name, err)
+			}
 		}
-		query += " WHERE " + strings.Join(conditions, " AND ")
+		syncErr = s.db.SyncSchemas(ctx)
 	}
 
-	// Execute query using Raw API
-	var results []map[string]interface{}
-	rawQuery := s.db.Raw(query, parameters...)
-	if err := rawQuery.Find(ctx, &results); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{
-				{
-					Type: "text",
-					Text: fmt.Sprintf("Error counting records: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
+	result := map[string]any{
+		"dryRun": dryRun,
+		"status": "success",
 	}
 
-	// Extract count
-	count := int64(0)
-	if len(results) > 0 {
-		if c, exists := results[0]["count"]; exists {
-			count = utils.ToInt64(c)
-		}
+	if syncErr != nil {
+		result["status"] = "failed"
+		result["error"] = syncErr.Error()
 	}
 
-	// Format results
-	response := map[string]interface{}{
-		"table":      args.Table,
-		"count":      count,
-		"conditions": args.Where,
+	if dryRun {
+		result["message"] = "Dry run completed. No changes were applied."
+	} else {
+		result["message"] = "Migrations applied successfully."
 	}
 
-	data, err := json.MarshalIndent(response, "", "  ")
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal count: %w", err)
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
 	}
 
-	return &ToolResult{
-		Content: []ToolContent{
-			{
-				Type: "text",
-				Text: string(data),
-			},
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
 		},
 	}, nil
 }
 
-// isReadOnlyQuery checks if a SQL query is read-only
-func isReadOnlyQuery(sql string) bool {
-	// Trim and convert to uppercase for checking
-	trimmed := strings.TrimSpace(strings.ToUpper(sql))
-	
-	// Check if it starts with SELECT
-	if !strings.HasPrefix(trimmed, "SELECT") {
-		return false
-	}
-	
-	// Check for dangerous keywords
-	dangerousKeywords := []string{
-		"INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
-		"TRUNCATE", "GRANT", "REVOKE", "EXEC", "EXECUTE",
-		"INTO OUTFILE", "INTO DUMPFILE",
-	}
-	
-	for _, keyword := range dangerousKeywords {
-		if strings.Contains(trimmed, keyword) {
-			return false
-		}
-	}
-	
-	return true
-}
-
-// executeBatchQuery handles batch SQL query execution
-func (s *Server) executeBatchQuery(ctx context.Context, arguments json.RawMessage) (*ToolResult, error) {
+func (s *SDKServer) handleMigrationStatus(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[MigrationStatusParams]) (*mcp.CallToolResultFor[any], error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	var args struct {
-		Queries  []BatchQuery `json:"queries"`
-		FailFast bool         `json:"fail_fast"`
-	}
-
-	if err := json.Unmarshal(arguments, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if len(args.Queries) == 0 {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: "Error: No queries provided",
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	results := make([]BatchQueryResult, 0, len(args.Queries))
-
-	for i, query := range args.Queries {
-		result := BatchQueryResult{
-			Index: i,
-			Label: query.Label,
-			SQL:   query.SQL,
-		}
-
-		// Validate query through security manager
-		if err := s.security.ValidateQuery(query.SQL); err != nil {
-			result.Error = fmt.Sprintf("Security error: %v", err)
-			results = append(results, result)
-			if args.FailFast {
-				break
-			}
-			continue
-		}
-
-		// Execute query
-		var queryResults []map[string]interface{}
-		rawQuery := s.db.Raw(query.SQL, query.Parameters...)
-		if err := rawQuery.Find(ctx, &queryResults); err != nil {
-			result.Error = fmt.Sprintf("Query error: %v", err)
-			results = append(results, result)
-			if args.FailFast {
-				break
-			}
-			continue
-		}
-
-		// Check row limit
-		if len(queryResults) > s.config.MaxQueryRows {
-			queryResults = queryResults[:s.config.MaxQueryRows]
-			result.Truncated = true
-		}
-
-		result.Results = queryResults
-		result.Count = len(queryResults)
-		result.Success = true
-		results = append(results, result)
-	}
-
-	// Format response
-	response := map[string]interface{}{
-		"batch_size":     len(args.Queries),
-		"executed":       len(results),
-		"results":        results,
-		"fail_fast_mode": args.FailFast,
-	}
-
-	data, err := json.MarshalIndent(response, "", "  ")
+	// Get current database schema
+	migrator := s.db.GetMigrator()
+	tables, err := migrator.GetTables()
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal results: %w", err)
+		return nil, fmt.Errorf("failed to get tables: %w", err)
 	}
 
-	return &ToolResult{
-		Content: []ToolContent{{
-			Type: "text",
-			Text: string(data),
-		}},
+	// Compare with loaded schemas
+	status := map[string]any{
+		"database": map[string]any{
+			"tables": len(tables),
+			"list":   tables,
+		},
+		"schemas": map[string]any{
+			"models": len(s.schemas),
+			"list":   getSchemaNames(s.schemas),
+		},
+	}
+
+	// Check for pending changes
+	pendingChanges := []string{}
+
+	// Check for missing tables
+	existingTables := make(map[string]bool)
+	for _, table := range tables {
+		existingTables[table] = true
+	}
+
+	for _, schema := range s.schemas {
+		if !existingTables[schema.TableName] {
+			pendingChanges = append(pendingChanges, fmt.Sprintf("Table '%s' needs to be created", schema.TableName))
+		}
+	}
+
+	status["pendingChanges"] = pendingChanges
+	status["upToDate"] = len(pendingChanges) == 0
+
+	resultJSON, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(resultJSON)},
+		},
 	}, nil
 }
 
-// executeStreamQuery handles streaming query execution (simulated with batches)
-func (s *Server) executeStreamQuery(ctx context.Context, arguments json.RawMessage) (*ToolResult, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not connected")
+func getSchemaNames(schemas []*schema.Schema) []string {
+	names := make([]string, len(schemas))
+	for i, s := range schemas {
+		names[i] = s.Name
+	}
+	return names
+}
+
+func (s *SDKServer) handleTransaction(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParamsFor[TransactionParams]) (*mcp.CallToolResultFor[any], error) {
+	// Check read-only mode
+	if err := s.security.CheckReadOnly("transaction"); err != nil {
+		return nil, err
 	}
 
-	var args struct {
-		SQL        string        `json:"sql"`
-		Parameters []interface{} `json:"parameters"`
-		BatchSize  int           `json:"batch_size"`
-	}
-
-	if err := json.Unmarshal(arguments, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if args.BatchSize <= 0 {
-		args.BatchSize = 100
-	}
-
-	// Validate query through security manager
-	if err := s.security.ValidateQuery(args.SQL); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Security error: %v", err),
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	// For streaming simulation, we'll execute the full query and divide into batches
-	var allResults []map[string]interface{}
-	rawQuery := s.db.Raw(args.SQL, args.Parameters...)
-	if err := rawQuery.Find(ctx, &allResults); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Query error: %v", err),
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	// Divide results into batches
-	var batches [][]map[string]interface{}
-	for i := 0; i < len(allResults); i += args.BatchSize {
-		end := i + args.BatchSize
-		if end > len(allResults) {
-			end = len(allResults)
-		}
-		batches = append(batches, allResults[i:end])
-	}
-
-	// Format streaming response
-	response := map[string]interface{}{
-		"query":       args.SQL,
-		"total_rows":  len(allResults),
-		"batch_size":  args.BatchSize,
-		"batch_count": len(batches),
-		"batches":     batches,
-		"streaming":   true,
-	}
-
-	data, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal results: %w", err)
-	}
-
-	return &ToolResult{
-		Content: []ToolContent{{
-			Type: "text",
-			Text: string(data),
-		}},
+	// TODO: Implement transaction handling
+	return &mcp.CallToolResultFor[any]{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: "Transaction handling not yet implemented"},
+		},
 	}, nil
 }
-
-// analyzeTable performs statistical analysis on a table
-func (s *Server) analyzeTable(ctx context.Context, arguments json.RawMessage) (*ToolResult, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not connected")
-	}
-
-	var args struct {
-		Table      string   `json:"table"`
-		Columns    []string `json:"columns"`
-		SampleSize int      `json:"sample_size"`
-	}
-
-	if err := json.Unmarshal(arguments, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if args.SampleSize <= 0 {
-		args.SampleSize = 1000
-	}
-
-	// Validate table access through security manager
-	if err := s.security.ValidateTableAccess(args.Table); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Security error: %v", err),
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	// Get table schema first
-	tableInfo, err := s.getTableSchema(ctx, args.Table)
-	if err != nil {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Error getting table schema: %v", err),
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	// Get total record count
-	countQuery := fmt.Sprintf("SELECT COUNT(*) as total FROM %s", args.Table)
-	var countResults []map[string]interface{}
-	if err := s.db.Raw(countQuery).Find(ctx, &countResults); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Error counting records: %v", err),
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	totalRows := int64(0)
-	if len(countResults) > 0 {
-		if count, exists := countResults[0]["total"]; exists {
-			totalRows = utils.ToInt64(count)
-		}
-	}
-
-	// Get sample data for analysis
-	sampleQuery := fmt.Sprintf("SELECT * FROM %s LIMIT %d", args.Table, args.SampleSize)
-	var sampleResults []map[string]interface{}
-	if err := s.db.Raw(sampleQuery).Find(ctx, &sampleResults); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Error sampling data: %v", err),
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	// Perform basic statistical analysis
-	analysis := TableAnalysis{
-		Table:       args.Table,
-		TotalRows:   totalRows,
-		SampleSize:  len(sampleResults),
-		Schema:      tableInfo,
-		Statistics:  make(map[string]ColumnStats),
-	}
-
-	// Analyze each column
-	if len(sampleResults) > 0 {
-		for column := range sampleResults[0] {
-			// Skip if specific columns requested and this isn't one
-			if len(args.Columns) > 0 {
-				found := false
-				for _, col := range args.Columns {
-					if col == column {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-			}
-
-			stats := s.analyzeColumn(column, sampleResults)
-			analysis.Statistics[column] = stats
-		}
-	}
-
-	data, err := json.MarshalIndent(analysis, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal analysis: %w", err)
-	}
-
-	return &ToolResult{
-		Content: []ToolContent{{
-			Type: "text",
-			Text: string(data),
-		}},
-	}, nil
-}
-
-// generateSample generates sample data from a table
-func (s *Server) generateSample(ctx context.Context, arguments json.RawMessage) (*ToolResult, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not connected")
-	}
-
-	var args struct {
-		Table  string                 `json:"table"`
-		Count  int                    `json:"count"`
-		Random bool                   `json:"random"`
-		Where  map[string]interface{} `json:"where"`
-	}
-
-	if err := json.Unmarshal(arguments, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if args.Count <= 0 {
-		args.Count = 10
-	}
-
-	// Validate table access through security manager
-	if err := s.security.ValidateTableAccess(args.Table); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Security error: %v", err),
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	// Build sample query
-	query := fmt.Sprintf("SELECT * FROM %s", args.Table)
-	var parameters []interface{}
-
-	// Add WHERE conditions if provided
-	if len(args.Where) > 0 {
-		conditions := make([]string, 0, len(args.Where))
-		for field, value := range args.Where {
-			conditions = append(conditions, fmt.Sprintf("%s = ?", field))
-			parameters = append(parameters, value)
-		}
-		query += " WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	// Add random sampling or limit
-	if args.Random {
-		// Note: Random sampling varies by database
-		switch s.db.GetDriverType() {
-		case "mysql":
-			query += " ORDER BY RAND()"
-		case "postgresql":
-			query += " ORDER BY RANDOM()"
-		case "sqlite":
-			query += " ORDER BY RANDOM()"
-		case "mongodb":
-			// For MongoDB, we'd use aggregation pipeline with $sample
-			// but we'll fall back to limit for now
-		}
-	}
-
-	query += fmt.Sprintf(" LIMIT %d", args.Count)
-
-	// Execute sample query
-	var results []map[string]interface{}
-	rawQuery := s.db.Raw(query, parameters...)
-	if err := rawQuery.Find(ctx, &results); err != nil {
-		return &ToolResult{
-			Content: []ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Error sampling data: %v", err),
-			}},
-			IsError: true,
-		}, nil
-	}
-
-	// Format results
-	response := map[string]interface{}{
-		"table":       args.Table,
-		"sample_size": len(results),
-		"requested":   args.Count,
-		"random":      args.Random,
-		"conditions":  args.Where,
-		"data":        results,
-	}
-
-	data, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal sample: %w", err)
-	}
-
-	return &ToolResult{
-		Content: []ToolContent{{
-			Type: "text",
-			Text: string(data),
-		}},
-	}, nil
-}
-
-// analyzeColumn performs statistical analysis on a column
-func (s *Server) analyzeColumn(columnName string, data []map[string]interface{}) ColumnStats {
-	stats := ColumnStats{
-		DataType:     "unknown",
-		SampleValues: make([]interface{}, 0, 10),
-	}
-
-	if len(data) == 0 {
-		return stats
-	}
-
-	var values []interface{}
-	uniqueValues := make(map[interface{}]bool)
-	nullCount := 0
-
-	// Collect values and count nulls/uniques
-	for _, row := range data {
-		if value, exists := row[columnName]; exists {
-			if value == nil {
-				nullCount++
-			} else {
-				values = append(values, value)
-				uniqueValues[value] = true
-				
-				// Collect sample values (first 10 unique)
-				if len(stats.SampleValues) < 10 {
-					found := false
-					for _, sample := range stats.SampleValues {
-						if sample == value {
-							found = true
-							break
-						}
-					}
-					if !found {
-						stats.SampleValues = append(stats.SampleValues, value)
-					}
-				}
-			}
-		} else {
-			nullCount++
-		}
-	}
-
-	stats.NullCount = nullCount
-	stats.UniqueCount = len(uniqueValues)
-
-	// Determine data type and min/max from first non-null value
-	if len(values) > 0 {
-		firstValue := values[0]
-		switch firstValue.(type) {
-		case int, int32, int64:
-			stats.DataType = "integer"
-			min, max := s.findNumericMinMax(values, true)
-			stats.MinValue = min
-			stats.MaxValue = max
-		case float32, float64:
-			stats.DataType = "float"
-			min, max := s.findNumericMinMax(values, false)
-			stats.MinValue = min
-			stats.MaxValue = max
-		case string:
-			stats.DataType = "string"
-			min, max := s.findStringMinMax(values)
-			stats.MinValue = min
-			stats.MaxValue = max
-		case bool:
-			stats.DataType = "boolean"
-		default:
-			stats.DataType = "mixed"
-		}
-	}
-
-	return stats
-}
-
-// findNumericMinMax finds min and max values for numeric columns
-func (s *Server) findNumericMinMax(values []interface{}, isInteger bool) (interface{}, interface{}) {
-	if len(values) == 0 {
-		return nil, nil
-	}
-
-	var min, max float64
-	first := true
-
-	for _, value := range values {
-		var numValue float64
-		if isInteger {
-			numValue = float64(utils.ToInt64(value))
-		} else {
-			numValue = utils.ToFloat64(value)
-		}
-
-		if first {
-			min = numValue
-			max = numValue
-			first = false
-		} else {
-			if numValue < min {
-				min = numValue
-			}
-			if numValue > max {
-				max = numValue
-			}
-		}
-	}
-
-	if isInteger {
-		return int64(min), int64(max)
-	}
-	return min, max
-}
-
-// findStringMinMax finds min and max values for string columns (by length and lexicographic order)
-func (s *Server) findStringMinMax(values []interface{}) (interface{}, interface{}) {
-	if len(values) == 0 {
-		return nil, nil
-	}
-
-	minStr := utils.ToString(values[0])
-	maxStr := minStr
-
-	for _, value := range values[1:] {
-		str := utils.ToString(value)
-		if str < minStr {
-			minStr = str
-		}
-		if str > maxStr {
-			maxStr = str
-		}
-	}
-
-	return minStr, maxStr
-}
-
-// callModelTool handles model management tools
-func (s *Server) callModelTool(ctx context.Context, tool string, arguments json.RawMessage) (*ToolResult, error) {
-	switch tool {
-	case "model.create":
-		return s.createModel(ctx, arguments)
-	case "model.addField":
-		return s.addFieldToModel(ctx, arguments)
-	default:
-		return nil, fmt.Errorf("unknown model tool: %s", tool)
-	}
-}
-
-// callSchemaTool handles schema management tools
-func (s *Server) callSchemaTool(ctx context.Context, tool string, arguments json.RawMessage) (*ToolResult, error) {
-	switch tool {
-	case "schema.sync":
-		return s.syncSchema(ctx, arguments)
-	case "schema.diff":
-		return s.schemaDiff(ctx, arguments)
-	case "schema.export":
-		return s.schemaExport(ctx, arguments)
-	default:
-		return nil, fmt.Errorf("unknown schema tool: %s", tool)
-	}
-}
-
-// Note: createModel is now implemented in tools_schema.go
-// Note: syncSchema is now implemented in tools_schema.go
-

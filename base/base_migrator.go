@@ -6,6 +6,7 @@ import (
 
 	"github.com/rediwo/redi-orm/schema"
 	"github.com/rediwo/redi-orm/types"
+	"github.com/rediwo/redi-orm/utils"
 )
 
 // BaseMigrator provides common migration functionality that all database drivers can use
@@ -343,7 +344,7 @@ func (b *BaseMigrator) compareIndexes(existingTable *types.TableInfo, desiredSch
 	for i := range existingTable.Indexes {
 		idx := &existingTable.Indexes[i]
 		// Normalize index name for comparison
-		normalizedName := b.normalizeIndexName(idx.Name)
+		normalizedName := utils.NormalizeIndexName(idx.Name)
 		existingIndexMap[normalizedName] = idx
 	}
 
@@ -353,8 +354,8 @@ func (b *BaseMigrator) compareIndexes(existingTable *types.TableInfo, desiredSch
 	// Process explicitly defined indexes
 	for i := range desiredSchema.Indexes {
 		idx := &desiredSchema.Indexes[i]
-		indexName := b.generateIndexName(existingTable.Name, idx)
-		normalizedName := b.normalizeIndexName(indexName)
+		indexName := utils.GenerateIndexName(existingTable.Name, idx.Fields, idx.Unique, idx.Name)
+		normalizedName := utils.NormalizeIndexName(indexName)
 		desiredIndexMap[normalizedName] = idx
 		processedIndexNames[normalizedName] = true
 	}
@@ -363,8 +364,8 @@ func (b *BaseMigrator) compareIndexes(existingTable *types.TableInfo, desiredSch
 	for _, field := range desiredSchema.Fields {
 		if field.Index && !field.PrimaryKey && !field.Unique {
 			// Generate index name for field-level index
-			indexName := b.generateFieldIndexName(existingTable.Name, field.GetColumnName())
-			normalizedName := b.normalizeIndexName(indexName)
+			indexName := utils.GenerateFieldIndexName(existingTable.Name, field.GetColumnName())
+			normalizedName := utils.NormalizeIndexName(indexName)
 
 			// Skip if already processed (e.g., part of composite index)
 			if !processedIndexNames[normalizedName] {
@@ -465,38 +466,6 @@ func (b *BaseMigrator) compareIndexes(existingTable *types.TableInfo, desiredSch
 	}
 
 	return nil
-}
-
-// normalizeIndexName normalizes index name for comparison
-func (b *BaseMigrator) normalizeIndexName(name string) string {
-	// Remove common prefixes and suffixes
-	normalized := strings.ToLower(name)
-	normalized = strings.TrimPrefix(normalized, "idx_")
-	normalized = strings.TrimPrefix(normalized, "index_")
-	normalized = strings.TrimSuffix(normalized, "_idx")
-	normalized = strings.TrimSuffix(normalized, "_index")
-	return normalized
-}
-
-// generateIndexName generates a consistent index name
-func (b *BaseMigrator) generateIndexName(tableName string, idx *schema.Index) string {
-	if idx.Name != "" {
-		return idx.Name
-	}
-
-	// Generate name based on columns
-	prefix := "idx"
-	if idx.Unique {
-		prefix = "uniq"
-	}
-
-	columnPart := strings.Join(idx.Fields, "_")
-	return fmt.Sprintf("%s_%s_%s", prefix, tableName, columnPart)
-}
-
-// generateFieldIndexName generates index name for field-level index
-func (b *BaseMigrator) generateFieldIndexName(tableName, columnName string) string {
-	return fmt.Sprintf("idx_%s_%s", tableName, columnName)
 }
 
 // indexNeedsModification checks if an index needs to be modified

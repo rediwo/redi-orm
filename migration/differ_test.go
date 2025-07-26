@@ -84,6 +84,10 @@ func (m *mockDifferMigrator) GetDatabaseType() string {
 	return "test"
 }
 
+func (m *mockDifferMigrator) IsSystemTable(tableName string) bool {
+	return false
+}
+
 func (m *mockDifferMigrator) CompareSchema(existingTable *types.TableInfo, desiredSchema any) (*types.MigrationPlan, error) {
 	if m.shouldError["CompareSchema"] {
 		return nil, errors.New("CompareSchema error")

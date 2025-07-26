@@ -3,6 +3,7 @@ package postgresql
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/rediwo/redi-orm/base"
@@ -525,6 +526,14 @@ func (m *PostgreSQLMigrator) IsSystemIndex(indexName string) bool {
 		strings.Contains(lower, "primary")
 }
 
+// IsPrimaryKeyIndex checks if an index name indicates it's a primary key index
+func (m *PostgreSQLMigrator) IsPrimaryKeyIndex(indexName string) bool {
+	lower := strings.ToLower(indexName)
+	return strings.HasSuffix(lower, "_pkey") ||
+		strings.Contains(lower, "primary") ||
+		strings.HasPrefix(lower, "pk_")
+}
+
 // IsSystemTable checks if a table is a system table in PostgreSQL
 func (m *PostgreSQLMigrator) IsSystemTable(tableName string) bool {
 	lower := strings.ToLower(tableName)
@@ -537,6 +546,160 @@ func (m *PostgreSQLMigrator) IsSystemTable(tableName string) bool {
 		strings.HasPrefix(lower, "sql_") ||
 		lower == "information_schema" ||
 		lower == "pg_catalog"
+}
+
+// ParseDefaultValue parses PostgreSQL-specific default values to normalized form
+func (m *PostgreSQLMigrator) ParseDefaultValue(value any, fieldType schema.FieldType) any {
+	if value == nil {
+		return nil
+	}
+
+	// Convert to string for processing
+	strVal := fmt.Sprintf("%v", value)
+
+	// Strip surrounding quotes and type casts
+	strVal = strings.Trim(strVal, `'"`)
+	// Remove PostgreSQL type casts like ::text, ::integer
+	if idx := strings.Index(strVal, "::"); idx != -1 {
+		strVal = strVal[:idx]
+	}
+
+	// Normalize common PostgreSQL default functions
+	upperVal := strings.ToUpper(strVal)
+	switch {
+	case upperVal == "CURRENT_TIMESTAMP" || upperVal == "NOW()" || strings.Contains(upperVal, "CURRENT_TIMESTAMP"):
+		return "CURRENT_TIMESTAMP"
+	case upperVal == "GEN_RANDOM_UUID()" || upperVal == "UUID_GENERATE_V4()":
+		return "UUID"
+	case strings.HasPrefix(upperVal, "NEXTVAL("):
+		return "SEQUENCE"
+	case upperVal == "NULL":
+		return nil
+	}
+
+	// Type-specific parsing
+	switch fieldType {
+	case schema.FieldTypeBool:
+		// PostgreSQL boolean values
+		if strVal == "false" || strVal == "FALSE" || strVal == "f" {
+			return false
+		} else if strVal == "true" || strVal == "TRUE" || strVal == "t" {
+			return true
+		}
+	case schema.FieldTypeInt, schema.FieldTypeInt64:
+		// Try to parse as integer
+		if i, err := strconv.ParseInt(strVal, 10, 64); err == nil {
+			return i
+		}
+	case schema.FieldTypeFloat, schema.FieldTypeDecimal:
+		// Try to parse as float
+		if f, err := strconv.ParseFloat(strVal, 64); err == nil {
+			return f
+		}
+	}
+
+	// Return as string for other types
+	return strVal
+}
+
+// NormalizeDefaultToPrismaFunction converts normalized defaults to Prisma function names
+func (m *PostgreSQLMigrator) NormalizeDefaultToPrismaFunction(value any, fieldType schema.FieldType) (string, bool) {
+	if value == nil {
+		return "", false
+	}
+
+	strVal, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+
+	switch strVal {
+	case "CURRENT_TIMESTAMP":
+		return "now", true
+	case "UUID":
+		return "uuid", true
+	case "SEQUENCE":
+		return "autoincrement", true
+	}
+
+	return "", false
+}
+
+// MapDatabaseTypeToFieldType converts PostgreSQL column types to schema field types
+func (m *PostgreSQLMigrator) MapDatabaseTypeToFieldType(dbType string) schema.FieldType {
+	// Normalize the type to lowercase and remove size specifications
+	dbType = strings.ToLower(dbType)
+
+	// Remove size specifications like (255) or (10,2)
+	if idx := strings.Index(dbType, "("); idx != -1 {
+		dbType = dbType[:idx]
+	}
+
+	// Trim any whitespace
+	dbType = strings.TrimSpace(dbType)
+
+	// PostgreSQL-specific type mappings
+	switch dbType {
+	// Integer types
+	case "smallint":
+		return schema.FieldTypeInt
+	case "integer", "int", "int4":
+		return schema.FieldTypeInt
+	case "bigint", "int8":
+		return schema.FieldTypeInt64
+	case "serial", "smallserial":
+		return schema.FieldTypeInt
+	case "bigserial":
+		return schema.FieldTypeInt64
+
+	// Floating point types
+	case "real", "float4":
+		return schema.FieldTypeFloat
+	case "double precision", "float8":
+		return schema.FieldTypeFloat
+
+	// Exact numeric types
+	case "decimal", "numeric":
+		return schema.FieldTypeDecimal
+	case "money":
+		return schema.FieldTypeDecimal
+
+	// String types
+	case "character varying", "varchar":
+		return schema.FieldTypeString
+	case "character", "char":
+		return schema.FieldTypeString
+	case "text":
+		return schema.FieldTypeString
+
+	// Boolean types
+	case "boolean", "bool":
+		return schema.FieldTypeBool
+
+	// Date/Time types
+	case "date":
+		return schema.FieldTypeDateTime
+	case "time", "timetz", "time with time zone", "time without time zone":
+		return schema.FieldTypeDateTime
+	case "timestamp", "timestamptz", "timestamp with time zone", "timestamp without time zone":
+		return schema.FieldTypeDateTime
+
+	// Binary types
+	case "bytea":
+		return schema.FieldTypeBinary
+
+	// JSON types
+	case "json", "jsonb":
+		return schema.FieldTypeJSON
+
+	// UUID type
+	case "uuid":
+		return schema.FieldTypeString
+
+	// Default to string for unknown types
+	default:
+		return schema.FieldTypeString
+	}
 }
 
 // ApplyMigration applies a migration SQL statement
@@ -616,4 +779,9 @@ func (w *PostgreSQLMigratorWrapper) CompareSchema(existingTable *types.TableInfo
 // IsSystemTable delegates to the specific implementation
 func (w *PostgreSQLMigratorWrapper) IsSystemTable(tableName string) bool {
 	return w.specific.IsSystemTable(tableName)
+}
+
+// GetSpecific returns the specific migrator implementation
+func (w *PostgreSQLMigratorWrapper) GetSpecific() types.DatabaseSpecificMigrator {
+	return w.specific
 }
